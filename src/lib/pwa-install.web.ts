@@ -63,7 +63,9 @@ export function subscribePwaInstallStatus(listener: () => void) {
 }
 
 export function registerPwa() {
-  if (!browserAvailable() || registered) return () => undefined;
+  if (process.env.NODE_ENV !== 'production' || !browserAvailable() || registered) {
+    return () => undefined;
+  }
   registered = true;
 
   const onInstallPrompt = (event: Event) => {

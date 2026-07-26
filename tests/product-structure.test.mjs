@@ -52,3 +52,8 @@ test('provides the conventional local web development command', () => {
     'EXPO_PUBLIC_COUNCIL_API_BASE=https://what-bin-is-it-tonight.vercel.app/api expo start --web',
   );
 });
+
+test('does not request the production service worker from the Expo development server', () => {
+  const pwa = read('src/lib/pwa-install.web.ts');
+  assert.match(pwa, /process\.env\.NODE_ENV !== 'production'/);
+});
