@@ -14,6 +14,7 @@ These answers describe version 1.1.0 in the `proof` phase. Reassess them before 
 - The installed web app can store a browser push subscription and reminder delivery plan on the server.
 - The native store app does not sell or share address/location data.
 - Support opens an external GitHub issue only after the user chooses it.
+- Native Plus builds use RevenueCat to read Apple/Google purchase status. RevenueCat receives an anonymous app user ID, product/transaction and entitlement status, and basic platform/app information. The app disables automatic device-identifier collection and does not send a postcode, street address or location to RevenueCat.
 
 ## Apple App Privacy
 
@@ -33,6 +34,11 @@ If any request value or derived value is retained, declare at least:
 - **Coarse Location** — postcode/council area; not linked to identity; App Functionality.
 - **Device ID** — only if a native push token or installation identifier is introduced; App Functionality.
 - **Other User Content** — only if in-app support text is transmitted to and retained by the operator.
+
+For a Plus-enabled build, also declare conservatively:
+
+- **Purchases / Purchase History** — product, transaction and subscription status; App Functionality; not used for tracking.
+- **User ID** — RevenueCat anonymous app user ID; App Functionality; not used for tracking.
 
 Do not declare precise location if the production design immediately converts it to a postcode and does not store coordinates. If coordinates are retained or logged, update the answer.
 
@@ -54,6 +60,8 @@ Review:
 - no accounts in the first release;
 - no data sale;
 - no advertising.
+
+For a Plus-enabled build, include purchase history and the anonymous RevenueCat app user ID in the Data safety answers. Confirm RevenueCat’s current SDK disclosure before submission.
 
 Privacy policy: `https://what-bin-is-it-tonight.vercel.app/privacy`
 
@@ -87,13 +95,13 @@ The Android app declares `SCHEDULE_EXACT_ALARM`, not the more restricted auto-gr
 
 The app uses standard HTTPS/TLS and does not implement non-exempt proprietary encryption. `ios.config.usesNonExemptEncryption` is `false`. Reassess if cryptographic functionality changes.
 
-## Future Plus
+## Plus release gate
 
-Before enabling payments, update:
+The repository includes the native purchase layer, but the `production` profile remains in `proof`. Before enabling payments:
 
 - Purchases / purchase history declarations where applicable;
 - subscription terms and management links;
-- account and purchase restoration flow;
-- any third-party billing SDK data practices;
+- RevenueCat public SDK keys, paywall, entitlement, Customer Center and user-triggered restore must be sandbox tested;
+- verify RevenueCat’s then-current SDK data practices against both store forms;
 - privacy manifest and store privacy answers;
 - review notes and screenshots.

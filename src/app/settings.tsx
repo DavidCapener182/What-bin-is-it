@@ -17,11 +17,13 @@ import { AppShell } from '@/components/app-shell';
 import { PwaSettingsCard } from '@/components/pwa-settings-card';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta, wasteTypes } from '@/lib/data';
+import { residentPaymentsEnabled } from '@/lib/commercial-offer';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { useAppTheme } from '@/lib/theme';
 import { AppearancePreference, PlaceReminderPreferences, WasteType } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useProductState } from '@/lib/use-product-state';
+import { useSubscription } from '@/lib/use-subscription';
 
 const times = [18, 19, 20, 21];
 
@@ -113,6 +115,7 @@ export default function SettingsScreen() {
     clearProductData,
   } = useProductState();
   const [busy, setBusy] = useState(false);
+  const subscription = useSubscription();
   const placePreferences = reminderPreferencesFor(activeAddress?.id);
   const presentWasteTypes = new Set(collections.map((collection) => collection.wasteType));
   const relevantWasteTypes = collections.length
@@ -122,6 +125,14 @@ export default function SettingsScreen() {
   function updatePlace(next: Partial<PlaceReminderPreferences>) {
     if (!activeAddress) return;
     updatePlaceReminders(activeAddress.id, next);
+  }
+
+  function withPlus(action: () => void) {
+    if (!residentPaymentsEnabled() || subscription.isPlus) {
+      action();
+      return;
+    }
+    router.push('/plus');
   }
 
   async function changeNotifications(next: boolean) {
@@ -229,21 +240,21 @@ export default function SettingsScreen() {
               <ToggleRow
                 detail={`Optional ${placePreferences.morningHour}:00 prompt on collection morning.`}
                 disabled={!placePreferences.enabled}
-                onChange={(morningReminder) => updatePlace({ morningReminder })}
+                onChange={(morningReminder) => withPlus(() => updatePlace({ morningReminder }))}
                 title="Morning reminder"
                 value={placePreferences.morningReminder}
               />
               <ToggleRow
                 detail={`A second prompt at ${placePreferences.secondReminderHour}:00 if the bin is not marked out.`}
                 disabled={!placePreferences.enabled}
-                onChange={(secondReminder) => updatePlace({ secondReminder })}
+                onChange={(secondReminder) => withPlus(() => updatePlace({ secondReminder }))}
                 title="Second reminder"
                 value={placePreferences.secondReminder}
               />
               <ToggleRow
                 detail="Ask whether the collection was completed after the collection window."
                 disabled={!placePreferences.enabled}
-                onChange={(collectionFollowUp) => updatePlace({ collectionFollowUp })}
+                onChange={(collectionFollowUp) => withPlus(() => updatePlace({ collectionFollowUp }))}
                 title="Collection follow-up"
                 value={placePreferences.collectionFollowUp}
               />
@@ -337,6 +348,20 @@ export default function SettingsScreen() {
             ) : null}
           </View>
 
+          {residentPaymentsEnabled() ? (
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Plan</Text>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                <Row
+                  detail={subscription.isPlus ? 'Plus active · manage or restore purchases' : 'Free plan · optional household conveniences'}
+                  icon={subscription.isPlus ? 'checkmark-circle-outline' : 'sparkles-outline'}
+                  onPress={() => router.push('/plus')}
+                  title="What Bin? Plus"
+                />
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Appearance</Text>
             <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
@@ -360,7 +385,7 @@ export default function SettingsScreen() {
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
               <Row detail="Use after a verified collection window has passed" icon="alert-circle-outline" onPress={() => router.push('/report-missed')} title="Report a missed collection" />
               <Row detail={`${reports.length} locally tracked`} icon="document-text-outline" onPress={() => router.push('/reports')} title="Missed collection reports" />
-              <Row detail={`${history.length} recorded actions`} icon="time-outline" onPress={() => router.push('/history')} title="Activity history" />
+              <Row detail={`${history.length} recorded actions`} icon="time-outline" onPress={() => withPlus(() => router.push('/history'))} title="Activity history" />
             </View>
           </View>
 

@@ -27,8 +27,12 @@ export default function TermsScreen() {
           body: 'Live lookups depend on third-party council systems and may be temporarily unavailable. Saved verified dates can remain visible offline, but the app labels cached data clearly.',
         },
         {
-          title: 'Free first release',
-          body: 'No resident subscription or in-app purchase is offered in this release. Essential collection information, basic reminders, recycling guidance, local services and the basic missed-bin route are intended to remain free if optional convenience plans are introduced later.',
+          title: 'Free essentials and optional Plus',
+          body: 'Verified collection information, one saved address, the standard reminder, recycling guidance, local services, service alerts and the basic missed-bin route remain free. Where What Bin? Plus is enabled, it adds optional multi-address, reminder, history, calendar, sharing, widget and support conveniences without restricting those essentials.',
+        },
+        {
+          title: 'Subscriptions and purchases',
+          body: 'Native Plus purchases are processed by Apple App Store or Google Play. The store shows the current local price and billing period before you confirm. Monthly and annual subscriptions renew automatically unless cancelled through your store account at least 24 hours before renewal, subject to the store terms shown at purchase. A lifetime product, if offered, is a one-time purchase tied to the purchasing store account and supported platform. Use Restore purchases in the app to recover an eligible purchase. Refunds, billing and cancellation are handled under the applicable store rules.',
         },
         {
           title: 'External services',

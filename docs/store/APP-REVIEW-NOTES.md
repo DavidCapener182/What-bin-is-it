@@ -4,6 +4,8 @@ What Bin Is It Tonight? is an independent UK household utility. It is not a coun
 
 No account or payment is required in this release.
 
+The repository also contains a disabled Plus purchase path. The submitted `proof` build does not configure RevenueCat or show a resident payment prompt.
+
 ## Review path
 
 1. Open **Places** from onboarding or Settings.
@@ -43,3 +45,12 @@ The app guides eligibility and opens the official council route. It does not tel
 - Privacy: `https://what-bin-is-it-tonight.vercel.app/privacy`
 - Terms: `https://what-bin-is-it-tonight.vercel.app/terms`
 - Data sources: `https://what-bin-is-it-tonight.vercel.app/data-sources`
+
+## Replace this section for a Plus-enabled submission
+
+- Explain that Apple/Google process payment and RevenueCat reads entitlement status.
+- Provide the location of **Settings → What Bin? Plus → Restore purchases**.
+- Provide the location of subscription management/Customer Center.
+- State the exact products attached to entitlement `plus`.
+- Confirm that one address, verified dates, the standard reminder, guide, services and basic missed-bin route remain free.
+- Include working sandbox products and any review-account instructions required by the stores.

@@ -7,7 +7,7 @@ The first store release is a free accuracy-proving release. Do not turn on Plus 
 - Expo SDK 57 app with iOS, Android and web targets;
 - iOS bundle identifier and Android application ID: `uk.whatbinistonight.app`;
 - iOS build number and Android version code;
-- EAS development, preview, production and submit profiles;
+- EAS development, preview, subscription-development, Plus beta, production and submit profiles;
 - 1024 × 1024 store icon source;
 - foreground location and notification permission copy;
 - no non-exempt encryption declaration;
@@ -17,6 +17,7 @@ The first store release is a free accuracy-proving release. Do not turn on Plus 
 - App Review notes, privacy/data-safety answers and screenshot shot list;
 - automated `npm run store:check`;
 - production gateway and PWA.
+- native StoreKit/Google Play entitlement, paywall, restore and management code via RevenueCat.
 
 ## Account steps that cannot be completed in source control
 
@@ -49,6 +50,15 @@ The first store release is a free accuracy-proving release. Do not turn on Plus 
 - [ ] Create a Google service account with the minimum Play release permission and keep its JSON outside Git.
 - [ ] Upload the first Android App Bundle manually if Play requires it before API submission.
 
+### Optional What Bin? Plus
+
+- [ ] Complete every step in [SUBSCRIPTIONS.md](SUBSCRIPTIONS.md).
+- [ ] Create and activate the three exact Apple and Google product IDs.
+- [ ] Publish RevenueCat entitlement `plus`, offering `default`, paywall and Customer Center.
+- [ ] Store public RevenueCat SDK keys in EAS development/preview environments.
+- [ ] Pass purchase, cancellation, expiry, management and user-triggered restore tests on physical iOS and Android devices.
+- [ ] Keep the `production` profile in `proof` until the store products and disclosures are approved.
+
 ## Build sequence
 
 ```bash
@@ -63,6 +73,14 @@ For internal review:
 ```bash
 npx eas-cli build --platform android --profile preview
 npx eas-cli build --platform ios --profile preview
+```
+
+For native subscription sandbox testing:
+
+```bash
+npx eas-cli build --platform ios --profile subscription-development
+npx eas-cli build --platform android --profile subscription-development
+npx eas-cli build --platform all --profile plus-beta
 ```
 
 After the app records exist:
@@ -89,6 +107,7 @@ The Android submit profile uses the internal track first. Promote only after phy
 - [ ] Privacy, terms, support and data sources open without login.
 - [ ] Cached and offline states are clearly labelled.
 - [ ] Dark mode, large text, VoiceOver and TalkBack are checked.
+- [ ] If Plus is enabled, purchase, restore, management and entitlement expiry work with sandbox accounts.
 
 ## Store listing
 

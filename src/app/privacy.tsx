@@ -31,8 +31,12 @@ export default function PrivacyScreen() {
           body: 'Missed-bin reports are tracked locally unless a future council integration clearly says it submits directly. Opening an official council service does not mean the app submitted a report. Support or feedback leaves the app only when you choose an external email or GitHub issue route; information you publish there is handled by that service.',
         },
         {
+          title: 'Optional purchases',
+          body: 'When What Bin? Plus is enabled in an iPhone or Android build, Apple or Google processes the payment and RevenueCat provides the app with purchase and entitlement status. RevenueCat receives an anonymous app user ID, the purchased product and transaction or subscription status, plus basic app and platform information. The app disables automatic device-identifier collection and does not send your postcode, street address or location to RevenueCat.',
+        },
+        {
           title: 'Service providers',
-          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, and platform notification services when enabled. The Data sources screen explains which source supports each feature.',
+          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, platform notification services when enabled, and RevenueCat only in native builds where Plus purchasing is enabled. The Data sources screen explains which source supports each collection feature.',
         },
         {
           title: 'Retention and deletion',

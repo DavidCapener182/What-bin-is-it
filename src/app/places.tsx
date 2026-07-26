@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
+import { residentPaymentsEnabled } from '@/lib/commercial-offer';
 import {
   fetchCouncilAddresses,
   isUkPostcode,
@@ -21,6 +22,7 @@ import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { shareSavedPlace } from '@/lib/schedule-tools';
 import { CouncilAddressOption, SavedAddress } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { useSubscription } from '@/lib/use-subscription';
 
 type AddressChoice = {
   place: ResolvedPlace;
@@ -38,6 +40,7 @@ export default function PlacesScreen() {
   const styles = createStyles(theme);
   const params = useLocalSearchParams<{ postcode?: string }>();
   const { addresses, activeAddress, addAddress, removeAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
+  const subscription = useSubscription();
   const initialPostcode = typeof params.postcode === 'string' ? params.postcode : '';
   const initialLookupHandled = useRef(false);
   const [postcode, setPostcode] = useState(initialPostcode);
@@ -52,6 +55,18 @@ export default function PlacesScreen() {
   const showPostcodeForm = showAdd || addresses.length === 0;
 
   async function saveResolvedPlace(result: ResolvedPlace, exactAddress?: CouncilAddressOption) {
+    const alreadySaved = addresses.some((address) => (
+      address.postcode.replace(/\s/g, '').toUpperCase() === result.postcode.replace(/\s/g, '').toUpperCase()
+    ));
+    if (!alreadySaved && addresses.length >= 5) {
+      Alert.alert('Five-place limit reached', 'What Bin? Plus keeps up to five saved places. Remove one before adding another.');
+      return;
+    }
+    if (!alreadySaved && addresses.length >= 1 && residentPaymentsEnabled() && !subscription.isPlus) {
+      setAddressChoice(undefined);
+      router.push('/plus');
+      return;
+    }
     if (result.providerId === 'lad-e08000011' && !exactAddress) {
       throw new Error('Choose your exact Knowsley address so the council can identify the correct collection round.');
     }
@@ -106,6 +121,18 @@ export default function PlacesScreen() {
     } finally {
       setLookupMode(undefined);
     }
+  }
+
+  function startAddingPlace() {
+    if (addresses.length >= 5) {
+      Alert.alert('Five-place limit reached', 'Remove a saved place before adding another.');
+      return;
+    }
+    if (addresses.length >= 1 && residentPaymentsEnabled() && !subscription.isPlus) {
+      router.push('/plus');
+      return;
+    }
+    setShowAdd(true);
   }
 
   useEffect(() => {
@@ -226,7 +253,7 @@ export default function PlacesScreen() {
                 </Pressable>
               </View>
             ) : (
-              <Pressable accessibilityRole="button" onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
+              <Pressable accessibilityRole="button" onPress={startAddingPlace} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
                 <View style={styles.plus}><Ionicons color={theme.accent} name="add" size={22} /></View>
                 <View><Text style={styles.newPlaceTitle}>Add another place</Text><Text style={styles.newPlaceCopy}>Use a UK postcode</Text></View>
               </Pressable>

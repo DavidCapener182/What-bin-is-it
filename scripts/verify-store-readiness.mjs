@@ -40,6 +40,8 @@ const terms = await text('src/app/terms.tsx');
 const support = await text('src/app/support.tsx');
 const dataSources = await text('src/app/data-sources.tsx');
 const reviewNotes = await text('docs/store/APP-REVIEW-NOTES.md');
+const subscriptionGuide = await text('docs/store/SUBSCRIPTIONS.md');
+const subscriptionNative = await text('src/lib/subscriptions.native.ts');
 
 requireCondition(app.name === 'What Bin Is It Tonight?', 'The app name is not the approved product name.');
 requireCondition(app.version === packageJson.version, 'package.json and app.json versions must match.');
@@ -53,10 +55,22 @@ requireCondition(app.ios?.supportsTablet === false, 'The first release is scoped
 requireCondition(eas.build?.production?.autoIncrement === true, 'The EAS production profile must auto-increment store build numbers.');
 requireCondition(eas.submit?.production?.ios, 'The EAS iOS submit profile is missing.');
 requireCondition(eas.submit?.production?.android?.track === 'internal', 'The first Android submission must target internal testing.');
+requireCondition(eas.build?.['subscription-development']?.developmentClient === true, 'The native subscription development profile is missing.');
+requireCondition(eas.build?.['subscription-development']?.env?.EXPO_PUBLIC_LAUNCH_PHASE === 'plus-beta', 'The subscription development profile must enable plus-beta.');
+requireCondition(eas.build?.['plus-beta']?.env?.EXPO_PUBLIC_LAUNCH_PHASE === 'plus-beta', 'The Plus store-test profile is missing.');
 requireCondition(
   eas.build?.production?.env?.EXPO_PUBLIC_LAUNCH_PHASE === 'proof',
   'The first production build must stay in the free proof phase.',
 );
+requireCondition(packageJson.dependencies?.['react-native-purchases'], 'The native RevenueCat purchase SDK is missing.');
+requireCondition(packageJson.dependencies?.['react-native-purchases-ui'], 'The native RevenueCat paywall SDK is missing.');
+requireCondition(packageJson.dependencies?.['expo-dev-client'], 'Expo development builds are required for native purchase testing.');
+requireCondition(subscriptionNative.includes("plusEntitlementIdentifier = 'plus'"), 'The Plus entitlement identifier is missing or changed.');
+requireCondition(subscriptionNative.includes('restorePurchases()'), 'A user-triggered native purchase restore path is missing.');
+requireCondition(subscriptionNative.includes('presentCustomerCenter()'), 'Native subscription management is missing.');
+requireCondition(subscriptionGuide.includes('uk.whatbinistonight.plus.yearly'), 'The store subscription configuration guide is incomplete.');
+requireCondition(privacy.includes('RevenueCat'), 'The public privacy page must disclose the native purchase processor.');
+requireCondition(terms.includes('renew automatically'), 'The public terms must explain subscription renewal.');
 
 const icon = await pngDimensions('assets/images/app-icon.png');
 requireCondition(icon.width === 1024 && icon.height === 1024, 'The store icon must be exactly 1024 × 1024.');
@@ -102,6 +116,8 @@ external(!/\[ADD [^\]]+\]/.test(reviewNotes), 'Replace App Review placeholders w
 external(Boolean(process.env.EXPO_TOKEN), 'Authenticate EAS locally or in CI before creating store builds.');
 external(Boolean(process.env.APPLE_TEAM_ID), 'Create the Apple app record and record its Team/App Store IDs outside source control.');
 external(Boolean(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON), 'Create the Play app and minimum-permission service account outside source control.');
+external(Boolean(process.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY), 'Add the public RevenueCat Apple SDK key to the EAS development and preview environments before Plus testing.');
+external(Boolean(process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY), 'Add the public RevenueCat Google SDK key to the EAS development and preview environments before Plus testing.');
 
 if (failures.length) {
   console.error('\nStore repository checks failed:');
