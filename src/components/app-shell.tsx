@@ -3,11 +3,12 @@ import { Href, router } from 'expo-router';
 import { ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-type Route = '/' | '/calendar' | '/places' | '/settings';
+type Route = '/' | '/calendar' | '/find' | '/places' | '/settings';
 
 const tabs: { route: Route; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },
   { route: '/calendar', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar' },
+  { route: '/find', label: 'Find', icon: 'search-outline', activeIcon: 'search' },
   { route: '/places', label: 'Places', icon: 'location-outline', activeIcon: 'location' },
   { route: '/settings', label: 'Settings', icon: 'options-outline', activeIcon: 'options' },
 ];

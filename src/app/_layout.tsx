@@ -12,6 +12,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="calendar" />
+          <Stack.Screen name="find" />
           <Stack.Screen name="places" />
           <Stack.Screen name="settings" />
         </Stack>

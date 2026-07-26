@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { isUkPostcode, lookupPostcode, normalisePostcode } from '@/lib/council-provider';
+import { councilDirectoryCounts } from '@/lib/council-directory';
 import { useAppData } from '@/lib/use-app-data';
 
 export default function PlacesScreen() {
@@ -22,7 +23,7 @@ export default function PlacesScreen() {
     try {
       const result = await lookupPostcode(postcode);
       const cleaned = normalisePostcode(postcode);
-      addAddress({ label: 'New place', line1: result.line1, postcode: cleaned, councilName: result.councilName ?? 'Local council', providerId: 'gateway' });
+      addAddress({ label: 'New place', line1: result.line1, postcode: cleaned, councilName: result.councilName ?? 'Local council', providerId: result.providerId ?? 'gateway', latitude: result.latitude, longitude: result.longitude });
       setPostcode('');
       setShowAdd(false);
       Alert.alert('Place added', 'Your place has been saved. Connect the national council gateway to verify live collection dates.');
@@ -68,6 +69,11 @@ export default function PlacesScreen() {
             <View style={styles.syncCopy}><Text style={styles.syncTitle}>{refreshing ? 'Checking your source…' : 'Refresh collection dates'}</Text><Text style={styles.syncBody}>Uses the selected place and its council provider.</Text></View>
             <Ionicons color="#0B7168" name="arrow-forward" size={17} />
           </Pressable>
+
+          <View style={styles.directoryCard}>
+            <View style={styles.directoryIcon}><Ionicons color="#926023" name="map-outline" size={19} /></View>
+            <View style={styles.directoryCopy}><Text style={styles.directoryTitle}>UK council directory</Text><Text style={styles.directoryBody}>{councilDirectoryCounts.England + councilDirectoryCounts.Scotland + councilDirectoryCounts.Wales + councilDirectoryCounts['Northern Ireland']} local authorities mapped from your postcode.</Text></View>
+          </View>
 
           {showAdd ? (
             <View style={styles.addPanel}>
@@ -119,6 +125,11 @@ const styles = StyleSheet.create({
   syncCopy: { flex: 1 },
   syncTitle: { color: '#174247', fontSize: 13.5, fontWeight: '900' },
   syncBody: { color: '#5C7C7C', fontSize: 11, marginTop: 3, fontWeight: '500' },
+  directoryCard: { borderRadius: 17, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#FAEEDC' },
+  directoryIcon: { height: 36, width: 36, borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  directoryCopy: { flex: 1 },
+  directoryTitle: { color: '#573C1E', fontSize: 13.5, fontWeight: '900' },
+  directoryBody: { color: '#866841', fontSize: 10.5, marginTop: 3, lineHeight: 14, fontWeight: '600' },
   addPanel: { backgroundColor: '#FFFFFF', padding: 17, borderRadius: 19, gap: 12, shadowColor: '#1B363A', shadowOpacity: 0.07, shadowRadius: 9, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   addHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   addTitle: { color: '#14383E', fontFamily: 'Georgia', fontSize: 19 },

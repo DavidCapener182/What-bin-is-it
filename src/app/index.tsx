@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -128,6 +128,12 @@ export default function HomeScreen() {
             })}
           </View>
 
+          <Pressable onPress={() => router.push('/find' as Href)} style={({ pressed }) => [styles.findCard, pressed && styles.pressed]}>
+            <View style={styles.findIcon}><Ionicons color="#EDFFF8" name="search" size={21} /></View>
+            <View style={styles.findCopy}><Text style={styles.findTitle}>Not sure where it goes?</Text><Text style={styles.findBody}>Search the bin guide or find a nearby council tip.</Text></View>
+            <Ionicons color="#9FDECB" name="arrow-forward" size={20} />
+          </Pressable>
+
           <Pressable
             accessibilityRole="button"
             disabled={refreshing}
@@ -188,6 +194,11 @@ const styles = StyleSheet.create({
   guideCard: { width: '48.4%', minHeight: 116, borderRadius: 17, padding: 14, gap: 8 },
   guideTitle: { color: '#18333C', fontSize: 13.5, fontWeight: '800', marginTop: 1 },
   guideDescription: { color: '#597178', fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  findCard: { backgroundColor: '#204B48', borderRadius: 19, minHeight: 75, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  findIcon: { height: 38, width: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0D8375' },
+  findCopy: { flex: 1 },
+  findTitle: { color: '#F3FFF9', fontSize: 14, fontWeight: '900' },
+  findBody: { color: '#B4D4C8', fontSize: 11, marginTop: 3, fontWeight: '600' },
   sourceCard: { backgroundColor: '#E4F2EC', borderRadius: 18, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 11 },
   sourceIcon: { height: 36, width: 36, borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   sourceCopy: { flex: 1 },

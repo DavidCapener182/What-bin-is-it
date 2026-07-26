@@ -9,7 +9,7 @@ import { Collection, NotificationPreferences, SavedAddress, WasteType } from '@/
 const storageKey = '@uk-bin-app/state-v1';
 
 const starterAddress: SavedAddress = {
-  id: 'starter-home', label: 'Home', line1: '14 Cedar Grove', postcode: 'M1 1AE', councilName: 'Your local council', providerId: 'gateway', isPrimary: true,
+  id: 'starter-home', label: 'Home', line1: '14 Cedar Grove', postcode: 'M1 1AE', councilName: 'Manchester', providerId: 'lad-e08000003', isPrimary: true,
 };
 
 const defaultPreferences: NotificationPreferences = {

@@ -89,7 +89,7 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>ABOUT</Text>
             <View style={styles.settingCard}>
-              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>App</Text><Text style={styles.aboutValue}>BinDay UK · 1.0.0</Text></View>
+              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>App</Text><Text style={styles.aboutValue}>What Bin Is It Tonight? · 1.0.0</Text></View>
               <View style={styles.aboutRow}><Text style={styles.aboutLabel}>Platform</Text><Text style={styles.aboutValue}>{Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android' : 'Web preview'}</Text></View>
             </View>
           </View>

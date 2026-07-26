@@ -15,6 +15,20 @@ export type SavedAddress = {
   councilName: string;
   providerId: string;
   isPrimary: boolean;
+  latitude?: number;
+  longitude?: number;
+};
+
+export type CouncilService = {
+  id: string;
+  name: string;
+  type: 'recycling-centre' | 'recycling-point' | 'reuse' | 'collection';
+  address?: string;
+  latitude: number;
+  longitude: number;
+  distanceKm?: number;
+  source: 'council' | 'openstreetmap';
+  website?: string;
 };
 
 export type NotificationPreferences = {

@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "BinDay UK",
-    "slug": "binday-uk",
+    "name": "What Bin Is It Tonight?",
+    "slug": "what-bin-is-it-tonight",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bindayuk",
+    "scheme": "whatbinistonight",
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "uk.binday.app",
+      "bundleIdentifier": "uk.whatbinistonight.app",
       "supportsTablet": true
     },
     "android": {
-      "package": "uk.binday.app",
+      "package": "uk.whatbinistonight.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#08212D",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }

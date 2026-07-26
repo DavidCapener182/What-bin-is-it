@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "binday-uk-council-gateway",
+  "name": "what-bin-is-it-tonight-council-gateway",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-26",
   "observability": {

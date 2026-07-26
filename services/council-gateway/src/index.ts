@@ -21,7 +21,21 @@ export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
-    if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'binday-uk-council-gateway' });
+    if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'what-bin-is-it-tonight-council-gateway' });
+    if (request.method === 'GET' && url.pathname === '/v1/services') {
+      const postcode = url.searchParams.get('postcode');
+      const providerId = url.searchParams.get('providerId');
+      if (!isPostcode(postcode)) return json({ error: 'A complete UK postcode is required.' }, 400);
+      if (!providerId || !/^[a-z0-9-]+$/.test(providerId)) return json({ error: 'Unknown council provider.' }, 400);
+      const adapter = getAdapter(providerId);
+      if (!adapter?.getServices) return json({ error: 'This council provider has not connected local services yet.' }, 404);
+      try {
+        return json({ services: await adapter.getServices({ postcode: postcode.trim().toUpperCase() }) });
+      } catch (error) {
+        console.error('Council service provider failed', providerId, error);
+        return json({ error: 'The council service source is temporarily unavailable.' }, 502);
+      }
+    }
     if (request.method !== 'POST' || url.pathname !== '/v1/collections') return json({ error: 'Not found' }, 404);
 
     let body: CollectionRequest;
