@@ -58,12 +58,20 @@
     "build:web": "expo export --platform web && node scripts/generate-pwa.mjs",
     "build:server": "nitro build",
     "build": "npm run build:web && npm run build:server",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
     "councils:sync": "node --no-warnings --experimental-strip-types scripts/sync-council-pipeline.mjs",
     "lint": "eslint . --max-warnings=0",
     "store:check": "node scripts/verify-store-readiness.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --no-warnings --experimental-strip-types --test tests/*.test.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "overrides": {
+    "@swc/cli": {
+      "minimatch": "9.0.8"
+    },
+    "filelist": "2.0.2",
+    "uuid": "11.1.1"
   },
   "private": true
 }
