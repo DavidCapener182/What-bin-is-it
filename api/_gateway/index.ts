@@ -1,4 +1,5 @@
 import { getAdapter } from './adapter-registry.ts';
+import { councilPartnerRegistryStatus } from './council-partner-adapter.ts';
 import { fetchOpenStreetMapServices } from './openstreetmap-services.ts';
 
 type CollectionRequest = { postcode?: unknown; addressId?: unknown; providerId?: unknown };
@@ -228,7 +229,14 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname.replace(/^\/api(?=\/)/, '');
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
-    if (request.method === 'GET' && pathname === '/health') return json({ ok: true, service: 'what-bin-is-it-tonight-council-gateway' });
+    if (request.method === 'GET' && pathname === '/health') {
+      const partners = councilPartnerRegistryStatus();
+      return json({
+        ok: partners.valid,
+        service: 'what-bin-is-it-tonight-council-gateway',
+        councilPartners: partners,
+      }, partners.valid ? 200 : 503);
+    }
     if (request.method === 'GET' && pathname === '/v1/addresses') {
       const postcode = url.searchParams.get('postcode');
       const providerId = url.searchParams.get('providerId');

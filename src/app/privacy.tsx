@@ -7,16 +7,20 @@ export default function PrivacyScreen() {
       path="/privacy"
       sections={[
         {
+          title: 'Who operates this app',
+          body: 'What Bin Is It Tonight? is operated by the publisher named on its App Store or Google Play listing. Use Help and support in the app for privacy questions. The app is independent and is not operated by a council.',
+        },
+        {
           title: 'Data stored on this device',
           body: 'Saved places, verified collection dates, preferences, collection outcomes, activity history and local report tracking are stored on this device. Clearing app data removes them.',
         },
         {
           title: 'Council lookups',
-          body: 'When you ask for live data, the postcode, council identifier and selected property reference are sent to the app gateway and the relevant council-data provider. The app does not create estimated collection dates.',
+          body: 'When you ask for live data, the postcode, council identifier and selected opaque property reference are sent over HTTPS to the app gateway and the relevant council-data provider. The gateway uses them to answer the request and does not write full addresses to an app database. Infrastructure and upstream services may keep limited security logs under their own retention policies. The app does not create estimated collection dates.',
         },
         {
           title: 'Location',
-          body: 'Location is requested only when you tap “Use my current location”. It is used to find a nearby postcode and is not continuously tracked.',
+          body: 'Location is requested only when you tap “Use my current location”. It is used in the foreground to find a nearby postcode and council. The app does not request background location or continuously track you, and manual postcode entry remains available.',
         },
         {
           title: 'Notifications',
@@ -24,7 +28,23 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Reports and support',
-          body: 'Missed-bin reports are tracked locally. Opening an official council service does not mean the app submitted a report. Support or feedback leaves the app only when you choose an external email or issue route.',
+          body: 'Missed-bin reports are tracked locally unless a future council integration clearly says it submits directly. Opening an official council service does not mean the app submitted a report. Support or feedback leaves the app only when you choose an external email or GitHub issue route; information you publish there is handled by that service.',
+        },
+        {
+          title: 'Service providers',
+          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, and platform notification services when enabled. The Data sources screen explains which source supports each feature.',
+        },
+        {
+          title: 'Retention and deletion',
+          body: 'Remove an individual saved place from Places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Browser notification subscriptions are removed when notifications are disabled or expire. There is no resident account in this release.',
+        },
+        {
+          title: 'Your choices and rights',
+          body: 'You can use manual postcode entry instead of location, decline notifications, remove addresses and clear local data. For a question, correction, objection or deletion request about information held by the publisher, use Help and support. Council records remain subject to the council’s own privacy process.',
+        },
+        {
+          title: 'Children',
+          body: 'This is a general household utility and is not designed to collect information from children. It does not use child-directed advertising or behavioral profiling.',
         },
       ]}
       title="Privacy"

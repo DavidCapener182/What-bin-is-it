@@ -18,6 +18,9 @@ expo-env.d.ts
 output/playwright/
 output/screenshots/
 
+# Separate council outreach workspace (its own Git repository and toolchain)
+/council-pilot-crm/
+
 # Native
 .kotlin/
 *.orig.*

@@ -11,7 +11,7 @@ import { appFonts } from '@/lib/design-system';
 import { useAppTheme } from '@/lib/theme';
 
 type PrimaryRoute = '/' | '/schedule' | '/guide' | '/reports';
-type AppRoute = PrimaryRoute | '/settings' | '/places' | '/history' | '/support' | '/report-missed' | '/report-incorrect' | '/onboarding';
+type AppRoute = PrimaryRoute | '/settings' | '/places' | '/history' | '/support' | '/partners' | '/report-missed' | '/report-incorrect' | '/onboarding';
 
 const tabs: { route: PrimaryRoute; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },

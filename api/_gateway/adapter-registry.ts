@@ -3,6 +3,7 @@ import {
   fetchNationwideAddressLookup,
   fetchNationwideCollections,
 } from './nationwide-bin-source.ts';
+import { councilPartnerAdapterFor } from './council-partner-adapter.ts';
 
 export type WasteType = 'general' | 'recycling' | 'garden' | 'food' | 'other';
 
@@ -203,6 +204,8 @@ const adapters: Record<string, CouncilAdapter> = {
 export function getAdapter(providerId: string): CouncilAdapter | undefined {
   const directAdapter = adapters[providerId];
   if (directAdapter) return directAdapter;
+  const partnerAdapter = councilPartnerAdapterFor(providerId);
+  if (partnerAdapter) return partnerAdapter;
   if (!/^lad-[ensw]\d{8}$/.test(providerId)) return undefined;
   return {
     id: providerId,

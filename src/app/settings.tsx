@@ -404,6 +404,18 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>For organisations</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Row
+                detail="Council pilots, housing providers and managed-property plans"
+                icon="business-outline"
+                onPress={() => router.push('/partners')}
+                title="Council and property partnerships"
+              />
+            </View>
+          </View>
+
+          <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>About</Text>
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
               <View style={styles.about}>

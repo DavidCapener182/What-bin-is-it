@@ -3,6 +3,7 @@
     "name": "What Bin Is It Tonight?",
     "slug": "what-bin-is-it-tonight",
     "description": "UK bin collection reminders, local recycling guidance, and nearby waste services.",
+    "githubUrl": "https://github.com/DavidCapener182/What-bin-is-it",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
@@ -13,10 +14,19 @@
     "ios": {
       "icon": "./assets/images/app-icon.png",
       "bundleIdentifier": "uk.whatbinistonight.app",
-      "supportsTablet": true
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyTrackingDomains": []
+      }
     },
     "android": {
       "package": "uk.whatbinistonight.app",
+      "versionCode": 1,
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],

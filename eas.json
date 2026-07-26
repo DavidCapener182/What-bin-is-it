@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 16.0.0"
+    "version": ">= 21.0.0"
   },
   "build": {
     "development": {
@@ -8,10 +8,29 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_COUNCIL_API_BASE": "https://what-bin-is-it-tonight.vercel.app/api",
+        "EXPO_PUBLIC_LAUNCH_PHASE": "proof"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_COUNCIL_API_BASE": "https://what-bin-is-it-tonight.vercel.app/api",
+        "EXPO_PUBLIC_LAUNCH_PHASE": "proof"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {},
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }

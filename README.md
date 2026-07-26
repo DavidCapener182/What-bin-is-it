@@ -17,6 +17,10 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - Durable reminder scheduling on Vercel Workflow. A workflow sleeps until each verified reminder time and then delivers a push notification to that app installation.
 - Apple and Android application identifiers, EAS build profiles, notification plugin configuration, and an environment template.
 - A UK council directory of all 361 local-authority districts in the ONS December 2024 boundary snapshot: 296 England, 32 Scotland, 22 Wales, and 11 Northern Ireland. A postcode is matched to this directory before its council adapter is selected.
+- A council partner connector registry that can switch an authority to an approved HTTPS feed without exposing credentials to the app or waiting for a new mobile release.
+- A generated 361-council outreach pipeline, pilot offer, integration contract, assurance pack, success measures and property pilot.
+- App Store and Google Play listing copy, privacy declarations, review notes, screenshot plan and automated repository-readiness checks.
+- A free-first commercial stage with stable future Plus product IDs and tested guardrails that keep essential council services outside a paywall.
 
 ## Run the app
 
@@ -67,6 +71,12 @@ The gateway is where each local authority gets its curated API, data-feed, or ap
 
 The council directory is not a claim that every collection schedule is live. It establishes complete address-to-authority coverage; each authority still requires its own verified source adapter before the app can show its real collection dates.
 
+### Connect an approved council feed
+
+Council partners can implement the normalized address, collection and services contract in [docs/councils/INTEGRATION.md](docs/councils/INTEGRATION.md). Add connector metadata to the server-only `COUNCIL_PARTNER_REGISTRY_JSON` variable and keep its credential in the separately named secret referenced by that entry.
+
+The gateway validates connector identity, HTTPS configuration, timeouts and response shape. An invalid registry makes the health check fail rather than silently presenting a council as connected.
+
 ## Install the web app
 
 Open the production website in Safari on iPhone or Chrome on Android:
@@ -102,6 +112,26 @@ npx eas-cli build --platform android --profile preview
 
 Before App Store / Play submission, register the configured bundle IDs in the relevant developer accounts, deploy the gateway, complete notification credentials, and run store builds on those accounts.
 
+The complete account, privacy, review and physical-device sequence is in [docs/store/LAUNCH-CHECKLIST.md](docs/store/LAUNCH-CHECKLIST.md). The first release stays in `proof` mode and does not show resident payment prompts.
+
+Check the repository-owned submission material:
+
+```bash
+npm run store:check
+```
+
+This separates source-control failures from Apple, Google and Expo account actions that must be completed by the account holder.
+
+## Start council outreach
+
+Open [docs/README.md](docs/README.md), then work from [operations/councils/pipeline.csv](operations/councils/pipeline.csv). The sheet is generated from the same 361-authority directory used by postcode routing:
+
+```bash
+npm run councils:sync
+```
+
+The sync preserves contact, stage, next-action and notes columns. Authorities without a directly audited source remain labelled `nationwide-routing-unverified`.
+
 ## Web deployment
 
 `npm run build` exports the Expo static site, generates the versioned service worker, and packages both the council API and durable reminder workflow into Vercel Build Output API files. [vercel.json](vercel.json) is configured to publish that result. Native iOS and Android builds remain handled through EAS.
@@ -114,4 +144,5 @@ npm run lint
 npm test
 npm run build
 npx expo-doctor
+npm run store:check
 ```

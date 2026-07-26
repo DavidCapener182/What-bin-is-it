@@ -1,0 +1,1 @@
+First release: verified collection schedules, reminders, recycling guidance, local services, missed-bin tracking and clear source information.

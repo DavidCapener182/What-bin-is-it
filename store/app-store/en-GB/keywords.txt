@@ -1,0 +1,1 @@
+bins,bin day,recycling,council,waste,reminder,collection,rubbish,postcode,missed bin

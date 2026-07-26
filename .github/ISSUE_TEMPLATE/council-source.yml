@@ -1,0 +1,50 @@
+name: Council source or coverage problem
+description: Report an official council source, unsupported lookup or incorrect council mapping.
+title: "[Council source] "
+labels:
+  - council-data
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not post a private street address, UPRN or personal report reference. A postcode district or publication-safe test postcode is enough for triage.
+  - type: input
+    id: council
+    attributes:
+      label: Council
+      placeholder: Example Council
+    validations:
+      required: true
+  - type: input
+    id: postcode
+    attributes:
+      label: Publication-safe postcode
+      description: Do not provide a private home address.
+      placeholder: M1 1AE
+    validations:
+      required: true
+  - type: dropdown
+    id: problem
+    attributes:
+      label: Problem
+      options:
+        - No exact addresses returned
+        - No dated collections returned
+        - Wrong council selected
+        - Wrong collection date or bin
+        - Official source changed
+        - Council wants an approved integration
+    validations:
+      required: true
+  - type: input
+    id: official-source
+    attributes:
+      label: Official council source
+      placeholder: https://...
+  - type: textarea
+    id: detail
+    attributes:
+      label: What happened?
+      description: Include the named source and verification time shown by the app. Remove personal data.
+    validations:
+      required: true

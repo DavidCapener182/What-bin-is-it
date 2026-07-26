@@ -48,6 +48,7 @@ test('all main routes provide route-specific metadata', () => {
     ['src/app/reports.tsx', 'title="Missed Collection Reports"'],
     ['src/app/history.tsx', 'title="Activity History"'],
     ['src/app/support.tsx', 'title="Help and Support"'],
+    ['src/app/partners.tsx', 'title="Council and Property Partnerships"'],
     ['src/app/onboarding.tsx', 'title="Set Up Your Bin Reminders"'],
     ['src/app/report-missed.tsx', 'title="Report a Missed Collection"'],
     ['src/app/report-incorrect.tsx', 'title="Report Incorrect Information"'],

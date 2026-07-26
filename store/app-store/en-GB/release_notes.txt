@@ -1,0 +1,1 @@
+The first store release includes exact-property collection lookup, verified schedules, reminders, recycling guidance, nearby services, missed-bin tracking and clear source information.
