@@ -123,6 +123,61 @@ const fallbackPolicy: MissedReportPolicy = {
   note: 'The app waits until the evening. The official council service will make the final live eligibility decision for this address.',
 };
 
+const councilTimeZone = 'Europe/London';
+const councilClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: councilTimeZone,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function councilOffsetMilliseconds(instant: Date) {
+  const parts = Object.fromEntries(
+    councilClock
+      .formatToParts(instant)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const representedAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  return representedAsUtc - instant.getTime();
+}
+
+function councilDateAtTime(
+  collectionDate: string,
+  dayOffset: number,
+  hour: number,
+  minute: number,
+) {
+  const date = new Date(`${collectionDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  const wallClockAsUtc = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    hour,
+    minute,
+  );
+  let instant = new Date(wallClockAsUtc);
+
+  // Resolve the Europe/London offset twice so dates around a daylight-saving
+  // boundary remain tied to the council's clock, not the device timezone.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    instant = new Date(wallClockAsUtc - councilOffsetMilliseconds(instant));
+  }
+  return instant;
+}
+
 export function missedReportPolicy(address: SavedAddress) {
   return councilPolicies[address.providerId] ?? fallbackPolicy;
 }
@@ -133,9 +188,12 @@ export function evaluateMissedReportEligibility(
   now = new Date(),
 ) {
   const policy = missedReportPolicy(address);
-  const eligibleAfter = new Date(`${collection.date}T12:00:00`);
-  eligibleAfter.setDate(eligibleAfter.getDate() + (policy.eligibleDayOffset ?? 0));
-  eligibleAfter.setHours(policy.eligibleHour, policy.eligibleMinute ?? 0, 0, 0);
+  const eligibleAfter = councilDateAtTime(
+    collection.date,
+    policy.eligibleDayOffset ?? 0,
+    policy.eligibleHour,
+    policy.eligibleMinute ?? 0,
+  );
   const expiresAt = policy.reportWithinHours
     ? new Date(eligibleAfter.getTime() + policy.reportWithinHours * 60 * 60 * 1_000)
     : undefined;
@@ -148,7 +206,11 @@ export function evaluateMissedReportEligibility(
     eligibleAfter,
     expiresAt,
     reason: tooEarly
-      ? `${policy.note} You can continue after ${eligibleAfter.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit' })}.`
+      ? `${policy.note} You can continue after ${eligibleAfter.toLocaleTimeString('en-GB', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: councilTimeZone,
+      })}.`
       : expired
         ? `This app’s reporting window has passed. Open the official service because the council may offer another route. ${policy.note}`
         : policy.note,

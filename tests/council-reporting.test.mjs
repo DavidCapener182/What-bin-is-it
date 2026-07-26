@@ -40,6 +40,10 @@ test('uses different official reporting windows for different councils', () => {
     evaluateMissedReportEligibility(oxford, collection, new Date('2026-07-27T16:30:00+01:00')).eligible,
     true,
   );
+  assert.equal(
+    evaluateMissedReportEligibility(oxford, collection).eligibleAfter.toISOString(),
+    '2026-07-27T15:30:00.000Z',
+  );
 
   const walthamForest = address('lad-e09000031');
   assert.equal(missedReportPolicy(walthamForest).eligibleHour, 22);
@@ -62,6 +66,12 @@ test('uses different official reporting windows for different councils', () => {
   assert.equal(
     evaluateMissedReportEligibility(sefton, collection, new Date('2026-07-28T12:00:00+01:00')).eligible,
     true,
+  );
+
+  const winterCollection = { ...collection, date: '2026-12-15' };
+  assert.equal(
+    evaluateMissedReportEligibility(oxford, winterCollection).eligibleAfter.toISOString(),
+    '2026-12-15T16:30:00.000Z',
   );
 });
 
