@@ -2,6 +2,7 @@
   "name": "what-bin-is-it-tonight",
   "main": "expo-router/entry",
   "version": "1.1.0",
+  "packageManager": "npm@10.9.8",
   "dependencies": {
     "@expo/ui": "~57.0.7",
     "@expo/vector-icons": "^15.0.2",

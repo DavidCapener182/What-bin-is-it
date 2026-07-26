@@ -21,11 +21,14 @@ The first store release is a free accuracy-proving release. Do not turn on Plus 
 
 ## Account steps that cannot be completed in source control
 
+Paid Apple Developer and Google Play Console enrolment is intentionally deferred until the free proof release has demonstrated enough value. Do not accept store agreements or start paid enrolment without a fresh go-ahead.
+
 ### Expo
 
-- [ ] Create or choose the Expo organization.
-- [ ] Run `npx eas-cli login`.
-- [ ] Run `npx eas-cli init` and commit the generated `extra.eas.projectId` and `owner`.
+- [x] Create the Expo organization `what-bin-is-it-tonight`.
+- [x] Authenticate EAS as an owner of that organization.
+- [x] Link the repository to `@what-bin-is-it-tonight/what-bin-is-it-tonight`.
+- [x] Record EAS project ID `b99235cc-2ab4-48be-af61-1149824c542e` and owner in `app.json`.
 - [ ] Confirm build credentials are owned by the intended organization, not a personal throwaway account.
 
 ### Apple

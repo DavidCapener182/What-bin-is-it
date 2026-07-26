@@ -113,7 +113,7 @@ requireCondition(
 
 external(Boolean(app.extra?.eas?.projectId), 'Link the repository to the intended Expo organization with `npx eas-cli init`.');
 external(!/\[ADD [^\]]+\]/.test(reviewNotes), 'Replace App Review placeholders with a live, publication-safe address checked on submission day.');
-external(Boolean(process.env.EXPO_TOKEN), 'Authenticate EAS locally or in CI before creating store builds.');
+external(Boolean(process.env.EXPO_TOKEN), 'Set an Expo access token in CI before automating store builds.');
 external(Boolean(process.env.APPLE_TEAM_ID), 'Create the Apple app record and record its Team/App Store IDs outside source control.');
 external(Boolean(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON), 'Create the Play app and minimum-permission service account outside source control.');
 external(Boolean(process.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY), 'Add the public RevenueCat Apple SDK key to the EAS development and preview environments before Plus testing.');
