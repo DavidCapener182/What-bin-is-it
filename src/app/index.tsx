@@ -352,7 +352,7 @@ export default function HomeScreen() {
           path="/"
         />
         <View style={styles.page}>
-          <LinearGradient colors={[heroColour, heroColour]} style={styles.hero}>
+          <LinearGradient colors={[heroColour, heroColour]} nativeID="today-hero" style={styles.hero}>
             <SafeAreaView edges={['top']}>
               <View style={styles.heroTop}>
                 <View style={styles.heroBrand}>
@@ -377,18 +377,18 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              <Pressable
-                accessibilityLabel="Choose saved address"
-                accessibilityRole="button"
-                onPress={() => setShowAddressPicker(true)}
-                style={({ pressed }) => [styles.addressLine, pressed && styles.pressed]}>
-                <Ionicons color={heroSecondary} name="home-outline" size={17} />
-                <Text numberOfLines={1} style={[styles.addressText, { color: heroSecondary }]}>{activeAddress.label}</Text>
-                <Ionicons color={heroSecondary} name="chevron-down" size={15} />
-              </Pressable>
-
-              <View accessibilityLiveRegion="polite" style={styles.answerRow}>
-                <View style={styles.answerCopy}>
+              <View accessibilityLiveRegion="polite" style={styles.heroInfoRow}>
+                <View style={styles.heroInfoCopy}>
+                  <Pressable
+                    accessibilityLabel="Choose saved address"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => setShowAddressPicker(true)}
+                    style={({ pressed }) => [styles.addressLine, pressed && styles.pressed]}>
+                    <Ionicons color={heroSecondary} name="home-outline" size={17} />
+                    <Text numberOfLines={1} style={[styles.addressText, { color: heroSecondary }]}>{activeAddress.label}</Text>
+                    <Ionicons color={heroSecondary} name="chevron-down" size={15} />
+                  </Pressable>
                   <Text style={[styles.answerSubtitle, { color: heroSecondary }]}>{heroSubtitle}</Text>
                 </View>
                 <View style={[styles.countdownOrb, { backgroundColor: heroOrb, borderColor: heroAccent }]}>
@@ -734,21 +734,21 @@ function createStyles(theme: AppTheme) {
   locationButtonText: { color: theme.accent, fontSize: 15, fontWeight: '700' },
   privacyLine: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', paddingHorizontal: 5 },
   privacyText: { color: theme.secondaryText, fontSize: 13, lineHeight: 18, flex: 1 },
-  hero: { paddingHorizontal: 20, paddingBottom: 20, borderBottomLeftRadius: 34, borderBottomRightRadius: 34 },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6 },
-  heroBrand: { flex: 1 },
+  hero: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 34, borderBottomRightRadius: 34 },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingTop: 4 },
+  heroBrand: { flex: 1, paddingRight: 8 },
   heroActions: { flexDirection: 'row', gap: 8 },
   eyebrow: { color: '#64B5FF', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.45, fontWeight: '700' },
   greeting: { color: theme.heroText, fontFamily: appFonts.display, fontSize: 32, lineHeight: 37, fontWeight: '700', letterSpacing: -0.95, marginTop: 2 },
-  addressButton: { height: 46, width: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-  addressLine: { marginTop: 12, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', maxWidth: '88%', marginBottom: -7 },
+  addressButton: { height: 44, width: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
+  heroInfoRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14 },
+  heroInfoCopy: { flex: 1, minWidth: 0 },
+  addressLine: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', maxWidth: '100%' },
   addressText: { color: theme.heroSecondary, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-  answerRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 15 },
-  answerCopy: { flex: 1 },
-  answerSubtitle: { color: theme.heroSecondary, fontSize: 15, lineHeight: 21, fontWeight: '500', maxWidth: 300 },
-  countdownOrb: { height: 84, width: 84, borderRadius: 42, borderWidth: 1, borderColor: 'rgba(100,181,255,0.52)', backgroundColor: 'rgba(2,13,23,0.22)', alignItems: 'center', justifyContent: 'center' },
-  countdownNumber: { color: '#D7ECFF', fontFamily: appFonts.rounded, fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.4, textAlign: 'center' },
-  countdownCaption: { color: '#8CC8FF', fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginTop: 2 },
+  answerSubtitle: { color: theme.heroSecondary, fontSize: 15, lineHeight: 20, fontWeight: '500', maxWidth: 300, marginTop: 2 },
+  countdownOrb: { height: 72, width: 72, borderRadius: 36, borderWidth: 1, borderColor: 'rgba(100,181,255,0.52)', backgroundColor: 'rgba(2,13,23,0.22)', alignItems: 'center', justifyContent: 'center' },
+  countdownNumber: { color: '#D7ECFF', fontFamily: appFonts.rounded, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.4, textAlign: 'center' },
+  countdownCaption: { color: '#8CC8FF', fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 1 },
   content: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 120, gap: 20 },
   setupRequiredCard: { minHeight: 92, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', padding: 15, gap: 13 },
   actionIcon: { height: 46, width: 46, borderRadius: 15, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },

@@ -54,6 +54,14 @@ test('uses the main source-backed bin colour for the Today hero and collection c
   assert.doesNotMatch(today, /style=\{\[styles\.greeting, \{ color: heroForeground \}\]\}>Tonight/);
 });
 
+test('keeps the Today answer hero compact on a phone viewport', () => {
+  const today = read('src/app/index.tsx');
+  assert.match(today, /nativeID="today-hero"/);
+  assert.match(today, /style=\{styles\.heroInfoRow\}/);
+  assert.doesNotMatch(today, /style=\{styles\.answerRow\}/);
+  assert.match(today, /countdownOrb: \{ height: 72, width: 72, borderRadius: 36/);
+});
+
 test('anchors the web navigation dock to the full visual viewport', () => {
   const html = read('src/app/+html.tsx');
   const shell = read('src/components/app-shell.tsx');
