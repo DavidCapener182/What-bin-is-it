@@ -103,6 +103,44 @@
         {
           "locationWhenInUsePermission": "Allow What Bin Is It Tonight? to use your location once to find your postcode and local council."
         }
+      ],
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "uk.whatbinistonight.app.widgets",
+          "groupIdentifier": "group.uk.whatbinistonight.app",
+          "widgets": [
+            {
+              "name": "NextCollectionWidget",
+              "displayName": "What Bin Tonight?",
+              "description": "Shows what goes out tonight and your next verified council collection.",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "NextCollectionWidget",
+              "label": "What Bin Tonight?",
+              "description": "Shows what goes out tonight and your next verified council collection.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

@@ -7,6 +7,7 @@ import { sortCollections } from '@/lib/data';
 import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
 import { Collection, DisruptionAlert, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
+import { syncHomeScreenWidget } from '@/widgets/home-screen-widget-sync';
 
 const storageKey = '@what-bin-is-it-tonight/state-v4';
 const previousStorageKey = '@what-bin-is-it-tonight/state-v3';
@@ -332,7 +333,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (ready) AsyncStorage.setItem(storageKey, JSON.stringify(state)).catch(() => undefined);
+    if (!ready) return;
+    const activeAddress = state.addresses.find((address) => address.id === state.activeAddressId);
+    const collections = state.schedulesByAddressId[state.activeAddressId]?.collections ?? [];
+    AsyncStorage.setItem(storageKey, JSON.stringify(state))
+      .then(() => syncHomeScreenWidget({ address: activeAddress, collections }))
+      .catch(() => undefined);
   }, [ready, state]);
 
   const activeAddress = state.addresses.find((address) => address.id === state.activeAddressId);

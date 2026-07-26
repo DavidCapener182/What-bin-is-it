@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { PwaSettingsCard } from '@/components/pwa-settings-card';
+import { HomeScreenWidgetCard } from '@/components/home-screen-widget-card';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta, wasteTypes } from '@/lib/data';
 import { residentPaymentsEnabled } from '@/lib/commercial-offer';
@@ -388,6 +389,8 @@ export default function SettingsScreen() {
               <Row detail={`${history.length} recorded actions`} icon="time-outline" onPress={() => withPlus(() => router.push('/history'))} title="Activity history" />
             </View>
           </View>
+
+          <HomeScreenWidgetCard />
 
           <PwaSettingsCard />
 
