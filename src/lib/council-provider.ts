@@ -14,7 +14,7 @@ export { isUkPostcode, normalisePostcode } from '@/lib/place-resolution';
 type GatewayCollection = { date: string; wasteType: WasteType };
 type GatewayResponse = { councilName: string; providerId: string; collections: GatewayCollection[]; verifiedAt: string; notice?: string };
 type GatewayAddressesResponse = { addresses: CouncilAddressOption[] };
-type GatewayServicesResponse = { services: Omit<CouncilService, 'source'>[] };
+type GatewayServicesResponse = { services: CouncilService[] };
 type PostcodesIoResult = {
   postcode?: string;
   admin_district?: string;
@@ -210,11 +210,12 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
           && validServiceTypes.has(service.type)
           && isFiniteCoordinate(service.latitude, -90, 90)
           && isFiniteCoordinate(service.longitude, -180, 180)
+          && (service.source === 'council' || service.source === 'openstreetmap')
         ))
         && payload.services.length
       ) {
         return payload.services
-          .map((service) => ({ ...service, source: 'council' as const, distanceKm: distanceKm(address, service.latitude, service.longitude) }))
+          .map((service) => ({ ...service, distanceKm: distanceKm(address, service.latitude, service.longitude) }))
           .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
       }
     }

@@ -13,6 +13,7 @@ import {
 } from '@/lib/council-provider';
 import { councilDirectoryCounts } from '@/lib/council-directory';
 import { getDeviceCoordinates } from '@/lib/device-location';
+import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { CouncilAddressOption, SavedAddress } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 
@@ -34,6 +35,10 @@ export default function PlacesScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [addressChoice, setAddressChoice] = useState<AddressChoice>();
   const [selectingAddressId, setSelectingAddressId] = useState<string>();
+  const [resolvingExactAddress, setResolvingExactAddress] = useState(false);
+  const exactAddressRequired = activeAddress
+    ? requiresExactCouncilAddress(activeAddress.providerId, activeAddress.councilAddressId)
+    : false;
 
   async function saveResolvedPlace(result: ResolvedPlace, exactAddress?: CouncilAddressOption) {
     if (result.providerId === 'lad-e08000011' && !exactAddress) {
@@ -117,6 +122,29 @@ export default function PlacesScreen() {
     }
   }
 
+  async function refreshOrCompleteAddress() {
+    if (!activeAddress) return;
+    if (!exactAddressRequired) {
+      await refreshCollections();
+      return;
+    }
+    setResolvingExactAddress(true);
+    try {
+      await continueWithResolvedPlace({
+        postcode: activeAddress.postcode,
+        line1: activeAddress.line1,
+        councilName: activeAddress.councilName,
+        providerId: activeAddress.providerId,
+        latitude: activeAddress.latitude,
+        longitude: activeAddress.longitude,
+      });
+    } catch (error) {
+      Alert.alert('Could not find this property', error instanceof Error ? error.message : 'Try again in a moment.');
+    } finally {
+      setResolvingExactAddress(false);
+    }
+  }
+
   return (
     <>
       <AppShell activeRoute="/places">
@@ -175,9 +203,12 @@ export default function PlacesScreen() {
               })}
             </View>
 
-            <Pressable accessibilityRole="button" accessibilityState={{ disabled: refreshing || !activeAddress }} onPress={refreshCollections} disabled={refreshing || !activeAddress} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, (refreshing || !activeAddress) && styles.disabled]}>
-              {refreshing ? <ActivityIndicator color="#0B7168" /> : <Ionicons color="#0B7168" name="cloud-download-outline" size={22} />}
-              <View style={styles.syncCopy}><Text style={styles.syncTitle}>{refreshing ? 'Checking your source…' : 'Refresh collection dates'}</Text><Text style={styles.syncBody}>Uses the selected place and its council provider.</Text></View>
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: refreshing || resolvingExactAddress || !activeAddress }} onPress={refreshOrCompleteAddress} disabled={refreshing || resolvingExactAddress || !activeAddress} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, (refreshing || resolvingExactAddress || !activeAddress) && styles.disabled]}>
+              {refreshing || resolvingExactAddress ? <ActivityIndicator color="#0B7168" /> : <Ionicons color="#0B7168" name={exactAddressRequired ? 'home-outline' : 'cloud-download-outline'} size={22} />}
+              <View style={styles.syncCopy}>
+                <Text style={styles.syncTitle}>{resolvingExactAddress ? 'Finding your property…' : refreshing ? 'Checking your source…' : exactAddressRequired ? 'Choose exact address' : 'Refresh collection dates'}</Text>
+                <Text style={styles.syncBody}>{exactAddressRequired ? 'Required to match your property to the correct collection round.' : 'Uses the selected place and its council provider.'}</Text>
+              </View>
               <Ionicons color="#0B7168" name="arrow-forward" size={17} />
             </Pressable>
 

@@ -28,6 +28,10 @@ export function matchingAddressId(addresses: { id: string; postcode: string }[],
   return addresses.find((address) => normalisePostcode(address.postcode) === canonicalPostcode)?.id;
 }
 
+export function requiresExactCouncilAddress(providerId: string, councilAddressId?: string) {
+  return providerId === 'lad-e08000011' && !councilAddressId;
+}
+
 export function buildNearestPostcodeUrl(latitude: number, longitude: number) {
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
     throw new Error('Your device returned an invalid latitude.');

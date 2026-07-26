@@ -6,6 +6,7 @@ import {
   cleanPostcodeLocality,
   matchingAddressId,
   normalisePostcode,
+  requiresExactCouncilAddress,
 } from '../src/lib/place-resolution.ts';
 
 test('normalises postcode input before matching a saved place', () => {
@@ -34,4 +35,10 @@ test('never exposes postcode database unparished-area wording', () => {
     cleanPostcodeLocality('Westminster, unparished area', 'Westminster', 'London', 'SW1A 1AA'),
     'Westminster',
   );
+});
+
+test('requires a property selection for a migrated Knowsley postcode-only place', () => {
+  assert.equal(requiresExactCouncilAddress('lad-e08000011'), true);
+  assert.equal(requiresExactCouncilAddress('lad-e08000011', '000040017128'), false);
+  assert.equal(requiresExactCouncilAddress('lad-e09000033'), false);
 });

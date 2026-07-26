@@ -3,6 +3,11 @@
   "installCommand": "npm ci",
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
+  "functions": {
+    "api/v1/[resource].ts": {
+      "includeFiles": "api/_gateway/**"
+    }
+  },
   "redirects": [
     {
       "source": "/(.*)",

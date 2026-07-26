@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiRoot = resolve(root, 'api');
 const entryPath = resolve(apiRoot, 'v1/[resource].ts');
+const vercelConfig = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
 
 test('keeps every Vercel gateway module inside the api directory', () => {
   const source = readFileSync(entryPath, 'utf8');
@@ -22,4 +23,12 @@ test('keeps every Vercel gateway module inside the api directory', () => {
       `Vercel does not reliably package gateway modules outside /api: ${specifier}`,
     );
   }
+});
+
+test('explicitly includes council gateway utilities in the Vercel function bundle', () => {
+  assert.equal(
+    vercelConfig.functions?.['api/v1/[resource].ts']?.includeFiles,
+    'api/_gateway/**',
+    'Vercel file tracing omits the underscored gateway directory unless it is included explicitly',
+  );
 });

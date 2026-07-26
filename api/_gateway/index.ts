@@ -1,4 +1,5 @@
 import { getAdapter } from './adapter-registry.ts';
+import { fetchOpenStreetMapServices } from './openstreetmap-services.ts';
 
 type CollectionRequest = { postcode?: unknown; addressId?: unknown; providerId?: unknown };
 const wasteTypes = new Set(['general', 'recycling', 'garden', 'food']);
@@ -78,6 +79,7 @@ function validServiceResult(value: unknown) {
       type?: unknown;
       latitude?: unknown;
       longitude?: unknown;
+      source?: unknown;
     };
     return (
       typeof item.id === 'string'
@@ -85,6 +87,7 @@ function validServiceResult(value: unknown) {
       && serviceTypes.has(item.type as string)
       && validCoordinate(item.latitude, -90, 90)
       && validCoordinate(item.longitude, -180, 180)
+      && (item.source === 'council' || item.source === 'openstreetmap')
     );
   });
 }
@@ -117,14 +120,16 @@ export default {
       if (!isPostcode(postcode)) return json({ error: 'A complete UK postcode is required.' }, 400);
       if (!providerId || !/^[a-z0-9-]+$/.test(providerId)) return json({ error: 'Unknown council provider.' }, 400);
       const adapter = getAdapter(providerId);
-      if (!adapter?.getServices) return json({ error: 'This council provider has not connected local services yet.' }, 404);
       try {
-        const services = await adapter.getServices({ postcode: normalisePostcode(postcode) });
+        const services = adapter?.getServices
+          ? (await adapter.getServices({ postcode: normalisePostcode(postcode) }))
+            .map((service) => ({ ...service, source: 'council' as const }))
+          : await fetchOpenStreetMapServices(normalisePostcode(postcode));
         if (!validServiceResult(services)) return json({ error: 'The council service source returned an invalid response.' }, 502);
         return json({ services });
       } catch (error) {
         console.error('Council service provider failed', providerId, error);
-        return json({ error: 'The council service source is temporarily unavailable.' }, 502);
+        return json({ error: 'The local service search is temporarily unavailable.' }, 502);
       }
     }
     if (request.method !== 'POST' || pathname !== '/v1/collections') return json({ error: 'Not found' }, 404);
