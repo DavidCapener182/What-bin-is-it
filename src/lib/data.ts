@@ -10,12 +10,38 @@ export const collectionMeta: Record<WasteType, { label: string; shortLabel: stri
   other: { label: 'Council bin', shortLabel: 'COUNCIL BIN', colour: '#52656C', tint: '#E9EEEE', example: 'Named by your council' },
 };
 
+const namedSourceColours: [RegExp, string][] = [
+  [/\b(maroon|burgundy)\b/i, '#7A263A'],
+  [/\b(grey|gray|silver|charcoal)\b/i, '#6F777D'],
+  [/\bnavy\b/i, '#1F3A5F'],
+  [/\bblue\b/i, '#286A96'],
+  [/\b(green|lime)\b/i, '#3D7F4D'],
+  [/\b(brown|tan)\b/i, '#8A5A2B'],
+  [/\bblack\b/i, '#253744'],
+  [/\b(red|crimson)\b/i, '#B52A36'],
+  [/\b(orange|amber)\b/i, '#B96518'],
+  [/\byellow\b/i, '#9A7200'],
+  [/\b(purple|violet)\b/i, '#6B4C9A'],
+  [/\bpink\b/i, '#A94168'],
+  [/\b(teal|turquoise)\b/i, '#087F78'],
+  [/\bwhite\b/i, '#F2F2F2'],
+];
+
+export function sourceCollectionColour(
+  collection?: Pick<Collection, 'label' | 'colour'>,
+) {
+  if (collection?.colour && /^#[0-9A-F]{6}$/i.test(collection.colour)) {
+    return collection.colour.toUpperCase();
+  }
+  const label = collection?.label?.trim();
+  if (!label) return undefined;
+  return namedSourceColours.find(([pattern]) => pattern.test(label))?.[1];
+}
+
 export function collectionDisplayMeta(collection: Pick<Collection, 'wasteType' | 'label' | 'colour'>) {
   const base = collectionMeta[collection.wasteType];
   const label = collection.label?.trim() || base.label;
-  const colour = collection.colour && /^#[0-9A-F]{6}$/i.test(collection.colour)
-    ? collection.colour.toUpperCase()
-    : base.colour;
+  const colour = sourceCollectionColour(collection) ?? base.colour;
   return {
     ...base,
     label,
@@ -39,8 +65,10 @@ export function primaryCollectionForDate(collections: Collection[]) {
   ))[0];
 }
 
-export function hasSourceCollectionColour(collection?: Pick<Collection, 'colour'>) {
-  return Boolean(collection?.colour && /^#[0-9A-F]{6}$/i.test(collection.colour));
+export function hasSourceCollectionColour(
+  collection?: Pick<Collection, 'label' | 'colour'>,
+) {
+  return Boolean(sourceCollectionColour(collection));
 }
 
 export function contrastTextForColour(colour: string) {
