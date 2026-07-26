@@ -21,6 +21,7 @@ const tabs: { route: Route; label: string; icon: keyof typeof Ionicons.glyphMap;
 
 export function AppShell({ activeRoute, children }: { activeRoute: Route; children: ReactNode }) {
   const insets = useSafeAreaInsets();
+  const dockBottomPadding = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, 10);
 
   function openTab(route: Route) {
     if (route === activeRoute) return;
@@ -33,7 +34,7 @@ export function AppShell({ activeRoute, children }: { activeRoute: Route; childr
       <StatusBar style={activeRoute === '/' ? 'light' : 'dark'} />
       <View style={styles.frame}>
         <View style={styles.screen}>{children}</View>
-        <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        <View style={[styles.dock, { paddingBottom: dockBottomPadding }]}>
           <View nativeID="app-material" style={styles.material}>
             <BlurView
               blurMethod="dimezisBlurViewSdk31Plus"

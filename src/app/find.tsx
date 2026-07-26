@@ -7,7 +7,7 @@ import { AppShell } from '@/components/app-shell';
 import { collectionMeta } from '@/lib/data';
 import { fetchNearbyServices } from '@/lib/council-provider';
 import { appColours, appFonts } from '@/lib/design-system';
-import { GuideDestination, GuideItem, searchGuide } from '@/lib/household-guide';
+import { GuideDestination, GuideItem, guideItemCount, searchGuide } from '@/lib/household-guide';
 import { recyclingMaterialsLabel } from '@/lib/recycling-materials';
 import { CouncilService } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
@@ -96,11 +96,11 @@ export default function FindScreen() {
 
           {mode === 'guide' ? (
             <>
-              <View style={styles.searchBox}><Ionicons color="#4A7475" name="search" size={19} /><TextInput autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" onChangeText={setQuery} placeholder="Try batteries, pizza box, paint…" placeholderTextColor="#8DA0A0" style={styles.input} value={query} /></View>
-              {!query && <View style={styles.chips}><Text style={styles.chipsLabel}>POPULAR</Text>{['Batteries', 'Paint', 'Coffee cups'].map((chip) => <Pressable key={chip} onPress={() => setQuery(chip)} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></Pressable>)}</View>}
-              <View style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} MATCHES` : 'EVERYDAY ITEMS'}</Text><Text style={styles.sectionTitle}>{query ? 'Here’s the best route' : 'Tap an item for guidance'}</Text></View><View style={styles.checkPill}><Ionicons color="#9B6725" name="alert-circle-outline" size={14} /><Text style={styles.checkText}>CHECK LOCAL</Text></View></View>
+              <View style={styles.searchBox}><Ionicons color="#4A7475" name="search" size={19} /><TextInput autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" onChangeText={(value) => { setQuery(value); setSelected(undefined); }} placeholder={`Search ${guideItemCount}+ household items…`} placeholderTextColor="#8DA0A0" returnKeyType="search" style={styles.input} value={query} /></View>
+              {!query && <View style={styles.chips}><Text style={styles.chipsLabel}>POPULAR</Text>{['Batteries', 'Pizza box', 'Vapes', 'Mattress'].map((chip) => <Pressable key={chip} onPress={() => setQuery(chip)} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></Pressable>)}</View>}
+              <View style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} ${results.length === 1 ? 'MATCH' : 'MATCHES'}` : `${guideItemCount} ITEMS COVERED`}</Text><Text style={styles.sectionTitle}>{query ? 'Here’s the best route' : 'Common things at home'}</Text></View><View style={styles.checkPill}><Ionicons color="#9B6725" name="alert-circle-outline" size={14} /><Text style={styles.checkText}>CHECK LOCAL</Text></View></View>
               <View style={styles.guideList}>{results.map((item) => <GuideResult expanded={selected === item.id} item={item} key={item.id} onPress={() => setSelected(selected === item.id ? undefined : item.id)} />)}</View>
-              {results.length === 0 && <View style={styles.empty}><Ionicons color="#729092" name="search-outline" size={28} /><Text style={styles.emptyTitle}>No match yet</Text><Text style={styles.emptyText}>Try another name, or check your council’s own guidance for unusual items.</Text></View>}
+              {results.length === 0 && <View style={styles.empty}><Ionicons color="#729092" name="search-outline" size={28} /><Text style={styles.emptyTitle}>We don’t know that one yet</Text><Text style={styles.emptyText}>Try a shorter name, or use Local services for unusual, hazardous or bulky items.</Text></View>}
             </>
           ) : (
             <>
