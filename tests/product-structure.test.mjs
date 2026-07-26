@@ -38,6 +38,13 @@ test('today distinguishes setup, tonight, empty, cached and error states without
   assert.doesNotMatch(today, /guideGrid|wasteTypes\.map/);
 });
 
+test('upgrades cached schedules once to fetch council bin-colour metadata', () => {
+  const provider = read('src/lib/use-app-data.tsx');
+  assert.match(provider, /const collectionMetadataVersion = 1/);
+  assert.match(provider, /metadataNeedsRefresh/);
+  assert.match(provider, /metadataVersion: collectionMetadataVersion/);
+});
+
 test('all main routes provide route-specific metadata', () => {
   const expected = [
     ['src/app/index.tsx', 'title="Today"'],

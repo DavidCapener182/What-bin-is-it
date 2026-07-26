@@ -15,6 +15,7 @@ const legacyStorageKey = '@uk-bin-app/state-v1';
 const startStatus = 'Add your postcode or use your location to get verified council dates.';
 const emptyStatus = 'No verified collection dates yet · refresh to check this council.';
 const migratedStatus = 'Saved place restored · select this postcode again to choose your exact address.';
+const collectionMetadataVersion = 1;
 
 const defaultPreferences: NotificationPreferences = {
   enabled: false,
@@ -27,6 +28,7 @@ const defaultPreferences: NotificationPreferences = {
 export type AddressSchedule = {
   collections: Collection[];
   sourceStatus: string;
+  metadataVersion?: number;
   lastVerifiedAt?: string;
   lastError?: string;
   completedDate?: string;
@@ -207,6 +209,9 @@ function hydrateCurrent(value: unknown): State | undefined {
       sourceStatus: typeof rawSchedule?.sourceStatus === 'string'
         ? rawSchedule.sourceStatus.slice(0, 240)
         : emptyStatus,
+      metadataVersion: rawSchedule?.metadataVersion === collectionMetadataVersion
+        ? collectionMetadataVersion
+        : undefined,
       lastVerifiedAt: validTimestamp(rawSchedule?.lastVerifiedAt),
       lastError: typeof rawSchedule?.lastError === 'string'
         ? rawSchedule.lastError.slice(0, 240)
@@ -373,6 +378,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             ...current.schedulesByAddressId[targetAddress.id],
             collections,
             sourceStatus,
+            metadataVersion: collectionMetadataVersion,
             lastVerifiedAt: result.verifiedAt,
             lastError: undefined,
             changeNotice: collectionChangeNotice(
@@ -412,15 +418,25 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const metadataNeedsRefresh = (
+      activeSchedule.collections.length > 0
+      && activeSchedule.metadataVersion !== collectionMetadataVersion
+    );
     if (
       !ready
       || !activeAddress?.councilAddressId
-      || activeSchedule.collections.length > 0
+      || (activeSchedule.collections.length > 0 && !metadataNeedsRefresh)
       || autoRefreshAttempts.current.has(activeAddress.id)
     ) return;
     autoRefreshAttempts.current.add(activeAddress.id);
     void refreshAddress(activeAddress, false);
-  }, [activeAddress, activeSchedule.collections.length, ready, refreshAddress]);
+  }, [
+    activeAddress,
+    activeSchedule.collections.length,
+    activeSchedule.metadataVersion,
+    ready,
+    refreshAddress,
+  ]);
 
   const addAddress = useCallback(async (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => {
     const exactExisting = address.councilAddressId
