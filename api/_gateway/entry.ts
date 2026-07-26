@@ -1,4 +1,4 @@
-import gateway from '../_gateway/index.ts';
+import gateway from './index.ts';
 
 export const config = { runtime: 'nodejs' };
 

@@ -39,6 +39,7 @@ export default function PlacesScreen() {
   const exactAddressRequired = activeAddress
     ? requiresExactCouncilAddress(activeAddress.providerId, activeAddress.councilAddressId)
     : false;
+  const showPostcodeForm = showAdd || addresses.length === 0;
 
   async function saveResolvedPlace(result: ResolvedPlace, exactAddress?: CouncilAddressOption) {
     if (result.providerId === 'lad-e08000011' && !exactAddress) {
@@ -174,6 +175,28 @@ export default function PlacesScreen() {
               <Ionicons color="#A9DDCA" name="arrow-forward" size={18} />
             </Pressable>
 
+            {showPostcodeForm ? (
+              <View style={styles.addPanel}>
+                <View style={styles.addHeader}>
+                  <View>
+                    <Text style={styles.addTitle}>{addresses.length === 0 ? 'Enter your postcode' : 'Add a new place'}</Text>
+                    <Text style={styles.addDescription}>Find the council, then choose your exact property where required.</Text>
+                  </View>
+                  {addresses.length > 0 && <Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable>}
+                </View>
+                <Text style={styles.fieldLabel}>UK POSTCODE</Text>
+                <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
+                <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
+                  {lookupMode === 'postcode' ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find my collection dates</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable accessibilityRole="button" onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
+                <View style={styles.plus}><Ionicons color="#0D756A" name="add" size={22} /></View>
+                <View><Text style={styles.newPlaceTitle}>Add another place</Text><Text style={styles.newPlaceCopy}>Use a UK postcode</Text></View>
+              </Pressable>
+            )}
+
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Saved places</Text>
               <Text style={styles.count}>{addresses.length} {addresses.length === 1 ? 'place' : 'places'}</Text>
@@ -184,7 +207,7 @@ export default function PlacesScreen() {
                   <Ionicons color="#0E756B" name="location-outline" size={22} />
                   <View style={styles.emptyPlacesCopy}>
                     <Text style={styles.emptyPlacesTitle}>No saved address yet</Text>
-                    <Text style={styles.emptyPlacesBody}>Use your postcode or current location below.</Text>
+                    <Text style={styles.emptyPlacesBody}>Enter your postcode above or use your current location.</Text>
                   </View>
                 </View>
               ) : addresses.map((address, index) => {
@@ -216,22 +239,6 @@ export default function PlacesScreen() {
               <View style={styles.directoryIcon}><Ionicons color="#926023" name="map-outline" size={19} /></View>
               <View style={styles.directoryCopy}><Text style={styles.directoryTitle}>UK council directory</Text><Text style={styles.directoryBody}>{councilDirectoryCounts.England + councilDirectoryCounts.Scotland + councilDirectoryCounts.Wales + councilDirectoryCounts['Northern Ireland']} local authorities mapped from your postcode.</Text></View>
             </View>
-
-            {showAdd ? (
-              <View style={styles.addPanel}>
-                <View style={styles.addHeader}><View><Text style={styles.addTitle}>Add a new place</Text><Text style={styles.addDescription}>Find the council, then choose your exact property where required.</Text></View><Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable></View>
-                <Text style={styles.fieldLabel}>UK POSTCODE</Text>
-                <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
-                <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
-                  {lookupMode === 'postcode' ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find this place</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable accessibilityRole="button" onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
-                <View style={styles.plus}><Ionicons color="#0D756A" name="add" size={22} /></View>
-                <View><Text style={styles.newPlaceTitle}>Add another place</Text><Text style={styles.newPlaceCopy}>Use a UK postcode</Text></View>
-              </Pressable>
-            )}
 
             <View style={styles.note}><Ionicons color="#648485" name="shield-checkmark-outline" size={17} /><Text style={styles.noteText}>Your location is used once to find the nearest postcode and is not tracked. Your selected address stays on this device. Collection dates are shown only when returned by the council source.</Text></View>
           </ScrollView>
