@@ -44,3 +44,11 @@ test('keeps legacy route files as redirects to the canonical names', () => {
   assert.match(read('src/app/calendar.tsx'), /<Redirect href="\/schedule"/);
   assert.match(read('src/app/find.tsx'), /<Redirect href="\/guide"/);
 });
+
+test('provides the conventional local web development command', () => {
+  const packageJson = JSON.parse(read('package.json'));
+  assert.equal(
+    packageJson.scripts?.dev,
+    'EXPO_PUBLIC_COUNCIL_API_BASE=https://what-bin-is-it-tonight.vercel.app/api expo start --web',
+  );
+});

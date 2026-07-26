@@ -47,6 +47,7 @@
     "vite": "^7.3.6"
   },
   "scripts": {
+    "dev": "EXPO_PUBLIC_COUNCIL_API_BASE=https://what-bin-is-it-tonight.vercel.app/api expo start --web",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
