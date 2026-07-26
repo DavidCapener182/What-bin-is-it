@@ -37,3 +37,12 @@ test('tells PWA users that browser installs cannot enter the system widget galle
   assert.match(card, /verified council dates and the main bin colour/);
   assert.doesNotMatch(card, /mock|sample date/i);
 });
+
+test('aligns Android WorkManager dependencies used by the native widget', () => {
+  const app = JSON.parse(read('app.json')).expo;
+  const plugin = read('plugins/with-android-work-manager-resolution.js');
+
+  assert.ok(app.plugins.includes('./plugins/with-android-work-manager-resolution'));
+  assert.match(plugin, /androidx\.work:work-runtime:2\.8\.1/);
+  assert.match(plugin, /androidx\.work:work-runtime-ktx:2\.8\.1/);
+});

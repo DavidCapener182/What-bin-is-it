@@ -141,7 +141,8 @@
             }
           ]
         }
-      ]
+      ],
+      "./plugins/with-android-work-manager-resolution"
     ],
     "experiments": {
       "typedRoutes": true,
