@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildNearestPostcodeUrl,
+  cleanPostcodeLocality,
   matchingAddressId,
   normalisePostcode,
 } from '../src/lib/place-resolution.ts';
@@ -22,4 +23,15 @@ test('builds a nearest-postcode request from device coordinates', () => {
   assert.equal(url.searchParams.get('lat'), '51.501');
   assert.equal(url.searchParams.get('lon'), '-0.142');
   assert.equal(url.searchParams.get('limit'), '1');
+});
+
+test('never exposes postcode database unparished-area wording', () => {
+  assert.equal(
+    cleanPostcodeLocality('Knowsley, unparished area', 'Knowsley', 'North West', 'L36 7XA'),
+    'Knowsley',
+  );
+  assert.equal(
+    cleanPostcodeLocality('Westminster, unparished area', 'Westminster', 'London', 'SW1A 1AA'),
+    'Westminster',
+  );
 });

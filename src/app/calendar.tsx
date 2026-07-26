@@ -10,7 +10,6 @@ import { useAppData } from '@/lib/use-app-data';
 export default function CalendarScreen() {
   const { collections, activeAddress, sourceStatus } = useAppData();
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
-  const hasSampleDates = upcoming.some((collection) => collection.source === 'sample');
   const grouped = upcoming.reduce<Record<string, typeof collections>>((result, collection) => {
     result[collection.date] = [...(result[collection.date] ?? []), collection];
     return result;
@@ -24,14 +23,16 @@ export default function CalendarScreen() {
           <Text style={styles.title}>Collection calendar</Text>
           <View style={styles.addressPill}>
             <Ionicons color="#297C72" name="location" size={14} />
-            <Text numberOfLines={1} style={styles.address}>{activeAddress?.label ?? 'No saved address'} · {activeAddress?.postcode}</Text>
+            <Text numberOfLines={1} style={styles.address}>
+              {activeAddress ? `${activeAddress.label} · ${activeAddress.postcode}` : 'Add a place to see verified dates'}
+            </Text>
           </View>
         </SafeAreaView>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.legend}>
             <View style={styles.legendIcon}><Ionicons color="#0E6D63" name="information-circle-outline" size={21} /></View>
-            <Text style={styles.legendText}>{hasSampleDates ? 'Sample dates only — these are not your council’s collection dates. Refresh once a verified source is connected.' : sourceStatus}</Text>
+            <Text style={styles.legendText}>{sourceStatus}</Text>
           </View>
 
           {Object.entries(grouped).map(([date, dayCollections]) => {
@@ -55,13 +56,7 @@ export default function CalendarScreen() {
                         <View style={[styles.iconCircle, { backgroundColor: meta.tint }]}><WasteIcon colour={meta.colour} type={collection.wasteType} /></View>
                         <View style={styles.rowCopy}>
                           <Text style={styles.rowTitle}>{meta.label}</Text>
-                          <Text style={styles.rowInfo}>
-                            {collection.source === 'sample'
-                              ? 'Example only · not council-verified'
-                              : diff === 0
-                                ? 'Set out before 7am'
-                                : 'Set out by 7am'}
-                          </Text>
+                          <Text style={styles.rowInfo}>{diff === 0 ? 'Set out before 7am' : 'Set out by 7am'}</Text>
                         </View>
                         <View style={[styles.status, { backgroundColor: meta.colour }]} />
                       </View>

@@ -8,6 +8,21 @@ export function isUkPostcode(input: string) {
   return /^(GIR 0AA|(?:(?:[A-PR-UWYZ]\d[\dA-HJKSTUW]?|[A-PR-UWYZ][A-HK-Y]\d[\dABEHMNPRVWXY]?) \d[ABD-HJLNP-UW-Z]{2}))$/i.test(postcode);
 }
 
+export function cleanPostcodeLocality(
+  parish: string | undefined,
+  adminDistrict: string | undefined,
+  region: string | undefined,
+  fallback: string,
+) {
+  const clean = (value: string | undefined) => value
+    ?.replace(/,\s*unparished area$/i, '')
+    .replace(/\bunparished area\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/,\s*$/, '')
+    .trim();
+  return clean(parish) || clean(adminDistrict) || clean(region) || fallback;
+}
+
 export function matchingAddressId(addresses: { id: string; postcode: string }[], postcode: string) {
   const canonicalPostcode = normalisePostcode(postcode);
   return addresses.find((address) => normalisePostcode(address.postcode) === canonicalPostcode)?.id;

@@ -54,6 +54,21 @@ function validCollectionResult(value: unknown) {
   );
 }
 
+function validAddressResult(value: unknown) {
+  return Array.isArray(value) && value.every((address) => {
+    if (!address || typeof address !== 'object') return false;
+    const item = address as { id?: unknown; line1?: unknown; postcode?: unknown };
+    return (
+      typeof item.id === 'string'
+      && /^\d{1,20}$/.test(item.id)
+      && typeof item.line1 === 'string'
+      && item.line1.length > 0
+      && item.line1.length <= 240
+      && isPostcode(item.postcode)
+    );
+  });
+}
+
 function validServiceResult(value: unknown) {
   return Array.isArray(value) && value.every((service) => {
     if (!service || typeof service !== 'object') return false;
@@ -77,9 +92,26 @@ function validServiceResult(value: unknown) {
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const pathname = url.pathname.replace(/^\/api(?=\/)/, '');
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
-    if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'what-bin-is-it-tonight-council-gateway' });
-    if (request.method === 'GET' && url.pathname === '/v1/services') {
+    if (request.method === 'GET' && pathname === '/health') return json({ ok: true, service: 'what-bin-is-it-tonight-council-gateway' });
+    if (request.method === 'GET' && pathname === '/v1/addresses') {
+      const postcode = url.searchParams.get('postcode');
+      const providerId = url.searchParams.get('providerId');
+      if (!isPostcode(postcode)) return json({ error: 'A complete UK postcode is required.' }, 400);
+      if (!providerId || !/^[a-z0-9-]+$/.test(providerId)) return json({ error: 'Unknown council provider.' }, 400);
+      const adapter = getAdapter(providerId);
+      if (!adapter?.getAddresses) return json({ error: 'This council does not have a live address search connected yet.' }, 404);
+      try {
+        const addresses = await adapter.getAddresses(normalisePostcode(postcode));
+        if (!validAddressResult(addresses)) return json({ error: 'The council address source returned an invalid response.' }, 502);
+        return json({ addresses });
+      } catch (error) {
+        console.error('Council address provider failed', providerId, error);
+        return json({ error: 'The council address search is temporarily unavailable.' }, 502);
+      }
+    }
+    if (request.method === 'GET' && pathname === '/v1/services') {
       const postcode = url.searchParams.get('postcode');
       const providerId = url.searchParams.get('providerId');
       if (!isPostcode(postcode)) return json({ error: 'A complete UK postcode is required.' }, 400);
@@ -95,7 +127,7 @@ export default {
         return json({ error: 'The council service source is temporarily unavailable.' }, 502);
       }
     }
-    if (request.method !== 'POST' || url.pathname !== '/v1/collections') return json({ error: 'Not found' }, 404);
+    if (request.method !== 'POST' || pathname !== '/v1/collections') return json({ error: 'Not found' }, 404);
 
     let body: CollectionRequest;
     try {

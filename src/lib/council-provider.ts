@@ -1,7 +1,10 @@
-import { Collection, CouncilService, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
+import { Platform } from 'react-native';
+
+import { Collection, CouncilAddressOption, CouncilService, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
 import { findCouncilByCode, findCouncilByName } from '@/lib/council-directory';
 import {
   buildNearestPostcodeUrl,
+  cleanPostcodeLocality,
   isUkPostcode,
   normalisePostcode,
 } from '@/lib/place-resolution';
@@ -10,6 +13,7 @@ export { isUkPostcode, normalisePostcode } from '@/lib/place-resolution';
 
 type GatewayCollection = { date: string; wasteType: WasteType };
 type GatewayResponse = { councilName: string; providerId: string; collections: GatewayCollection[]; verifiedAt: string; notice?: string };
+type GatewayAddressesResponse = { addresses: CouncilAddressOption[] };
 type GatewayServicesResponse = { services: Omit<CouncilService, 'source'>[] };
 type PostcodesIoResult = {
   postcode?: string;
@@ -30,7 +34,12 @@ export type ResolvedPlace = {
   longitude?: number;
 };
 
-const apiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
+const configuredApiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
+const apiBase = configuredApiBase
+  || (Platform.OS === 'web' && typeof globalThis.location?.origin === 'string'
+    ? `${globalThis.location.origin}/api`
+    : 'https://what-bin-is-it-tonight.vercel.app/api');
+export const councilGatewayConfigured = Boolean(apiBase);
 const validWasteTypes = new Set<WasteType>(['general', 'recycling', 'garden', 'food']);
 const validServiceTypes = new Set<CouncilService['type']>(['recycling-centre', 'recycling-point', 'reuse', 'collection']);
 
@@ -75,14 +84,14 @@ async function gatewayError(response: Response, fallback: string) {
  * normalises their result, caches it, and returns this stable contract to mobile clients.
  */
 export async function fetchCollectionsForAddress(address: SavedAddress): Promise<ProviderResult> {
-  if (!apiBase) {
-    throw new Error(`${address.councilName} is selected, but live collection dates are not connected in this build yet.`);
-  }
-
   const response = await fetchWithTimeout(`${apiBase}/v1/collections`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ postcode: address.postcode, addressId: address.id, providerId: address.providerId }),
+    body: JSON.stringify({
+      postcode: address.postcode,
+      addressId: address.councilAddressId,
+      providerId: address.providerId,
+    }),
   });
 
   if (!response.ok) throw new Error(await gatewayError(response, 'The council source could not be reached just now.'));
@@ -113,6 +122,33 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
   };
 }
 
+export async function fetchCouncilAddresses(postcode: string, providerId: string): Promise<CouncilAddressOption[]> {
+  const response = await fetchWithTimeout(
+    `${apiBase}/v1/addresses?postcode=${encodeURIComponent(postcode)}&providerId=${encodeURIComponent(providerId)}`,
+  );
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(await gatewayError(response, 'The council address search is unavailable just now.'));
+  const payload = (await response.json()) as GatewayAddressesResponse;
+  if (
+    !payload
+    || !Array.isArray(payload.addresses)
+    || payload.addresses.some((address) => (
+      !address
+      || typeof address.id !== 'string'
+      || typeof address.line1 !== 'string'
+      || typeof address.postcode !== 'string'
+      || !isUkPostcode(address.postcode)
+    ))
+  ) {
+    throw new Error('The council returned its address list in an unexpected format.');
+  }
+  return payload.addresses.map((address) => ({
+    id: address.id.slice(0, 120),
+    line1: address.line1.slice(0, 240),
+    postcode: normalisePostcode(address.postcode),
+  }));
+}
+
 function resolvePostcodeResult(result: PostcodesIoResult, fallbackPostcode?: string): ResolvedPlace {
   const postcode = normalisePostcode(result.postcode ?? fallbackPostcode ?? '');
   if (!isUkPostcode(postcode)) throw new Error('We could not match a full postcode to that location.');
@@ -120,7 +156,7 @@ function resolvePostcodeResult(result: PostcodesIoResult, fallbackPostcode?: str
     ?? findCouncilByName(result.admin_district);
   return {
     postcode,
-    line1: result.parish || result.admin_district || result.region || postcode,
+    line1: cleanPostcodeLocality(result.parish, result.admin_district, result.region, postcode),
     councilName: matchedCouncil?.name ?? result.admin_district,
     providerId: matchedCouncil?.providerId,
     councilCode: matchedCouncil?.code,

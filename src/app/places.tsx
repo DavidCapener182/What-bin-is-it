@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import {
+  fetchCouncilAddresses,
   isUkPostcode,
   lookupNearestPostcode,
   lookupPostcode,
@@ -12,32 +13,67 @@ import {
 } from '@/lib/council-provider';
 import { councilDirectoryCounts } from '@/lib/council-directory';
 import { getDeviceCoordinates } from '@/lib/device-location';
+import { CouncilAddressOption, SavedAddress } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+
+type AddressChoice = {
+  place: ResolvedPlace;
+  addresses: CouncilAddressOption[];
+};
+
+function savedPlaceSummary(address: SavedAddress) {
+  return address.line1.trim().toLowerCase() === address.councilName.trim().toLowerCase()
+    ? address.postcode
+    : `${address.line1} · ${address.postcode}`;
+}
 
 export default function PlacesScreen() {
   const { addresses, activeAddress, addAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
   const [postcode, setPostcode] = useState('');
   const [lookupMode, setLookupMode] = useState<'postcode' | 'location'>();
   const [showAdd, setShowAdd] = useState(false);
+  const [addressChoice, setAddressChoice] = useState<AddressChoice>();
+  const [selectingAddressId, setSelectingAddressId] = useState<string>();
 
-  async function saveResolvedPlace(result: ResolvedPlace) {
+  async function saveResolvedPlace(result: ResolvedPlace, exactAddress?: CouncilAddressOption) {
+    if (result.providerId === 'lad-e08000011' && !exactAddress) {
+      throw new Error('Choose your exact Knowsley address so the council can identify the correct collection round.');
+    }
     const outcome = await addAddress({
-      label: result.councilName ?? 'New place',
-      line1: result.line1,
-      postcode: result.postcode,
+      label: addresses.length === 0 ? 'Home' : result.councilName ?? 'Saved place',
+      line1: exactAddress?.line1 ?? result.line1,
+      postcode: exactAddress?.postcode ?? result.postcode,
       councilName: result.councilName ?? 'Council not matched',
       providerId: result.providerId ?? 'unconnected',
+      councilAddressId: exactAddress?.id,
       latitude: result.latitude,
       longitude: result.longitude,
     });
     setPostcode('');
     setShowAdd(false);
+    setAddressChoice(undefined);
     Alert.alert(
       outcome.verified ? 'Collection dates updated' : 'Place found',
       outcome.verified
-        ? `${result.postcode} is now active. ${outcome.message}`
-        : `${result.postcode} is now active and any dates from your previous place have been cleared. ${outcome.message}`,
+        ? `${exactAddress?.postcode ?? result.postcode} is now active. ${outcome.message}`
+        : `${exactAddress?.postcode ?? result.postcode} is now active. No collection date will be shown until its council source returns a verified result. ${outcome.message}`,
     );
+  }
+
+  async function continueWithResolvedPlace(result: ResolvedPlace) {
+    if (result.providerId && result.providerId !== 'unconnected') {
+      const councilAddresses = await fetchCouncilAddresses(result.postcode, result.providerId);
+      if (councilAddresses.length === 1) {
+        await saveResolvedPlace(result, councilAddresses[0]);
+        return;
+      }
+      if (councilAddresses.length > 1) {
+        setAddressChoice({ place: result, addresses: councilAddresses });
+        setShowAdd(false);
+        return;
+      }
+    }
+    await saveResolvedPlace(result);
   }
 
   async function addPlace() {
@@ -48,7 +84,7 @@ export default function PlacesScreen() {
     setLookupMode('postcode');
     try {
       const result = await lookupPostcode(postcode);
-      await saveResolvedPlace(result);
+      await continueWithResolvedPlace(result);
     } catch (error) {
       Alert.alert('Could not add this place', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
@@ -61,7 +97,7 @@ export default function PlacesScreen() {
     try {
       const coordinates = await getDeviceCoordinates();
       const result = await lookupNearestPostcode(coordinates.latitude, coordinates.longitude);
-      await saveResolvedPlace(result);
+      await continueWithResolvedPlace(result);
     } catch (error) {
       Alert.alert('Could not use your location', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
@@ -69,86 +105,145 @@ export default function PlacesScreen() {
     }
   }
 
+  async function selectExactAddress(address: CouncilAddressOption) {
+    if (!addressChoice) return;
+    setSelectingAddressId(address.id);
+    try {
+      await saveResolvedPlace(addressChoice.place, address);
+    } catch (error) {
+      Alert.alert('Could not check this address', error instanceof Error ? error.message : 'Try again in a moment.');
+    } finally {
+      setSelectingAddressId(undefined);
+    }
+  }
+
   return (
-    <AppShell activeRoute="/places">
-      <View style={styles.page}>
-        <SafeAreaView edges={['top']} style={styles.safe}>
-          <Text style={styles.kicker}>YOUR ADDRESSES</Text>
-          <Text style={styles.title}>Places</Text>
-          <Text style={styles.subtitle}>Home, family, or that one friend who always forgets bin day.</Text>
-        </SafeAreaView>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Pressable
-            accessibilityLabel="Use my current location"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: Boolean(lookupMode) }}
-            disabled={Boolean(lookupMode)}
-            onPress={useCurrentLocation}
-            style={({ pressed }) => [styles.locationCard, pressed && styles.pressed, lookupMode && styles.disabled]}>
-            <View style={styles.locationIcon}>
-              {lookupMode === 'location'
-                ? <ActivityIndicator color="#FFFFFF" />
-                : <Ionicons color="#FFFFFF" name="locate" size={21} />}
-            </View>
-            <View style={styles.locationCopy}>
-              <Text style={styles.locationTitle}>{lookupMode === 'location' ? 'Finding your postcode…' : 'Use my current location'}</Text>
-              <Text style={styles.locationBody}>Find your postcode and local council automatically.</Text>
-            </View>
-            <Ionicons color="#A9DDCA" name="arrow-forward" size={18} />
-          </Pressable>
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Saved places</Text>
-            <Text style={styles.count}>{addresses.length} {addresses.length === 1 ? 'place' : 'places'}</Text>
-          </View>
-          <View style={styles.placeList}>
-            {addresses.map((address, index) => {
-              const active = address.id === activeAddress?.id;
-              return (
-                <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityRole="button" accessibilityState={{ selected: active }} key={address.id} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
-                  <View style={[styles.homeIcon, active && styles.homeIconActive]}><Ionicons color={active ? '#E8FFF5' : '#0E756B'} name={active ? 'home' : 'home-outline'} size={20} /></View>
-                  <View style={styles.placeCopy}>
-                    <View style={styles.labelRow}><Text style={styles.placeLabel}>{address.label}</Text>{active && <View style={styles.activePill}><Text style={styles.activePillText}>ACTIVE</Text></View>}</View>
-                    <Text style={styles.placeAddress}>{address.line1} · {address.postcode}</Text>
-                    <Text style={styles.council}>{address.councilName}</Text>
-                  </View>
-                  {active ? <Ionicons color="#0E756B" name="checkmark-circle" size={22} /> : <Ionicons color="#8AA0A1" name="chevron-forward" size={19} />}
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: refreshing }} onPress={refreshCollections} disabled={refreshing} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, refreshing && styles.disabled]}>
-            {refreshing ? <ActivityIndicator color="#0B7168" /> : <Ionicons color="#0B7168" name="cloud-download-outline" size={22} />}
-            <View style={styles.syncCopy}><Text style={styles.syncTitle}>{refreshing ? 'Checking your source…' : 'Refresh collection dates'}</Text><Text style={styles.syncBody}>Uses the selected place and its council provider.</Text></View>
-            <Ionicons color="#0B7168" name="arrow-forward" size={17} />
-          </Pressable>
-
-          <View style={styles.directoryCard}>
-            <View style={styles.directoryIcon}><Ionicons color="#926023" name="map-outline" size={19} /></View>
-            <View style={styles.directoryCopy}><Text style={styles.directoryTitle}>UK council directory</Text><Text style={styles.directoryBody}>{councilDirectoryCounts.England + councilDirectoryCounts.Scotland + councilDirectoryCounts.Wales + councilDirectoryCounts['Northern Ireland']} local authorities mapped from your postcode.</Text></View>
-          </View>
-
-          {showAdd ? (
-            <View style={styles.addPanel}>
-              <View style={styles.addHeader}><View><Text style={styles.addTitle}>Add a new place</Text><Text style={styles.addDescription}>We use your postcode to find the local authority.</Text></View><Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable></View>
-              <Text style={styles.fieldLabel}>UK POSTCODE</Text>
-              <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
-              <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
-                {lookupMode === 'postcode' ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find this place</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
-              </Pressable>
-            </View>
-          ) : (
-            <Pressable accessibilityRole="button" onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
-              <View style={styles.plus}><Ionicons color="#0D756A" name="add" size={22} /></View>
-              <View><Text style={styles.newPlaceTitle}>Add another place</Text><Text style={styles.newPlaceCopy}>Use a UK postcode</Text></View>
+    <>
+      <AppShell activeRoute="/places">
+        <View style={styles.page}>
+          <SafeAreaView edges={['top']} style={styles.safe}>
+            <Text style={styles.kicker}>YOUR ADDRESSES</Text>
+            <Text style={styles.title}>Places</Text>
+            <Text style={styles.subtitle}>Home, family, or that one friend who always forgets bin day.</Text>
+          </SafeAreaView>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Pressable
+              accessibilityLabel="Use my current location"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: Boolean(lookupMode) }}
+              disabled={Boolean(lookupMode)}
+              onPress={useCurrentLocation}
+              style={({ pressed }) => [styles.locationCard, pressed && styles.pressed, lookupMode && styles.disabled]}>
+              <View style={styles.locationIcon}>
+                {lookupMode === 'location'
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <Ionicons color="#FFFFFF" name="locate" size={21} />}
+              </View>
+              <View style={styles.locationCopy}>
+                <Text style={styles.locationTitle}>{lookupMode === 'location' ? 'Finding your postcode…' : 'Use my current location'}</Text>
+                <Text style={styles.locationBody}>Find your postcode and local council automatically.</Text>
+              </View>
+              <Ionicons color="#A9DDCA" name="arrow-forward" size={18} />
             </Pressable>
-          )}
 
-          <View style={styles.note}><Ionicons color="#648485" name="shield-checkmark-outline" size={17} /><Text style={styles.noteText}>Your location is used once to find the nearest postcode and is not tracked. Saved places stay on this device.</Text></View>
-        </ScrollView>
-      </View>
-    </AppShell>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Saved places</Text>
+              <Text style={styles.count}>{addresses.length} {addresses.length === 1 ? 'place' : 'places'}</Text>
+            </View>
+            <View style={styles.placeList}>
+              {addresses.length === 0 ? (
+                <View style={styles.emptyPlaces}>
+                  <Ionicons color="#0E756B" name="location-outline" size={22} />
+                  <View style={styles.emptyPlacesCopy}>
+                    <Text style={styles.emptyPlacesTitle}>No saved address yet</Text>
+                    <Text style={styles.emptyPlacesBody}>Use your postcode or current location below.</Text>
+                  </View>
+                </View>
+              ) : addresses.map((address, index) => {
+                const active = address.id === activeAddress?.id;
+                return (
+                  <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityRole="button" accessibilityState={{ selected: active }} key={address.id} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
+                    <View style={[styles.homeIcon, active && styles.homeIconActive]}><Ionicons color={active ? '#E8FFF5' : '#0E756B'} name={active ? 'home' : 'home-outline'} size={20} /></View>
+                    <View style={styles.placeCopy}>
+                      <View style={styles.labelRow}><Text style={styles.placeLabel}>{address.label}</Text>{active && <View style={styles.activePill}><Text style={styles.activePillText}>ACTIVE</Text></View>}</View>
+                      <Text style={styles.placeAddress}>{savedPlaceSummary(address)}</Text>
+                      <Text style={styles.council}>{address.councilName}</Text>
+                    </View>
+                    {active ? <Ionicons color="#0E756B" name="checkmark-circle" size={22} /> : <Ionicons color="#8AA0A1" name="chevron-forward" size={19} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: refreshing || !activeAddress }} onPress={refreshCollections} disabled={refreshing || !activeAddress} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, (refreshing || !activeAddress) && styles.disabled]}>
+              {refreshing ? <ActivityIndicator color="#0B7168" /> : <Ionicons color="#0B7168" name="cloud-download-outline" size={22} />}
+              <View style={styles.syncCopy}><Text style={styles.syncTitle}>{refreshing ? 'Checking your source…' : 'Refresh collection dates'}</Text><Text style={styles.syncBody}>Uses the selected place and its council provider.</Text></View>
+              <Ionicons color="#0B7168" name="arrow-forward" size={17} />
+            </Pressable>
+
+            <View style={styles.directoryCard}>
+              <View style={styles.directoryIcon}><Ionicons color="#926023" name="map-outline" size={19} /></View>
+              <View style={styles.directoryCopy}><Text style={styles.directoryTitle}>UK council directory</Text><Text style={styles.directoryBody}>{councilDirectoryCounts.England + councilDirectoryCounts.Scotland + councilDirectoryCounts.Wales + councilDirectoryCounts['Northern Ireland']} local authorities mapped from your postcode.</Text></View>
+            </View>
+
+            {showAdd ? (
+              <View style={styles.addPanel}>
+                <View style={styles.addHeader}><View><Text style={styles.addTitle}>Add a new place</Text><Text style={styles.addDescription}>Find the council, then choose your exact property where required.</Text></View><Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable></View>
+                <Text style={styles.fieldLabel}>UK POSTCODE</Text>
+                <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
+                <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
+                  {lookupMode === 'postcode' ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find this place</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable accessibilityRole="button" onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
+                <View style={styles.plus}><Ionicons color="#0D756A" name="add" size={22} /></View>
+                <View><Text style={styles.newPlaceTitle}>Add another place</Text><Text style={styles.newPlaceCopy}>Use a UK postcode</Text></View>
+              </Pressable>
+            )}
+
+            <View style={styles.note}><Ionicons color="#648485" name="shield-checkmark-outline" size={17} /><Text style={styles.noteText}>Your location is used once to find the nearest postcode and is not tracked. Your selected address stays on this device. Collection dates are shown only when returned by the council source.</Text></View>
+          </ScrollView>
+        </View>
+      </AppShell>
+
+      <Modal animationType="slide" onRequestClose={() => setAddressChoice(undefined)} presentationStyle="pageSheet" visible={Boolean(addressChoice)}>
+        <SafeAreaView edges={['top', 'bottom']} style={styles.addressModal}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderCopy}>
+              <Text style={styles.modalKicker}>EXACT PROPERTY REQUIRED</Text>
+              <Text style={styles.modalTitle}>Choose your address</Text>
+              <Text style={styles.modalBody}>A postcode can contain many collection rounds. Select the property the council should check for {addressChoice?.place.postcode}.</Text>
+            </View>
+            <Pressable accessibilityLabel="Close address list" accessibilityRole="button" hitSlop={8} onPress={() => setAddressChoice(undefined)} style={styles.modalClose}>
+              <Ionicons color="#335B5D" name="close" size={21} />
+            </Pressable>
+          </View>
+          <FlatList
+            contentContainerStyle={styles.addressList}
+            data={addressChoice?.addresses ?? []}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <Pressable
+                accessibilityLabel={`Use ${item.line1}`}
+                accessibilityRole="button"
+                disabled={Boolean(selectingAddressId)}
+                onPress={() => selectExactAddress(item)}
+                style={({ pressed }) => [styles.addressOption, pressed && styles.pressed, selectingAddressId && styles.disabled]}>
+                <View style={styles.addressOptionIcon}><Ionicons color="#0D756A" name="home-outline" size={19} /></View>
+                <View style={styles.addressOptionCopy}>
+                  <Text style={styles.addressOptionTitle}>{item.line1}</Text>
+                  <Text style={styles.addressOptionPostcode}>{item.postcode}</Text>
+                </View>
+                {selectingAddressId === item.id
+                  ? <ActivityIndicator color="#0D756A" />
+                  : <Ionicons color="#789092" name="chevron-forward" size={18} />}
+              </Pressable>
+            )}
+          />
+        </SafeAreaView>
+      </Modal>
+    </>
   );
 }
 
@@ -168,6 +263,10 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#2A4A50', fontSize: 14, fontWeight: '800' },
   count: { color: '#7C9192', fontSize: 11.5, fontWeight: '700' },
   placeList: { backgroundColor: '#FFFFFF', borderRadius: 19, overflow: 'hidden', shadowColor: '#1B363A', shadowOpacity: 0.07, shadowRadius: 9, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  emptyPlaces: { minHeight: 84, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  emptyPlacesCopy: { flex: 1 },
+  emptyPlacesTitle: { color: '#1B3B42', fontSize: 13.5, fontWeight: '900' },
+  emptyPlacesBody: { color: '#728789', fontSize: 11, marginTop: 4 },
   placeCard: { minHeight: 91, paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
   placeBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4EBE6' },
   placeActive: { backgroundColor: '#F2FBF6' },
@@ -203,6 +302,19 @@ const styles = StyleSheet.create({
   newPlaceCopy: { color: '#6C8587', fontSize: 11.5, marginTop: 3 },
   note: { paddingHorizontal: 5, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   noteText: { color: '#718585', fontSize: 10.5, lineHeight: 15, flex: 1 },
+  addressModal: { flex: 1, backgroundColor: '#F4F4EE' },
+  modalHeader: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20, flexDirection: 'row', gap: 12, borderBottomWidth: 1, borderBottomColor: '#E5ECE7' },
+  modalHeaderCopy: { flex: 1 },
+  modalKicker: { color: '#1D7A70', fontSize: 9.5, letterSpacing: 1.4, fontWeight: '900' },
+  modalTitle: { color: '#14323B', fontFamily: 'Georgia', fontSize: 28, letterSpacing: -0.7, marginTop: 5 },
+  modalBody: { color: '#667F81', fontSize: 11.5, lineHeight: 16, marginTop: 7, maxWidth: 320 },
+  modalClose: { height: 36, width: 36, borderRadius: 18, backgroundColor: '#EDF3EF', alignItems: 'center', justifyContent: 'center' },
+  addressList: { padding: 16, paddingBottom: 30 },
+  addressOption: { minHeight: 70, backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 9, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 11, shadowColor: '#17353A', shadowOpacity: 0.05, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  addressOptionIcon: { height: 39, width: 39, borderRadius: 13, backgroundColor: '#E3F2EC', alignItems: 'center', justifyContent: 'center' },
+  addressOptionCopy: { flex: 1 },
+  addressOptionTitle: { color: '#173D43', fontSize: 13, lineHeight: 17, fontWeight: '800' },
+  addressOptionPostcode: { color: '#72888A', fontSize: 10.5, marginTop: 3, fontWeight: '600' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.6 },
 });

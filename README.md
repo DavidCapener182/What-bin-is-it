@@ -31,7 +31,7 @@ npm run android
 npm run web
 ```
 
-The app opens with clearly marked sample collection dates so the UI can be explored immediately. They are intentionally not presented as council data.
+The app never creates example collection dates. A date is displayed and scheduled for reminders only after it has been returned by a connected council source for the selected property.
 
 ## Connect live council collection data
 

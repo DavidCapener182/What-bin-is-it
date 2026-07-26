@@ -4,7 +4,7 @@ export type Collection = {
   id: string;
   date: string;
   wasteType: WasteType;
-  source: 'council' | 'sample';
+  source: 'council';
 };
 
 export type SavedAddress = {
@@ -14,9 +14,16 @@ export type SavedAddress = {
   postcode: string;
   councilName: string;
   providerId: string;
+  councilAddressId?: string;
   isPrimary: boolean;
   latitude?: number;
   longitude?: number;
+};
+
+export type CouncilAddressOption = {
+  id: string;
+  line1: string;
+  postcode: string;
 };
 
 export type CouncilService = {

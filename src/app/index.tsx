@@ -45,7 +45,7 @@ export default function HomeScreen() {
 
             <View style={styles.nextRow}>
               <View style={styles.nextCopy}>
-                <Text style={styles.nextKicker}>{next?.source === 'sample' ? 'NEXT SAMPLE DATE' : 'NEXT COLLECTION'}</Text>
+                <Text style={styles.nextKicker}>NEXT VERIFIED COLLECTION</Text>
                 <Text style={styles.nextDate}>{next ? formatCollectionDate(next.date, 'weekday') : 'No collection found'}</Text>
                 {next && (
                   <View style={styles.nextTypes}>
@@ -71,11 +71,9 @@ export default function HomeScreen() {
               <View style={styles.cardCopy}>
                 <Text style={styles.cardTitle}>{collectionMeta[next.wasteType].label} bin</Text>
                 <Text style={styles.cardBody}>
-                  {next.source === 'sample'
-                    ? `Example only · ${formatCollectionDate(next.date, 'short')}`
-                    : daysAway === 0
-                      ? 'Put it out before 7am today.'
-                      : `Put it out by 7am · ${formatCollectionDate(next.date, 'short')}`}
+                  {daysAway === 0
+                    ? 'Put it out before 7am today.'
+                    : `Put it out by 7am · ${formatCollectionDate(next.date, 'short')}`}
                 </Text>
               </View>
               <Ionicons color="#71909B" name="chevron-forward" size={20} />
@@ -110,13 +108,11 @@ export default function HomeScreen() {
                     <View style={styles.rowCopy}>
                       <Text style={styles.rowTitle}>{meta.label}</Text>
                       <Text style={styles.rowBody}>
-                        {collection.source === 'sample'
-                          ? 'Sample date · not council-verified'
-                          : diff === 0
-                            ? 'Set out before 7am'
-                            : diff === 1
-                              ? 'Tomorrow'
-                              : formatCollectionDate(collection.date, 'short')}
+                        {diff === 0
+                          ? 'Set out before 7am'
+                          : diff === 1
+                            ? 'Tomorrow'
+                            : formatCollectionDate(collection.date, 'short')}
                       </Text>
                     </View>
                     <View style={[styles.dot, { backgroundColor: meta.colour }]} />
@@ -128,12 +124,12 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               disabled={refreshing}
-              onPress={refreshCollections}
+              onPress={() => activeAddress ? void refreshCollections() : router.push('/places')}
               style={({ pressed }) => [styles.emptySchedule, pressed && styles.pressed]}>
               <Ionicons color="#0A746A" name="calendar-outline" size={25} />
               <View style={styles.emptyScheduleCopy}>
-                <Text style={styles.emptyScheduleTitle}>No upcoming dates for this place</Text>
-                <Text style={styles.emptyScheduleBody}>Tap to check its council source.</Text>
+                <Text style={styles.emptyScheduleTitle}>{activeAddress ? 'No verified dates for this place' : 'Add your address'}</Text>
+                <Text style={styles.emptyScheduleBody}>{activeAddress ? 'Tap to check its live council source.' : 'Use your postcode or current location to get started.'}</Text>
               </View>
               <Ionicons color="#71909B" name="arrow-forward" size={18} />
             </Pressable>
@@ -167,7 +163,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             disabled={refreshing}
-            onPress={refreshCollections}
+            onPress={() => activeAddress ? void refreshCollections() : router.push('/places')}
             style={({ pressed }) => [styles.sourceCard, pressed && styles.pressed, refreshing && styles.disabled]}>
             <View style={styles.sourceIcon}><Ionicons color="#0A6C61" name="sync-outline" size={19} /></View>
             <View style={styles.sourceCopy}>

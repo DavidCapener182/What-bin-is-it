@@ -4,6 +4,7 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { councilGatewayConfigured } from '@/lib/council-provider';
 import { collectionMeta, wasteTypes } from '@/lib/data';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { WasteType } from '@/lib/types';
@@ -14,7 +15,7 @@ const times = [{ hour: 18, label: '6pm' }, { hour: 19, label: '7pm' }, { hour: 2
 export default function SettingsScreen() {
   const { preferences, collections, updatePreferences, toggleWasteType } = useAppData();
   const [busy, setBusy] = useState(false);
-  const gatewayConfigured = Boolean(process.env.EXPO_PUBLIC_COUNCIL_API_BASE);
+  const gatewayConfigured = councilGatewayConfigured;
 
   async function changeNotifications(next: boolean) {
     setBusy(true);
@@ -52,7 +53,7 @@ export default function SettingsScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.reminderHero}>
             <View style={styles.bell}><Ionicons color="#ECFFF5" name="notifications" size={24} /></View>
-            <View style={styles.heroCopy}><Text style={styles.heroTitle}>Never miss bin day</Text><Text style={styles.heroText}>{collections.some((collection) => collection.source === 'council') ? 'We’ll remind you the evening before each verified collection.' : 'Reminders begin when this place has verified council dates.'}</Text></View>
+            <View style={styles.heroCopy}><Text style={styles.heroTitle}>Never miss bin day</Text><Text style={styles.heroText}>{collections.length ? 'We’ll remind you the evening before each verified collection.' : 'Reminders begin when this place has verified council dates.'}</Text></View>
             <Switch disabled={busy} value={preferences.enabled} onValueChange={changeNotifications} thumbColor="#FFFFFF" trackColor={{ false: '#839C9E', true: '#2DCC91' }} />
           </View>
 
@@ -78,7 +79,7 @@ export default function SettingsScreen() {
             <Text style={styles.sectionLabel}>COLLECTION DATA</Text>
             <View style={styles.settingCard}>
               <View style={styles.infoRow}><View style={[styles.roundIcon, { backgroundColor: '#E4F3ED' }]}><Ionicons color="#0A736A" name={gatewayConfigured ? 'cloud-done-outline' : 'cloud-offline-outline'} size={19} /></View><View style={styles.infoCopy}><Text style={styles.infoTitle}>Council data gateway</Text><Text style={styles.infoText}>{gatewayConfigured ? 'Provider endpoint is configured for this build' : 'Connect a provider endpoint in build settings'}</Text></View><View style={[styles.pendingPill, gatewayConfigured && styles.connectedPill]}><Text style={[styles.pendingText, gatewayConfigured && styles.connectedText]}>{gatewayConfigured ? 'READY' : 'SETUP'}</Text></View></View>
-              <View style={styles.dataLine}><Ionicons color="#6E888A" name="lock-closed-outline" size={14} /><Text style={styles.dataText}>Postcodes are only sent to the selected council provider when you ask to refresh.</Text></View>
+              <View style={styles.dataLine}><Ionicons color="#6E888A" name="lock-closed-outline" size={14} /><Text style={styles.dataText}>Your postcode is used to find council addresses. Only the selected council property ID is sent when checking live dates.</Text></View>
             </View>
           </View>
 

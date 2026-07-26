@@ -14,7 +14,7 @@ npm install
 npm run dev
 ```
 
-Set the app’s `EXPO_PUBLIC_COUNCIL_API_BASE` to the tunnel/deployment URL. The supplied `demo` adapter is only for contract testing; it cannot serve real households.
+Set the app’s `EXPO_PUBLIC_COUNCIL_API_BASE` to the tunnel/deployment URL. The adapter registry contains live-source integrations only; generated or demonstration collection dates are prohibited.
 
 ## Add a council
 

@@ -63,7 +63,7 @@ async function reconcileCollectionReminders(collections: Collection[], preferenc
 
   const now = new Date();
   const eligible = sortCollections(collections)
-    .filter((collection) => collection.source === 'council' && preferences.wasteTypes[collection.wasteType])
+    .filter((collection) => preferences.wasteTypes[collection.wasteType])
     .slice(0, 48);
   await Promise.all(
     eligible.map(async (collection) => {

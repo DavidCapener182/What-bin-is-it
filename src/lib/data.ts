@@ -9,27 +9,9 @@ export const collectionMeta: Record<WasteType, { label: string; shortLabel: stri
   food: { label: 'Food waste', shortLabel: 'FOOD', colour: '#9A6334', tint: '#F8EEDF', example: 'Food scraps' },
 };
 
-function localDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function dateAtStartOfDay(value: string | Date) {
   const date = typeof value === 'string' ? new Date(`${value}T12:00:00`) : new Date(value);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-export function makeSampleCollections(): Collection[] {
-  const today = dateAtStartOfDay(new Date());
-  const nextDays = [1, 1, 8, 8, 15, 22, 22, 29];
-  const types: WasteType[] = ['recycling', 'food', 'general', 'garden', 'recycling', 'food', 'general', 'recycling'];
-  return nextDays.map((days, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + days);
-    return { id: `sample-${index}`, date: localDateKey(date), wasteType: types[index], source: 'sample' };
-  });
 }
 
 export function sortCollections(collections: Collection[]) {
