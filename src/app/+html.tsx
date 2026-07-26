@@ -24,8 +24,18 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: `
-          html, body, #root { min-height: 100%; background: #F4F4EE; }
-          body { margin: 0; overscroll-behavior-y: none; }
+          html, body, #root { min-height: 100%; background: #F3F4F0; }
+          html { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+          body {
+            margin: 0;
+            overscroll-behavior-y: none;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+          }
+          button, input, textarea, select { font: inherit; }
+          @media (prefers-reduced-transparency: reduce) {
+            #app-material { backdrop-filter: none !important; background: #F9FBF9 !important; }
+          }
         ` }} />
       </head>
       <body>{children}</body>

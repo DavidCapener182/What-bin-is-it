@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppShell } from '@/components/app-shell';
 import { WasteIcon } from '@/components/bin-glyph';
 import { collectionDisplayMeta, dayDifference, formatCollectionDate, sortCollections } from '@/lib/data';
+import { appColours, appFonts } from '@/lib/design-system';
 import { useAppData } from '@/lib/use-app-data';
 
 export default function CalendarScreen() {
@@ -78,10 +79,10 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F4F4EE' },
+  page: { flex: 1, backgroundColor: appColours.background },
   safe: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 22, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E9EEE9' },
-  kicker: { color: '#1E7B70', fontSize: 10, letterSpacing: 1.55, fontWeight: '900' },
-  title: { color: '#14323B', fontFamily: 'Georgia', fontSize: 30, letterSpacing: -0.8, marginTop: 6 },
+  kicker: { color: '#1E7B70', fontFamily: appFonts.text, fontSize: 10.5, letterSpacing: 1.15, fontWeight: '700' },
+  title: { color: '#14323B', fontFamily: appFonts.display, fontSize: 32, lineHeight: 38, fontWeight: '700', letterSpacing: -1.05, marginTop: 3 },
   addressPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', maxWidth: '100%', gap: 5, backgroundColor: '#E8F5EF', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, marginTop: 12 },
   address: { color: '#277068', fontSize: 11.5, fontWeight: '700', flexShrink: 1 },
   content: { padding: 18, paddingBottom: 122, gap: 24 },
@@ -90,13 +91,13 @@ const styles = StyleSheet.create({
   legendText: { flex: 1, color: '#4F7371', fontSize: 11.5, lineHeight: 16, fontWeight: '600' },
   dateSection: { gap: 10 },
   dateHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 3 },
-  dateLabel: { color: '#507A78', fontSize: 10, letterSpacing: 1.3, fontWeight: '900' },
-  dateLong: { color: '#14323B', fontFamily: 'Georgia', fontSize: 20, letterSpacing: -0.3, marginTop: 3 },
+  dateLabel: { color: '#507A78', fontFamily: appFonts.text, fontSize: 10.5, letterSpacing: 1, fontWeight: '700' },
+  dateLong: { color: '#14323B', fontFamily: appFonts.display, fontSize: 20, lineHeight: 25, fontWeight: '700', letterSpacing: -0.45, marginTop: 2 },
   dayStamp: { height: 39, width: 39, borderRadius: 13, backgroundColor: '#E2EAE5', alignItems: 'center', justifyContent: 'center' },
   dayStampToday: { backgroundColor: '#0D7369' },
-  dayStampText: { color: '#315B5C', fontSize: 16, fontWeight: '900' },
+  dayStampText: { color: '#315B5C', fontFamily: appFonts.rounded, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   dayStampTextToday: { color: '#FFFFFF' },
-  collectionsCard: { backgroundColor: '#FFFFFF', borderRadius: 19, overflow: 'hidden', shadowColor: '#1B363A', shadowOpacity: 0.07, shadowRadius: 9, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  collectionsCard: { backgroundColor: appColours.card, borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden', shadowColor: '#1B363A', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   collectionRow: { minHeight: 74, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 12 },
   collectionBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E3E9E5' },
   iconCircle: { height: 40, width: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

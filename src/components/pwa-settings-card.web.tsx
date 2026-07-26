@@ -14,6 +14,7 @@ import {
   installPwa,
   subscribePwaInstallStatus,
 } from '@/lib/pwa-install.web';
+import { appColours, appFonts } from '@/lib/design-system';
 
 export function PwaSettingsCard() {
   const install = useSyncExternalStore(
@@ -115,19 +116,19 @@ export function PwaSettingsCard() {
 
 const styles = StyleSheet.create({
   section: { gap: 9 },
-  sectionLabel: { color: '#6C8587', fontSize: 10, letterSpacing: 1.3, fontWeight: '900', paddingHorizontal: 2 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden', shadowColor: '#18333A', shadowOpacity: 0.06, shadowRadius: 9, shadowOffset: { width: 0, height: 3 } },
+  sectionLabel: { color: '#6C8587', fontFamily: appFonts.text, fontSize: 10.5, letterSpacing: 1.05, fontWeight: '700', paddingHorizontal: 2 },
+  card: { backgroundColor: appColours.card, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden', shadowColor: '#18333A', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   installRow: { minHeight: 88, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
   icon: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#E3F3ED', alignItems: 'center', justifyContent: 'center' },
   iconInstalled: { backgroundColor: '#0B756A' },
   copy: { flex: 1 },
-  title: { color: '#1D3E43', fontSize: 13.5, fontWeight: '900' },
+  title: { color: '#1D3E43', fontFamily: appFonts.text, fontSize: 14, fontWeight: '700', letterSpacing: -0.15 },
   text: { color: '#718689', fontSize: 10.5, lineHeight: 14, marginTop: 3, fontWeight: '500' },
-  action: { backgroundColor: '#E3F3ED', borderRadius: 9, paddingHorizontal: 9, paddingVertical: 7 },
-  actionText: { color: '#0A736A', fontSize: 8.5, fontWeight: '900', letterSpacing: 0.6 },
+  action: { backgroundColor: '#E3F3ED', borderRadius: 10, minHeight: 32, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
+  actionText: { color: '#0A736A', fontFamily: appFonts.text, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
   statusRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5ECE7', minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { flex: 1, fontSize: 10.5, lineHeight: 14, fontWeight: '700' },
   testButton: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5ECE7', minHeight: 45, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  testText: { color: '#0A736A', fontSize: 11, fontWeight: '900' },
-  pressed: { opacity: 0.65 },
+  testText: { color: '#0A736A', fontSize: 11, fontWeight: '700' },
+  pressed: { opacity: 0.64, transform: [{ scale: 0.96 }] },
 });
