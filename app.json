@@ -3,13 +3,13 @@
     "name": "What Bin Is It Tonight?",
     "slug": "what-bin-is-it-tonight",
     "description": "UK bin collection reminders, local recycling guidance, and nearby waste services.",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "whatbinistonight",
-    "userInterfaceStyle": "light",
-    "backgroundColor": "#F4F4EE",
-    "primaryColor": "#0B7469",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F2F2F7",
+    "primaryColor": "#007AFF",
     "ios": {
       "icon": "./assets/images/app-icon.png",
       "bundleIdentifier": "uk.whatbinistonight.app",
@@ -21,7 +21,7 @@
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F2F2F7",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -39,8 +39,8 @@
       "scope": "/",
       "orientation": "portrait",
       "barStyle": "black-translucent",
-      "themeColor": "#08212D",
-      "backgroundColor": "#F4F4EE",
+      "themeColor": "#F2F2F7",
+      "backgroundColor": "#F2F2F7",
       "description": "UK bin collection reminders, local recycling guidance, and nearby waste services."
     },
     "plugins": [
@@ -64,7 +64,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#08212D",
+          "backgroundColor": "#1C1C1E",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
@@ -72,7 +72,7 @@
       [
         "expo-notifications",
         {
-          "color": "#0B7469",
+          "color": "#007AFF",
           "defaultChannel": "bin-reminders"
         }
       ],

@@ -15,9 +15,12 @@ import {
   installPwa,
   subscribePwaInstallStatus,
 } from '@/lib/pwa-install.web';
-import { appColours, appFonts } from '@/lib/design-system';
+import { appFonts } from '@/lib/design-system';
+import { AppTheme, useAppTheme } from '@/lib/theme';
 
 export function PwaSettingsCard() {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
   const install = useSyncExternalStore(
     subscribePwaInstallStatus,
     getPwaInstallStatus,
@@ -60,20 +63,20 @@ export function PwaSettingsCard() {
   }
 
   const statusColour = notifications.state === 'error'
-    ? '#A74638'
+    ? theme.danger
     : notifications.state === 'scheduled'
-      ? '#08735F'
-      : '#6B7F81';
+      ? theme.success
+      : theme.secondaryText;
 
   return (
     <>
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>APP INSTALLATION</Text>
+        <Text style={styles.sectionLabel}>App installation</Text>
         <View style={styles.card}>
         <View style={styles.installRow}>
           <View style={[styles.icon, install.installed && styles.iconInstalled]}>
             <Ionicons
-              color={install.installed ? '#EFFFF8' : '#0A736A'}
+              color={install.installed ? theme.heroText : theme.accent}
               name={install.installed ? 'checkmark' : 'phone-portrait-outline'}
               size={20}
             />
@@ -93,7 +96,7 @@ export function PwaSettingsCard() {
               onPress={handleInstall}
               style={({ pressed }) => [styles.action, pressed && styles.pressed]}
             >
-              <Text style={styles.actionText}>{install.canInstall ? 'INSTALL' : 'HOW TO'}</Text>
+              <Text style={styles.actionText}>{install.canInstall ? 'Install' : 'How to'}</Text>
             </Pressable>
           )}
         </View>
@@ -112,7 +115,7 @@ export function PwaSettingsCard() {
             onPress={handleTest}
             style={({ pressed }) => [styles.testButton, pressed && styles.pressed]}
           >
-            <Ionicons color="#0A736A" name="paper-plane-outline" size={16} />
+            <Ionicons color={theme.accent} name="paper-plane-outline" size={16} />
             <Text style={styles.testText}>{busy ? 'Sending…' : 'Send a test notification'}</Text>
           </Pressable>
         )}
@@ -122,12 +125,12 @@ export function PwaSettingsCard() {
         <SafeAreaView edges={['top', 'bottom']} style={styles.helpPage}>
           <View style={styles.helpHeader}>
             <View style={styles.helpHeaderCopy}>
-              <Text style={styles.helpKicker}>INSTALL THE APP</Text>
+              <Text style={styles.helpKicker}>Install the app</Text>
               <Text style={styles.helpTitle}>Add What Bin? to your Home Screen</Text>
               <Text style={styles.helpBody}>Install it for a full-screen app icon and reliable bin-night reminders.</Text>
             </View>
             <Pressable accessibilityLabel="Close installation help" accessibilityRole="button" onPress={() => setShowInstallHelp(false)} style={styles.helpClose}>
-              <Ionicons color="#31575C" name="close" size={22} />
+              <Ionicons color={theme.text} name="close" size={22} />
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.helpContent}>
@@ -150,35 +153,37 @@ export function PwaSettingsCard() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
   section: { gap: 9 },
-  sectionLabel: { color: '#5D797C', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.85, fontWeight: '700', paddingHorizontal: 2 },
-  card: { backgroundColor: appColours.card, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden', shadowColor: '#18333A', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  sectionLabel: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.35, fontWeight: '700', paddingHorizontal: 2 },
+  card: { backgroundColor: theme.surface, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
   installRow: { minHeight: 88, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  icon: { width: 40, height: 40, borderRadius: 14, backgroundColor: '#E3F3ED', alignItems: 'center', justifyContent: 'center' },
-  iconInstalled: { backgroundColor: '#0B756A' },
+  icon: { width: 40, height: 40, borderRadius: 14, backgroundColor: theme.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  iconInstalled: { backgroundColor: theme.accent },
   copy: { flex: 1 },
-  title: { color: '#1D3E43', fontFamily: appFonts.text, fontSize: 14, fontWeight: '700', letterSpacing: -0.15 },
-  text: { color: '#5E777B', fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
-  action: { backgroundColor: '#E3F3ED', borderRadius: 11, minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  actionText: { color: '#0A736A', fontFamily: appFonts.text, fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
-  statusRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5ECE7', minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { color: theme.text, fontFamily: appFonts.text, fontSize: 14, fontWeight: '700', letterSpacing: -0.15 },
+  text: { color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
+  action: { backgroundColor: theme.accentSoft, borderRadius: 11, minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  actionText: { color: theme.accent, fontFamily: appFonts.text, fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  statusRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator, minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: '700' },
-  testButton: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5ECE7', minHeight: 45, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  testText: { color: '#0A736A', fontSize: 12.5, fontWeight: '700' },
-  helpPage: { flex: 1, backgroundColor: '#F3F4F0' },
-  helpHeader: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20, flexDirection: 'row', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DCE5E0' },
+  testButton: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator, minHeight: 45, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  testText: { color: theme.accent, fontSize: 12.5, fontWeight: '700' },
+  helpPage: { flex: 1, backgroundColor: theme.background },
+  helpHeader: { backgroundColor: theme.surface, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20, flexDirection: 'row', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
   helpHeaderCopy: { flex: 1 },
-  helpKicker: { color: '#087A70', fontSize: 12, letterSpacing: 0.85, fontWeight: '700' },
-  helpTitle: { color: '#14323B', fontSize: 27, lineHeight: 33, fontWeight: '700', marginTop: 5 },
-  helpBody: { color: '#5C7478', fontSize: 14, lineHeight: 20, marginTop: 7 },
-  helpClose: { height: 44, width: 44, borderRadius: 22, backgroundColor: '#E8EFEB', alignItems: 'center', justifyContent: 'center' },
+  helpKicker: { color: theme.accent, fontSize: 12, letterSpacing: 0.35, fontWeight: '700' },
+  helpTitle: { color: theme.text, fontSize: 27, lineHeight: 33, fontWeight: '700', marginTop: 5 },
+  helpBody: { color: theme.secondaryText, fontSize: 14, lineHeight: 20, marginTop: 7 },
+  helpClose: { height: 44, width: 44, borderRadius: 22, backgroundColor: theme.elevated, alignItems: 'center', justifyContent: 'center' },
   helpContent: { padding: 18, paddingBottom: 32, gap: 10 },
-  helpStep: { minHeight: 62, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(34,61,66,0.12)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  helpNumber: { height: 34, width: 34, borderRadius: 17, backgroundColor: '#E3F3ED', alignItems: 'center', justifyContent: 'center' },
-  helpNumberText: { color: '#087A70', fontSize: 15, fontWeight: '800' },
-  helpStepText: { color: '#24464B', fontSize: 14, lineHeight: 19, fontWeight: '600', flex: 1 },
-  helpDone: { minHeight: 52, borderRadius: 14, backgroundColor: '#087A70', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  helpStep: { minHeight: 62, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  helpNumber: { height: 34, width: 34, borderRadius: 17, backgroundColor: theme.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  helpNumberText: { color: theme.accent, fontSize: 15, fontWeight: '800' },
+  helpStepText: { color: theme.text, fontSize: 14, lineHeight: 19, fontWeight: '600', flex: 1 },
+  helpDone: { minHeight: 52, borderRadius: 14, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   helpDoneText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   pressed: { opacity: 0.64, transform: [{ scale: 0.96 }] },
-});
+  });
+}

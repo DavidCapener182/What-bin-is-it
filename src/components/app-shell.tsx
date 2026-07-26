@@ -3,92 +3,137 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { appColours, appFonts } from '@/lib/design-system';
+import { appFonts } from '@/lib/design-system';
+import { useAppTheme } from '@/lib/theme';
 
-type Route = '/' | '/schedule' | '/guide' | '/settings';
+type PrimaryRoute = '/' | '/schedule' | '/guide' | '/reports';
+type AppRoute = PrimaryRoute | '/settings' | '/places' | '/history' | '/support' | '/report-missed' | '/report-incorrect' | '/onboarding';
 
-const tabs: { route: Route; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
+const tabs: { route: PrimaryRoute; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },
   { route: '/schedule', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar' },
   { route: '/guide', label: 'Guide', icon: 'search-outline', activeIcon: 'search' },
-  { route: '/settings', label: 'Settings', icon: 'options-outline', activeIcon: 'options' },
+  { route: '/reports', label: 'Reports', icon: 'document-text-outline', activeIcon: 'document-text' },
 ];
 
-export function AppShell({ activeRoute, children }: { activeRoute: Route; children: ReactNode }) {
+export function AppShell({
+  activeRoute,
+  children,
+  hideNavigation = false,
+}: {
+  activeRoute: AppRoute;
+  children: ReactNode;
+  hideNavigation?: boolean;
+}) {
   const insets = useSafeAreaInsets();
-  const dockBottomPadding = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, 10);
+  const theme = useAppTheme();
+  const tabRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
+  const dockBottomPadding = Platform.OS === 'web' ? 4 : Math.max(insets.bottom, 6);
+  const primaryActive = tabs.some((tab) => tab.route === activeRoute);
 
-  function openTab(route: Route) {
+  function openTab(route: PrimaryRoute) {
     if (route === activeRoute) return;
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
     router.replace(route as Href);
   }
 
   return (
-    <View style={styles.shell}>
-      <StatusBar style={activeRoute === '/' ? 'light' : 'dark'} />
-      <View style={styles.frame}>
-        <View style={styles.screen}>{children}</View>
-        <View style={[styles.dock, { paddingBottom: dockBottomPadding }]}>
-          <View nativeID="app-material" style={styles.material}>
+    <View style={[styles.shell, { backgroundColor: Platform.OS === 'web' ? theme.groupedBackground : theme.background }]}>
+      <StatusBar style={activeRoute === '/' || theme.mode === 'dark' ? 'light' : 'dark'} />
+      <View style={[styles.frame, { backgroundColor: theme.background }]}>
+        {primaryActive ? tabs.map((tab) => {
+          const active = tab.route === activeRoute;
+          return (
+            <View
+              accessibilityElementsHidden={!active}
+              importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+              key={tab.route}
+              nativeID={`panel-${tab.route.replace('/', '') || 'today'}`}
+              style={active ? styles.screen : styles.hiddenPanel}>
+              {active ? children : null}
+            </View>
+          );
+        }) : (
+          <View nativeID={`panel-${activeRoute.replace('/', '')}`} style={styles.screen}>{children}</View>
+        )}
+        {!hideNavigation ? (
+          <View style={[styles.dock, { paddingBottom: dockBottomPadding }]}>
+            <View nativeID="app-material" style={[styles.material, { backgroundColor: theme.material, borderColor: theme.separator }]}>
             <BlurView
               blurMethod="dimezisBlurViewSdk31Plus"
               intensity={82}
               style={[StyleSheet.absoluteFill, styles.blur]}
-              tint="systemChromeMaterialLight"
+              tint={theme.mode === 'dark' ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'}
             />
-            <View accessibilityRole="tablist" style={styles.tabBar}>
-              {tabs.map((tab) => {
+            <View accessibilityLabel="Primary navigation" accessibilityRole="tablist" style={styles.tabBar}>
+              {tabs.map((tab, index) => {
                 const active = tab.route === activeRoute;
                 return (
                   <Pressable
+                    {...(Platform.OS === 'web' ? {
+                      // React Native Web forwards these WAI-ARIA keyboard semantics.
+                      onKeyDown: (event: { key: string; preventDefault: () => void }) => {
+                        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+                        event.preventDefault();
+                        const nextIndex = event.key === 'Home'
+                          ? 0
+                          : event.key === 'End'
+                            ? tabs.length - 1
+                            : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                        tabRefs.current[nextIndex]?.focus();
+                        openTab(tabs[nextIndex].route);
+                      },
+                      'aria-controls': `panel-${tab.route.replace('/', '') || 'today'}`,
+                      'aria-selected': active,
+                      tabIndex: active ? 0 : -1,
+                    } : {})}
                     accessibilityLabel={tab.label}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: active }}
                     key={tab.route}
                     onPress={() => openTab(tab.route)}
+                    ref={(element) => { tabRefs.current[index] = element; }}
                     style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}>
                     <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
-                      <Ionicons color={active ? appColours.brand : '#657B80'} name={active ? tab.activeIcon : tab.icon} size={22} />
+                      <Ionicons color={active ? theme.accent : theme.secondaryText} name={active ? tab.activeIcon : tab.icon} size={22} />
                     </View>
-                    <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+                    <Text style={[styles.tabLabel, { color: active ? theme.accent : theme.secondaryText }, active && styles.tabLabelActive]}>{tab.label}</Text>
                   </Pressable>
                 );
               })}
             </View>
           </View>
-        </View>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1, alignItems: 'center', backgroundColor: Platform.OS === 'web' ? '#DDE7E2' : appColours.background },
+  shell: { flex: 1, alignItems: 'center' },
   frame: {
     flex: 1,
     width: '100%',
     maxWidth: Platform.OS === 'web' ? 560 : undefined,
-    backgroundColor: appColours.background,
     shadowColor: '#071A2B',
     shadowOpacity: Platform.OS === 'web' ? 0.14 : 0,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 0 },
   },
   screen: { flex: 1 },
-  dock: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 12, paddingTop: 10 },
+  hiddenPanel: { display: 'none' },
+  dock: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 10, paddingTop: 6 },
   blur: { pointerEvents: 'none' },
   material: {
-    height: 64,
-    borderRadius: 24,
+    height: 62,
+    borderRadius: 22,
     overflow: 'hidden',
-    backgroundColor: appColours.material,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.92)',
     shadowColor: '#071A2B',
     shadowOpacity: 0.16,
     shadowRadius: 20,
@@ -98,8 +143,8 @@ const styles = StyleSheet.create({
   tabBar: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 58, gap: 1 },
   iconWrap: { height: 29, width: 40, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  iconWrapActive: { backgroundColor: 'rgba(8,122,112,0.11)' },
-  tabLabel: { color: '#657B80', fontFamily: appFonts.text, fontSize: 12, fontWeight: '600', letterSpacing: -0.1 },
-  tabLabelActive: { color: appColours.brand, fontWeight: '700' },
+  iconWrapActive: { backgroundColor: 'rgba(0,122,255,0.12)' },
+  tabLabel: { fontFamily: appFonts.text, fontSize: 12, fontWeight: '600', letterSpacing: -0.1 },
+  tabLabelActive: { fontWeight: '700' },
   tabPressed: { opacity: 0.62, transform: [{ scale: 0.94 }] },
 });

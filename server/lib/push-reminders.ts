@@ -14,9 +14,9 @@ export type PushReminderPayload = {
   id: string;
   collectionId: string;
   triggerAt: string;
-  title: 'Bin reminder';
+  title: string;
   body: string;
-  url: '/schedule';
+  url: '/' | '/schedule';
   tag: string;
 };
 
@@ -133,15 +133,25 @@ export function parsePushReminders(value: unknown, now = new Date()): PushRemind
     ) {
       throw new Error('A reminder message is invalid.');
     }
+    if (
+      typeof reminder.title !== 'string'
+      || reminder.title.length < 1
+      || reminder.title.length > 80
+    ) {
+      throw new Error('A reminder title is invalid.');
+    }
+    if (reminder.url !== '/' && reminder.url !== '/schedule') {
+      throw new Error('A reminder destination is invalid.');
+    }
     seen.add(reminder.id);
     return {
       id: reminder.id,
       collectionId: reminder.collectionId,
       triggerAt: new Date(triggerTime).toISOString(),
-      title: 'Bin reminder',
+      title: reminder.title,
       body: reminder.body,
-      url: '/schedule',
-      tag: `collection-${reminder.collectionId}`.slice(0, 220),
+      url: reminder.url,
+      tag: `reminder-${reminder.id}`.slice(0, 220),
     };
   });
   return reminders.sort((left, right) => left.triggerAt.localeCompare(right.triggerAt));

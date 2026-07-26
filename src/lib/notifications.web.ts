@@ -1,4 +1,4 @@
-import { planCollectionReminders } from '@/lib/reminder-plan';
+import { planCollectionReminders, PlannedReminder } from '@/lib/reminder-plan';
 import { getPwaInstallStatus } from '@/lib/pwa-install.web';
 import { Collection, NotificationPreferences } from '@/lib/types';
 
@@ -40,17 +40,23 @@ function notificationPermission(): WebNotificationStatus['permission'] {
 function initialStatus(): WebNotificationStatus {
   const permission = notificationPermission();
   if (permission === 'unsupported') {
+    const install = getPwaInstallStatus();
     return {
       state: 'unsupported',
-      message: 'This browser does not support app notifications.',
+      message: install.isIos && !install.installed
+        ? 'Install the app from Safari to enable reminders. Add it to your Home Screen, then open the new app icon.'
+        : 'This browser cannot send reminders. Try Safari on iPhone or Chrome on Android.',
       scheduledCount: 0,
       permission,
     };
   }
   if (permission !== 'granted') {
+    const install = getPwaInstallStatus();
     return {
       state: 'permission-required',
-      message: 'Install the app and allow notifications to receive bin reminders.',
+      message: install.isIos && !install.installed
+        ? 'Install the app to enable reminders. Add it to your Home Screen, then open the installed app.'
+        : 'Notifications are off. Enable reminders for this place when you are ready.',
       scheduledCount: 0,
       permission,
     };
@@ -200,11 +206,20 @@ export async function rescheduleCollectionReminders(
   collections: Collection[],
   preferences: NotificationPreferences
 ) {
+  return reschedulePlannedReminders(
+    planCollectionReminders(collections, preferences),
+    preferences.enabled,
+  );
+}
+
+export async function reschedulePlannedReminders(
+  reminders: PlannedReminder[],
+  enabled: boolean,
+) {
   if (!browserAvailable()) return;
   const previous = readPreviousRun();
-  const reminders = planCollectionReminders(collections, preferences);
 
-  if (!preferences.enabled || reminders.length === 0) {
+  if (!enabled || reminders.length === 0) {
     if (previous) {
       setStatus({
         state: 'syncing',
@@ -219,8 +234,8 @@ export async function rescheduleCollectionReminders(
       storeRun(undefined);
     }
     setStatus({
-      state: preferences.enabled ? 'ready' : 'off',
-      message: preferences.enabled
+      state: enabled ? 'ready' : 'off',
+      message: enabled
         ? 'Notifications are ready. Add verified collection dates to schedule reminders.'
         : 'Bin reminders are switched off.',
       scheduledCount: 0,

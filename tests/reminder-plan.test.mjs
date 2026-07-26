@@ -62,6 +62,29 @@ test('keeps council-specific labels in the notification copy', () => {
   assert.equal(reminders[0].body, 'Purple-lidded bin collection is tomorrow. Put it out before 7am.');
 });
 
+test('uses the council presentation time when it is known', () => {
+  const reminders = planCollectionReminders([
+    { id: 'sefton-general', date: '2026-07-30', wasteType: 'general', source: 'council' },
+  ], {
+    ...preferences,
+    presentationTime: '6:30 am',
+  }, new Date('2026-07-26T12:00:00+01:00'));
+
+  assert.match(reminders[0].body, /before 6:30 am/);
+});
+
+test('supports a custom reminder minute', () => {
+  const reminders = planCollectionReminders([
+    { id: 'custom-time', date: '2026-07-30', wasteType: 'general', source: 'council' },
+  ], {
+    ...preferences,
+    reminderMinute: 45,
+  }, new Date('2026-07-26T12:00:00+01:00'));
+
+  assert.equal(reminders[0].triggerAt.getHours(), 19);
+  assert.equal(reminders[0].triggerAt.getMinutes(), 45);
+});
+
 test('identifies the saved place when reminders cover multiple addresses', () => {
   const reminders = planCollectionReminders([
     {
@@ -77,4 +100,59 @@ test('identifies the saved place when reminders cover multiple addresses', () =>
     reminders[0].body,
     'General waste collection for Home is tomorrow. Put it out before 7am.'
   );
+});
+
+test('supports council-timed collection follow-up and suppresses answered collections', () => {
+  const richPreferences = {
+    ...preferences,
+    collectionFollowUp: true,
+    followUpHour: 22,
+    followUpMinute: 0,
+  };
+  const collection = {
+    id: 'home:general-1',
+    date: '2026-07-27',
+    wasteType: 'general',
+    source: 'council',
+    placeLabel: 'Home',
+  };
+  const reminders = planCollectionReminders(
+    [collection],
+    richPreferences,
+    new Date('2026-07-26T12:00:00+01:00'),
+  );
+  const followUp = reminders.find((reminder) => reminder.title === 'Was your bin collected?');
+  assert.equal(followUp.triggerAt.getHours(), 22);
+
+  const answered = planCollectionReminders(
+    [collection],
+    richPreferences,
+    new Date('2026-07-26T12:00:00+01:00'),
+    48,
+    new Set([collection.id]),
+  );
+  assert.equal(answered.some((reminder) => reminder.title === 'Was your bin collected?'), false);
+});
+
+test('does not send the second reminder after the bin is marked as put out', () => {
+  const richPreferences = {
+    ...preferences,
+    secondReminder: true,
+    secondReminderHour: 21,
+  };
+  const collection = {
+    id: 'home:recycling-1',
+    date: '2026-07-28',
+    wasteType: 'recycling',
+    source: 'council',
+  };
+  const reminders = planCollectionReminders(
+    [collection],
+    richPreferences,
+    new Date('2026-07-26T12:00:00+01:00'),
+    48,
+    new Set(),
+    new Set([collection.id]),
+  );
+  assert.equal(reminders.some((reminder) => reminder.title === 'Bin still to put out?'), false);
 });

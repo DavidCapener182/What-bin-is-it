@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { Collection, CouncilAddressOption, CouncilService, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
+import { Collection, CouncilAddressOption, CouncilService, DisruptionAlert, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
 import { findCouncilByCode, findCouncilByName } from '@/lib/council-directory';
 import { parseRecyclingMaterials } from '@/lib/recycling-materials';
 import {
@@ -13,7 +13,14 @@ import {
 export { isUkPostcode, normalisePostcode } from '@/lib/place-resolution';
 
 type GatewayCollection = { date: string; wasteType: WasteType; label?: string; colour?: string };
-type GatewayResponse = { councilName: string; providerId: string; collections: GatewayCollection[]; verifiedAt: string; notice?: string };
+type GatewayResponse = {
+  councilName: string;
+  providerId: string;
+  collections: GatewayCollection[];
+  verifiedAt: string;
+  notice?: string;
+  alerts?: Omit<DisruptionAlert, 'addressId'>[];
+};
 type GatewayAddressesResponse = { addresses: CouncilAddressOption[] };
 type GatewayServicesResponse = { services: CouncilService[] };
 type PostcodesIoResult = {
@@ -105,6 +112,27 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
     || Number.isNaN(Date.parse(payload.verifiedAt))
     || !Array.isArray(payload.collections)
     || (payload.notice !== undefined && typeof payload.notice !== 'string')
+    || (
+      payload.alerts !== undefined
+      && (
+        !Array.isArray(payload.alerts)
+        || payload.alerts.length > 20
+        || payload.alerts.some((alert) => (
+          !alert
+          || typeof alert.id !== 'string'
+          || typeof alert.title !== 'string'
+          || typeof alert.detail !== 'string'
+          || typeof alert.sourceUrl !== 'string'
+          || !alert.sourceUrl.startsWith('https://')
+          || typeof alert.startsAt !== 'string'
+          || Number.isNaN(Date.parse(alert.startsAt))
+          || typeof alert.verifiedAt !== 'string'
+          || Number.isNaN(Date.parse(alert.verifiedAt))
+          || (alert.endsAt !== undefined && Number.isNaN(Date.parse(alert.endsAt)))
+          || (alert.expectedRecollectionDate !== undefined && !isIsoDate(alert.expectedRecollectionDate))
+        ))
+      )
+    )
     || payload.collections.some((collection) => (
       !isIsoDate(collection?.date)
       || !validWasteTypes.has(collection?.wasteType)
@@ -126,6 +154,16 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
     providerId: payload.providerId,
     verifiedAt: payload.verifiedAt,
     notice: payload.notice?.slice(0, 240),
+    alerts: payload.alerts?.map((alert) => ({
+      id: alert.id.slice(0, 120),
+      title: alert.title.slice(0, 120),
+      detail: alert.detail.slice(0, 500),
+      sourceUrl: alert.sourceUrl,
+      startsAt: alert.startsAt,
+      endsAt: alert.endsAt,
+      expectedRecollectionDate: alert.expectedRecollectionDate,
+      verifiedAt: alert.verifiedAt,
+    })),
     collections: payload.collections.map((collection, index): Collection => ({
       id: `${payload.providerId}-${collection.date}-${collection.wasteType}-${index}`,
       date: collection.date,
@@ -226,6 +264,11 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
           && isFiniteCoordinate(service.latitude, -90, 90)
           && isFiniteCoordinate(service.longitude, -180, 180)
           && (service.source === 'council' || service.source === 'openstreetmap')
+          && (service.openingHours === undefined || (typeof service.openingHours === 'string' && service.openingHours.length <= 240))
+          && (service.isOpenNow === undefined || typeof service.isOpenNow === 'boolean')
+          && (service.operator === undefined || (typeof service.operator === 'string' && service.operator.length <= 160))
+          && (service.councilOperated === undefined || typeof service.councilOperated === 'boolean')
+          && (service.wheelchairAccessible === undefined || typeof service.wheelchairAccessible === 'boolean')
           && (
             service.materials === undefined
             || (
@@ -239,7 +282,6 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
             )
           )
         ))
-        && payload.services.length
       ) {
         return payload.services
           .map((service) => ({ ...service, distanceKm: distanceKm(address, service.latitude, service.longitude) }))
@@ -277,6 +319,15 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
       source: 'openstreetmap',
       website: tags.website,
       materials: parseRecyclingMaterials(tags),
+      openingHours: tags.opening_hours,
+      isOpenNow: tags.opening_hours === '24/7' ? true : undefined,
+      operator: tags.operator,
+      councilOperated: /\bcouncil\b/i.test(tags.operator ?? '') || undefined,
+      wheelchairAccessible: tags.wheelchair === 'yes'
+        ? true
+        : tags.wheelchair === 'no'
+          ? false
+          : undefined,
     });
     return found;
   }, []);

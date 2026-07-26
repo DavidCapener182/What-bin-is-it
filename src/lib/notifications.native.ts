@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { planCollectionReminders } from '@/lib/reminder-plan';
+import { planCollectionReminders, PlannedReminder } from '@/lib/reminder-plan';
 import { Collection, NotificationPreferences } from '@/lib/types';
 
 Notifications.setNotificationHandler({
@@ -18,7 +18,7 @@ async function ensureAndroidChannel() {
     name: 'Bin reminders',
     description: 'A gentle reminder before your collection day',
     importance: Notifications.AndroidImportance.HIGH,
-    lightColor: '#0E9F6E',
+    lightColor: '#007AFF',
     sound: 'default',
   });
 }
@@ -56,10 +56,10 @@ async function cancelCollectionReminders() {
     .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
 }
 
-async function reconcileCollectionReminders(collections: Collection[], preferences: NotificationPreferences) {
+async function reconcilePlannedReminders(reminders: PlannedReminder[], enabled: boolean) {
   await ensureAndroidChannel();
   await cancelCollectionReminders();
-  const reminders = planCollectionReminders(collections, preferences);
+  if (!enabled) return;
   await Promise.all(
     reminders.map(async (reminder) => {
       await Notifications.scheduleNotificationAsync({
@@ -78,7 +78,14 @@ async function reconcileCollectionReminders(collections: Collection[], preferenc
 }
 
 export function rescheduleCollectionReminders(collections: Collection[], preferences: NotificationPreferences) {
-  const task = reminderQueue.then(() => reconcileCollectionReminders(collections, preferences));
+  return reschedulePlannedReminders(
+    planCollectionReminders(collections, preferences),
+    preferences.enabled,
+  );
+}
+
+export function reschedulePlannedReminders(reminders: PlannedReminder[], enabled: boolean) {
+  const task = reminderQueue.then(() => reconcilePlannedReminders(reminders, enabled));
   reminderQueue = task.catch(() => undefined);
   return task;
 }

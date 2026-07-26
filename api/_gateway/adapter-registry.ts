@@ -13,6 +13,16 @@ export type CollectionOutput = {
   verifiedAt: string;
   collections: { date: string; wasteType: WasteType; label?: string; colour?: string }[];
   notice?: string;
+  alerts?: {
+    id: string;
+    title: string;
+    detail: string;
+    sourceUrl: string;
+    startsAt: string;
+    endsAt?: string;
+    expectedRecollectionDate?: string;
+    verifiedAt: string;
+  }[];
 };
 export type CouncilAddress = { id: string; line1: string; postcode: string };
 export type CouncilService = {
@@ -24,6 +34,11 @@ export type CouncilService = {
   longitude: number;
   website?: string;
   materials?: string[];
+  openingHours?: string;
+  isOpenNow?: boolean;
+  operator?: string;
+  councilOperated?: boolean;
+  wheelchairAccessible?: boolean;
 };
 export type CouncilAdapter = {
   id: string;
@@ -185,7 +200,7 @@ const adapters: Record<string, CouncilAdapter> = {
   [knowsleyAdapter.id]: knowsleyAdapter,
 };
 
-export function getAdapter(providerId: string) {
+export function getAdapter(providerId: string): CouncilAdapter | undefined {
   const directAdapter = adapters[providerId];
   if (directAdapter) return directAdapter;
   if (!/^lad-[ensw]\d{8}$/.test(providerId)) return undefined;

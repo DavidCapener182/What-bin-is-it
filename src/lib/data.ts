@@ -1,4 +1,4 @@
-import { Collection, WasteType } from '@/lib/types';
+import type { Collection, WasteType } from './types.ts';
 
 export const wasteTypes: WasteType[] = ['recycling', 'general', 'food', 'garden'];
 

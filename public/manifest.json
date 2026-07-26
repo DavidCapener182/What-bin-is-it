@@ -11,8 +11,8 @@
     "minimal-ui"
   ],
   "orientation": "portrait",
-  "theme_color": "#08212D",
-  "background_color": "#F4F4EE",
+  "theme_color": "#F2F2F7",
+  "background_color": "#F2F2F7",
   "categories": [
     "utilities",
     "lifestyle"
@@ -33,8 +33,8 @@
   ],
   "shortcuts": [
     {
-      "name": "Tonight's bins",
-      "short_name": "Tonight",
+      "name": "Today",
+      "short_name": "Today",
       "url": "/",
       "icons": [
         {
@@ -44,9 +44,9 @@
       ]
     },
     {
-      "name": "Saved places",
-      "short_name": "Places",
-      "url": "/places",
+      "name": "Collection schedule",
+      "short_name": "Schedule",
+      "url": "/schedule",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -55,9 +55,9 @@
       ]
     },
     {
-      "name": "Recycling finder",
-      "short_name": "Find",
-      "url": "/find",
+      "name": "Recycling guide",
+      "short_name": "Guide",
+      "url": "/guide",
       "icons": [
         {
           "src": "/icon-192.png",

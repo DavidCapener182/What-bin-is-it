@@ -15,6 +15,19 @@ test('uses four primary destinations and keeps place management out of the tab b
   assert.equal((shell.match(/^\s+\{ route:/gm) ?? []).length, 4);
 });
 
+test('gives app and Guide tabs complete keyboard and panel semantics', () => {
+  const shell = read('src/components/app-shell.tsx');
+  const guide = read('src/app/guide.tsx');
+  for (const source of [shell, guide]) {
+    assert.match(source, /'aria-controls'/);
+    assert.match(source, /'aria-selected'/);
+    assert.match(source, /tabIndex:/);
+    assert.match(source, /ArrowLeft/);
+    assert.match(source, /ArrowRight/);
+    assert.match(source, /nativeID=/);
+  }
+});
+
 test('today distinguishes setup, tonight, empty, cached and error states without generated dates', () => {
   const today = read('src/app/index.tsx');
   assert.match(today, /Find your collection dates\./);
@@ -32,6 +45,12 @@ test('all main routes provide route-specific metadata', () => {
     ['src/app/guide.tsx', 'title="Recycling Guide"'],
     ['src/app/places.tsx', 'title="Manage Places"'],
     ['src/app/settings.tsx', 'title="Settings"'],
+    ['src/app/reports.tsx', 'title="Missed Collection Reports"'],
+    ['src/app/history.tsx', 'title="Activity History"'],
+    ['src/app/support.tsx', 'title="Help and Support"'],
+    ['src/app/onboarding.tsx', 'title="Set Up Your Bin Reminders"'],
+    ['src/app/report-missed.tsx', 'title="Report a Missed Collection"'],
+    ['src/app/report-incorrect.tsx', 'title="Report Incorrect Information"'],
   ];
   for (const [path, title] of expected) {
     const source = read(path);
@@ -56,4 +75,14 @@ test('provides the conventional local web development command', () => {
 test('does not request the production service worker from the Expo development server', () => {
   const pwa = read('src/lib/pwa-install.web.ts');
   assert.match(pwa, /process\.env\.NODE_ENV !== 'production'/);
+});
+
+test('keeps the installed PWA on the neutral Apple palette and current routes', () => {
+  const manifest = JSON.parse(read('public/manifest.json'));
+  assert.equal(manifest.theme_color, '#F2F2F7');
+  assert.equal(manifest.background_color, '#F2F2F7');
+  assert.deepEqual(
+    manifest.shortcuts.map((shortcut) => shortcut.url),
+    ['/', '/schedule', '/guide'],
+  );
 });

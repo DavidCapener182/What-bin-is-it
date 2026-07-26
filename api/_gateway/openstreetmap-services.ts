@@ -10,6 +10,11 @@ export type OpenStreetMapService = {
   source: 'openstreetmap';
   website?: string;
   materials: string[];
+  openingHours?: string;
+  isOpenNow?: boolean;
+  operator?: string;
+  councilOperated?: boolean;
+  wheelchairAccessible?: boolean;
 };
 
 type OpenStreetMapPayload = {
@@ -41,6 +46,13 @@ export function parseOpenStreetMapServices(payload: unknown): OpenStreetMapServi
     const tags = element.tags ?? {};
     const isCentre = tags.amenity === 'waste_transfer_station'
       || /centre|center|household waste|tip/i.test(`${tags.name ?? ''} ${tags.recycling_type ?? ''}`);
+    const openingHours = tags.opening_hours;
+    const operator = tags.operator;
+    const wheelchairAccessible = tags.wheelchair === 'yes'
+      ? true
+      : tags.wheelchair === 'no'
+        ? false
+        : undefined;
     services.push({
       id: `osm-${element.id}`,
       name: tags.name || (isCentre ? 'Household waste site' : 'Recycling point'),
@@ -53,6 +65,11 @@ export function parseOpenStreetMapServices(payload: unknown): OpenStreetMapServi
       source: 'openstreetmap',
       website: tags.website,
       materials: parseRecyclingMaterials(tags),
+      ...(openingHours ? { openingHours } : {}),
+      ...(openingHours === '24/7' ? { isOpenNow: true } : {}),
+      ...(operator ? { operator } : {}),
+      ...(/\bcouncil\b/i.test(operator ?? '') ? { councilOperated: true } : {}),
+      ...(wheelchairAccessible !== undefined ? { wheelchairAccessible } : {}),
     });
     return services;
   }, []);
@@ -80,7 +97,7 @@ export async function fetchOpenStreetMapServices(postcode: string) {
   const postcodeResponse = await fetchWithTimeout(
     `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`,
     undefined,
-    15_000,
+    5_000,
   );
   if (!postcodeResponse.ok) throw new Error(`Postcode location lookup returned ${postcodeResponse.status}.`);
   const postcodePayload = await postcodeResponse.json() as {
@@ -92,12 +109,33 @@ export async function fetchOpenStreetMapServices(postcode: string) {
     throw new Error('The postcode source did not return usable coordinates.');
   }
 
-  const query = `[out:json][timeout:20];(nwr["amenity"="recycling"](around:9000,${latitude},${longitude});nwr["amenity"="waste_transfer_station"](around:9000,${latitude},${longitude}););out center 20;`;
-  const response = await fetchWithTimeout('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-  if (!response.ok) throw new Error(`OpenStreetMap service search returned ${response.status}.`);
-  return parseOpenStreetMapServices(await response.json());
+  const query = `[out:json][timeout:10];(nwr["amenity"="recycling"](around:6000,${latitude},${longitude});nwr["amenity"="waste_transfer_station"](around:6000,${latitude},${longitude}););out center 30;`;
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  ];
+  let lastStatus: number | undefined;
+  let receivedValidResponse = false;
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetchWithTimeout(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: `data=${encodeURIComponent(query)}`,
+      }, 11_000);
+      if (!response.ok) {
+        lastStatus = response.status;
+        continue;
+      }
+      const services = parseOpenStreetMapServices(await response.json());
+      receivedValidResponse = true;
+      if (services.length) return services;
+    } catch {
+      // Try the next community Overpass endpoint within the function time budget.
+    }
+  }
+  if (receivedValidResponse) return [];
+  throw new Error(lastStatus
+    ? `OpenStreetMap service search returned ${lastStatus}. Please try again.`
+    : 'OpenStreetMap service search is temporarily unavailable. Please try again.');
 }

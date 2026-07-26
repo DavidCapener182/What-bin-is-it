@@ -26,13 +26,13 @@ export const appFonts = {
 };
 
 export const appColours = {
-  background: '#F3F4F0',
+  background: '#F2F2F7',
   card: '#FFFFFF',
-  ink: '#102F38',
-  secondary: '#63777C',
-  tertiary: '#7D9092',
-  brand: '#087A70',
-  brandPressed: '#06675F',
-  separator: 'rgba(34, 61, 66, 0.12)',
-  material: 'rgba(249, 251, 249, 0.78)',
+  ink: '#1C1C1E',
+  secondary: '#636366',
+  tertiary: '#8E8E93',
+  brand: '#007AFF',
+  brandPressed: '#0062CC',
+  separator: '#D1D1D6',
+  material: 'rgba(249, 249, 251, 0.86)',
 };

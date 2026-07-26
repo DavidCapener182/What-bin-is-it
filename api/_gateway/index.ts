@@ -18,6 +18,57 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+function icsText(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+}
+
+function nextCalendarDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+export function calendarResponse(
+  result: { councilName: string; providerId: string; collections: { date: string; wasteType: string; label?: string }[] },
+  allowedWasteTypes: Set<string>,
+) {
+  const events = result.collections
+    .filter((collection) => allowedWasteTypes.has(collection.wasteType))
+    .map((collection, index) => {
+      const date = collection.date.replace(/-/g, '');
+      const label = collection.label || `${collection.wasteType[0].toUpperCase()}${collection.wasteType.slice(1)} waste`;
+      return [
+        'BEGIN:VEVENT',
+        `UID:${icsText(`${result.providerId}-${collection.date}-${collection.wasteType}-${index}@what-bin-is-it-tonight`)}`,
+        `DTSTART;VALUE=DATE:${date}`,
+        `DTEND;VALUE=DATE:${nextCalendarDate(collection.date)}`,
+        `SUMMARY:${icsText(`${label} collection`)}`,
+        `DESCRIPTION:${icsText(`Live collection date supplied by ${result.councilName}. Refresh this subscription before relying on changed dates.`)}`,
+        'END:VEVENT',
+      ].join('\r\n');
+    });
+  const body = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//What Bin Is It Tonight//Live council dates//EN',
+    'CALSCALE:GREGORIAN',
+    'X-WR-CALNAME:Bin collections',
+    'X-PUBLISHED-TTL:PT12H',
+    ...events,
+    'END:VCALENDAR',
+    '',
+  ].join('\r\n');
+  return new Response(body, {
+    status: 200,
+    headers: {
+      ...headers,
+      'content-type': 'text/calendar; charset=utf-8',
+      'content-disposition': 'inline; filename="bin-collections.ics"',
+      'cache-control': 'public, max-age=1800, s-maxage=1800',
+    },
+  });
+}
+
 function publicError(error: unknown, fallback: string) {
   return error instanceof Error && error.message.length > 0
     ? error.message.slice(0, 180)
@@ -46,6 +97,7 @@ function validCollectionResult(value: unknown) {
     providerId?: unknown;
     verifiedAt?: unknown;
     collections?: unknown;
+    alerts?: unknown;
   };
   return (
     typeof result.councilName === 'string'
@@ -72,6 +124,42 @@ function validCollectionResult(value: unknown) {
         ))
       );
     })
+    && (
+      result.alerts === undefined
+      || (
+        Array.isArray(result.alerts)
+        && result.alerts.length <= 20
+        && result.alerts.every((alert) => {
+          if (!alert || typeof alert !== 'object') return false;
+          const item = alert as Record<string, unknown>;
+          return (
+            typeof item.id === 'string'
+            && item.id.length > 0
+            && item.id.length <= 120
+            && typeof item.title === 'string'
+            && item.title.length > 0
+            && item.title.length <= 120
+            && typeof item.detail === 'string'
+            && item.detail.length > 0
+            && item.detail.length <= 500
+            && typeof item.sourceUrl === 'string'
+            && item.sourceUrl.startsWith('https://')
+            && typeof item.startsAt === 'string'
+            && !Number.isNaN(Date.parse(item.startsAt))
+            && typeof item.verifiedAt === 'string'
+            && !Number.isNaN(Date.parse(item.verifiedAt))
+            && (item.endsAt === undefined || (
+              typeof item.endsAt === 'string'
+              && !Number.isNaN(Date.parse(item.endsAt))
+            ))
+            && (item.expectedRecollectionDate === undefined || (
+              typeof item.expectedRecollectionDate === 'string'
+              && /^\d{4}-\d{2}-\d{2}$/.test(item.expectedRecollectionDate)
+            ))
+          );
+        })
+      )
+    )
   );
 }
 
@@ -101,6 +189,11 @@ function validServiceResult(value: unknown) {
       longitude?: unknown;
       source?: unknown;
       materials?: unknown;
+      openingHours?: unknown;
+      isOpenNow?: unknown;
+      operator?: unknown;
+      councilOperated?: unknown;
+      wheelchairAccessible?: unknown;
     };
     return (
       typeof item.id === 'string'
@@ -109,6 +202,11 @@ function validServiceResult(value: unknown) {
       && validCoordinate(item.latitude, -90, 90)
       && validCoordinate(item.longitude, -180, 180)
       && (item.source === 'council' || item.source === 'openstreetmap')
+      && (item.openingHours === undefined || (typeof item.openingHours === 'string' && item.openingHours.length <= 240))
+      && (item.isOpenNow === undefined || typeof item.isOpenNow === 'boolean')
+      && (item.operator === undefined || (typeof item.operator === 'string' && item.operator.length <= 160))
+      && (item.councilOperated === undefined || typeof item.councilOperated === 'boolean')
+      && (item.wheelchairAccessible === undefined || typeof item.wheelchairAccessible === 'boolean')
       && (
         item.materials === undefined
         || (
@@ -163,6 +261,35 @@ export default {
       } catch (error) {
         console.error('Council service provider failed', providerId, error);
         return json({ error: publicError(error, 'The local service search is temporarily unavailable.') }, 502);
+      }
+    }
+    if (request.method === 'GET' && pathname === '/v1/calendar') {
+      const postcode = url.searchParams.get('postcode');
+      const providerId = url.searchParams.get('providerId');
+      const addressId = url.searchParams.get('addressId') ?? undefined;
+      const requestedTypes = (url.searchParams.get('wasteTypes') ?? '')
+        .split(',')
+        .filter((value) => wasteTypes.has(value));
+      const allowedWasteTypes = new Set(requestedTypes.length ? requestedTypes : [...wasteTypes]);
+      if (!isPostcode(postcode)) return json({ error: 'A complete UK postcode is required.' }, 400);
+      if (!providerId || !/^[a-z0-9-]+$/.test(providerId)) return json({ error: 'Unknown council provider.' }, 400);
+      if (addressId && (addressId.length > 120 || /[\r\n]/.test(addressId))) {
+        return json({ error: 'The property reference is invalid.' }, 400);
+      }
+      const adapter = getAdapter(providerId);
+      if (!adapter) return json({ error: 'This council provider has not been connected yet.' }, 404);
+      try {
+        const result = await adapter.getCollections({
+          postcode: normalisePostcode(postcode),
+          addressId,
+        });
+        if (!validCollectionResult(result) || result.providerId !== adapter.id) {
+          return json({ error: 'The council source returned an invalid response.' }, 502);
+        }
+        return calendarResponse(result, allowedWasteTypes);
+      } catch (error) {
+        console.error('Council calendar provider failed', providerId, error);
+        return json({ error: publicError(error, 'The live calendar is temporarily unavailable.') }, 502);
       }
     }
     if (request.method !== 'POST' || pathname !== '/v1/collections') return json({ error: 'Not found' }, 404);

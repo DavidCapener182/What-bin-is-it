@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -21,17 +23,22 @@ import { BinGlyph, WasteIcon } from '@/components/bin-glyph';
 import { CollectionBadge } from '@/components/collection-badge';
 import { RouteHead } from '@/components/route-head';
 import { isUkPostcode } from '@/lib/council-provider';
+import { deriveCollectionLifecycle } from '@/lib/collection-lifecycle';
+import { evaluateMissedReportEligibility } from '@/lib/council-reporting';
 import {
   collectionDisplayMeta,
   dayDifference,
   formatCollectionDate,
   sortCollections,
 } from '@/lib/data';
-import { appColours, appFonts } from '@/lib/design-system';
+import { appFonts } from '@/lib/design-system';
+import { AppTheme, useAppTheme } from '@/lib/theme';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
+import { shareCollectionReminder } from '@/lib/schedule-tools';
 import { Collection } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useOnlineStatus } from '@/lib/use-online-status';
+import { useProductState } from '@/lib/use-product-state';
 
 function collectionAnswer(collections: Collection[]) {
   if (collections.length === 1) return `${collectionDisplayMeta(collections[0]).label} goes out tonight`;
@@ -39,6 +46,8 @@ function collectionAnswer(collections: Collection[]) {
 }
 
 export default function HomeScreen() {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
   const {
     addresses,
     activeAddress,
@@ -48,16 +57,27 @@ export default function HomeScreen() {
     lastError,
     completedDate,
     changeNotice,
+    disruptions,
     ready,
     refreshing,
     setActiveAddress,
     refreshCollections,
     markCollectionDateComplete,
   } = useAppData();
+  const {
+    onboarding,
+    ready: productReady,
+    reports,
+    reminderPreferencesFor,
+    outcomeFor,
+    markCollection,
+    updatePlaceReminders,
+  } = useProductState();
   const online = useOnlineStatus();
   const [postcode, setPostcode] = useState('');
   const [postcodeError, setPostcodeError] = useState('');
   const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [reportReferenceCopied, setReportReferenceCopied] = useState(false);
 
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
   const todayCollections = upcoming.filter((collection) => dayDifference(collection.date) === 0);
@@ -71,7 +91,39 @@ export default function HomeScreen() {
   const exactAddressRequired = activeAddress
     ? requiresExactCouncilAddress(activeAddress.providerId, activeAddress.councilAddressId)
     : false;
-  const completed = Boolean(actionDate && completedDate === actionDate);
+  const actionOutcomes = actionCollections.map((collection) => outcomeFor(activeAddress?.id, collection));
+  const placeReminders = reminderPreferencesFor(activeAddress?.id);
+  const actionReport = reports.find((report) => (
+    report.addressId === activeAddress?.id
+    && actionCollections.some((collection) => collection.id === report.collectionId)
+    && report.status !== 'cancelled'
+  ));
+  const actionDisruption = disruptions.find((alert) => (
+    alert.addressId === activeAddress?.id
+    && new Date(alert.startsAt) <= new Date()
+    && (!alert.endsAt || new Date(alert.endsAt) >= new Date())
+  ));
+  const completed = Boolean(
+    actionDate
+    && (
+      completedDate === actionDate
+      || (actionOutcomes.length > 0 && actionOutcomes.every((outcome) => outcome?.status === 'put-out'))
+    )
+  );
+  const actionEligibility = activeAddress && actionCollections[0]
+    ? evaluateMissedReportEligibility(activeAddress, actionCollections[0])
+    : undefined;
+  const lifecycle = actionCollections[0]
+    ? deriveCollectionLifecycle(
+        actionCollections[0],
+        actionOutcomes[0],
+        disruptions.filter((alert) => alert.addressId === activeAddress?.id),
+        new Date(),
+        actionEligibility
+          ? { eligibleAfter: actionEligibility.eligibleAfter, reason: actionEligibility.reason }
+          : undefined,
+      )
+    : undefined;
 
   function continueWithPostcode() {
     if (!isUkPostcode(postcode)) {
@@ -91,9 +143,48 @@ export default function HomeScreen() {
   }
 
   async function markBinsOut() {
-    if (!actionDate) return;
+    if (!actionDate || !activeAddress) return;
     markCollectionDateComplete(actionDate);
+    actionCollections.forEach((collection) => markCollection(activeAddress, collection, 'put-out'));
     if (Platform.OS !== 'web') await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  async function confirmCollected() {
+    if (!activeAddress) return;
+    actionCollections.forEach((collection) => markCollection(activeAddress, collection, 'collected'));
+    if (Platform.OS !== 'web') await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  function reportMissed() {
+    const collection = actionCollections[0];
+    if (!collection) return;
+    router.push({ pathname: '/report-missed', params: { collectionId: collection.id } });
+  }
+
+  function markBroughtIn() {
+    if (!activeAddress) return;
+    actionCollections.forEach((collection) => markCollection(activeAddress, collection, 'brought-in'));
+  }
+
+  async function shareActionCollection() {
+    if (!activeAddress || !actionCollections.length) return;
+    await shareCollectionReminder(actionCollections, activeAddress);
+  }
+
+  function remindMeLater() {
+    if (!activeAddress) return;
+    const nextHour = Math.min(new Date().getHours() + 1, 23);
+    updatePlaceReminders(activeAddress.id, {
+      enabled: true,
+      secondReminder: true,
+      secondReminderHour: nextHour,
+    });
+  }
+
+  async function copyActionReportReference() {
+    if (!actionReport) return;
+    await Clipboard.setStringAsync(actionReport.councilReference || actionReport.localTrackingId);
+    setReportReferenceCopied(true);
   }
 
   function sourceSummary() {
@@ -105,7 +196,7 @@ export default function HomeScreen() {
     return sourceStatus;
   }
 
-  if (!ready) {
+  if (!ready || !productReady) {
     return (
       <AppShell activeRoute="/">
         <RouteHead
@@ -114,11 +205,15 @@ export default function HomeScreen() {
           path="/"
         />
         <View accessibilityLiveRegion="polite" style={styles.loadingPage}>
-          <ActivityIndicator color={appColours.brand} />
+          <ActivityIndicator color={theme.accent} />
           <Text style={styles.loadingText}>Opening your saved schedule…</Text>
         </View>
       </AppShell>
     );
+  }
+
+  if (!activeAddress && !onboarding.completed && !onboarding.skipped) {
+    return <Redirect href="/onboarding" />;
   }
 
   if (!activeAddress) {
@@ -130,16 +225,16 @@ export default function HomeScreen() {
           path="/"
         />
         <View style={styles.page}>
-          <LinearGradient colors={['#071A2B', '#0B2A3B', '#103B4B']} style={styles.setupHero}>
+          <LinearGradient colors={[theme.hero, theme.hero]} style={styles.setupHero}>
             <SafeAreaView edges={['top']}>
-              <Text style={styles.eyebrow}>WHAT BIN IS IT TONIGHT?</Text>
+              <Text style={styles.eyebrow}>What Bin Is It Tonight?</Text>
               <Text style={styles.setupTitle}>Find your collection dates.</Text>
               <Text style={styles.setupSubtitle}>Add one UK postcode and we’ll check its live council source.</Text>
             </SafeAreaView>
           </LinearGradient>
           <ScrollView contentContainerStyle={styles.setupContent} keyboardShouldPersistTaps="handled">
             <View style={styles.setupCard}>
-              <Text style={styles.fieldLabel}>UK POSTCODE</Text>
+              <Text style={styles.fieldLabel}>UK postcode</Text>
               <TextInput
                 accessibilityLabel="UK postcode"
                 autoCapitalize="characters"
@@ -150,7 +245,7 @@ export default function HomeScreen() {
                 }}
                 onSubmitEditing={continueWithPostcode}
                 placeholder="e.g. M1 1AE"
-                placeholderTextColor="#7A9092"
+                placeholderTextColor={theme.tertiaryText}
                 returnKeyType="go"
                 style={[styles.input, postcodeError && styles.inputError]}
                 value={postcode}
@@ -170,12 +265,12 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 onPress={() => router.push('/places')}
                 style={({ pressed }) => [styles.locationButton, pressed && styles.pressed]}>
-                <Ionicons color={appColours.brand} name="locate-outline" size={20} />
+                <Ionicons color={theme.accent} name="locate-outline" size={20} />
                 <Text style={styles.locationButtonText}>Use my current location</Text>
               </Pressable>
             </View>
             <View style={styles.privacyLine}>
-              <Ionicons color="#58777A" name="shield-checkmark-outline" size={18} />
+              <Ionicons color={theme.secondaryText} name="shield-checkmark-outline" size={18} />
               <Text style={styles.privacyText}>Your location is used once. Your saved address stays on this device.</Text>
             </View>
           </ScrollView>
@@ -216,20 +311,29 @@ export default function HomeScreen() {
           path="/"
         />
         <View style={styles.page}>
-          <LinearGradient colors={['#071A2B', '#0B2A3B', '#103B4B']} style={styles.hero}>
+          <LinearGradient colors={[theme.hero, theme.hero]} style={styles.hero}>
             <SafeAreaView edges={['top']}>
               <View style={styles.heroTop}>
                 <View style={styles.heroBrand}>
-                  <Text style={styles.eyebrow}>WHAT BIN IS IT TONIGHT?</Text>
+                  <Text style={styles.eyebrow}>What Bin Is It Tonight?</Text>
                   <Text style={styles.greeting}>Tonight</Text>
                 </View>
-                <Pressable
-                  accessibilityLabel="Manage addresses"
-                  accessibilityRole="button"
-                  onPress={() => setShowAddressPicker(true)}
-                  style={({ pressed }) => [styles.addressButton, pressed && styles.pressed]}>
-                  <Ionicons color="#E8FFF5" name="location-outline" size={21} />
-                </Pressable>
+                <View style={styles.heroActions}>
+                  <Pressable
+                    accessibilityLabel="Manage addresses"
+                    accessibilityRole="button"
+                    onPress={() => setShowAddressPicker(true)}
+                    style={({ pressed }) => [styles.addressButton, pressed && styles.pressed]}>
+                    <Ionicons color={theme.heroText} name="location-outline" size={21} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Open settings"
+                    accessibilityRole="button"
+                    onPress={() => router.push('/settings')}
+                    style={({ pressed }) => [styles.addressButton, pressed && styles.pressed]}>
+                    <Ionicons color={theme.heroText} name="settings-outline" size={21} />
+                  </Pressable>
+                </View>
               </View>
 
               <Pressable
@@ -237,14 +341,14 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 onPress={() => setShowAddressPicker(true)}
                 style={({ pressed }) => [styles.addressLine, pressed && styles.pressed]}>
-                <Ionicons color="#8CE1BF" name="home-outline" size={17} />
+                <Ionicons color={theme.heroSecondary} name="home-outline" size={17} />
                 <Text numberOfLines={1} style={styles.addressText}>{activeAddress.label}</Text>
-                <Ionicons color="#8CE1BF" name="chevron-down" size={15} />
+                <Ionicons color={theme.heroSecondary} name="chevron-down" size={15} />
               </Pressable>
 
               <View accessibilityLiveRegion="polite" style={styles.answerRow}>
                 <View style={styles.answerCopy}>
-                  <Text style={styles.nextKicker}>{exactAddressRequired ? 'ADDRESS SETUP' : 'YOUR ANSWER'}</Text>
+                  <Text style={styles.nextKicker}>{exactAddressRequired ? 'Address setup' : 'Your answer'}</Text>
                   <Text style={styles.answerTitle}>{heroTitle}</Text>
                   <Text style={styles.answerSubtitle}>{heroSubtitle}</Text>
                   {tonightCollections.length ? (
@@ -275,17 +379,18 @@ export default function HomeScreen() {
                   <Text style={styles.cardTitle}>Select your property</Text>
                   <Text style={styles.cardBody}>This prevents dates from the wrong collection round.</Text>
                 </View>
-                <Ionicons color="#5F7F82" name="arrow-forward" size={20} />
+                <Ionicons color={theme.secondaryText} name="arrow-forward" size={20} />
               </Pressable>
             ) : actionCollections.length ? (
               <View style={[styles.actionCard, completed && styles.actionCardComplete]}>
                 <View style={styles.actionHeader}>
                   <View>
-                    <Text style={styles.sectionKicker}>{tonightCollections.length ? 'PUT OUT TONIGHT' : 'DUE TODAY'}</Text>
-                    <Text style={styles.actionTitle}>{formatCollectionDate(actionDate!, 'weekday')}</Text>
+                    <Text style={styles.sectionKicker}>{tonightCollections.length ? 'TONIGHT' : 'Collection status'}</Text>
+                    <Text style={styles.actionTitle}>{lifecycle?.title ?? formatCollectionDate(actionDate!, 'weekday')}</Text>
                   </View>
-                  {completed ? <Ionicons color="#087A70" name="checkmark-circle" size={30} /> : null}
+                  {lifecycle?.stage === 'collected' || completed ? <Ionicons color={theme.success} name="checkmark-circle" size={30} /> : null}
                 </View>
+                {lifecycle ? <Text style={styles.lifecycleDetail}>{lifecycle.detail}</Text> : null}
                 <View style={styles.actionBins}>
                   {actionCollections.map((collection) => {
                     const meta = collectionDisplayMeta(collection);
@@ -299,17 +404,102 @@ export default function HomeScreen() {
                     );
                   })}
                 </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: completed }}
-                  disabled={completed}
-                  onPress={markBinsOut}
-                  style={({ pressed }) => [styles.completeButton, completed && styles.completeButtonDone, pressed && styles.pressed]}>
-                  <Ionicons color={completed ? '#087A70' : '#FFFFFF'} name={completed ? 'checkmark-circle' : 'checkmark'} size={20} />
-                  <Text accessibilityLiveRegion="polite" style={[styles.completeButtonText, completed && styles.completeButtonTextDone]}>
-                    {completed ? 'Marked as out' : 'I’ve put it out'}
-                  </Text>
-                </Pressable>
+                {lifecycle?.canMarkPutOut || completed ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: completed }}
+                    disabled={completed}
+                    onPress={markBinsOut}
+                    style={({ pressed }) => [styles.completeButton, completed && styles.completeButtonDone, pressed && styles.pressed]}>
+                    <Ionicons color={completed ? theme.accent : '#FFFFFF'} name={completed ? 'checkmark-circle' : 'arrow-up-circle-outline'} size={20} />
+                    <Text accessibilityLiveRegion="polite" style={[styles.completeButtonText, completed && styles.completeButtonTextDone]}>
+                      {completed ? 'Marked as out' : 'I’ve put it out'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {lifecycle?.stage === 'before' ? (
+                  <>
+                    {!placeReminders.enabled ? (
+                      <Pressable accessibilityRole="button" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+                        <Ionicons color={theme.accent} name="notifications-outline" size={19} />
+                        <Text style={styles.secondaryActionText}>Enable reminder</Text>
+                      </Pressable>
+                    ) : null}
+                    <View style={styles.quickActions}>
+                      {tonightCollections.length ? (
+                        <Pressable accessibilityRole="button" onPress={remindMeLater} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                          <Ionicons color={theme.accent} name="alarm-outline" size={18} />
+                          <Text style={styles.quickActionText}>Remind me later</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable accessibilityRole="button" onPress={() => router.push('/schedule')} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                        <Ionicons color={theme.accent} name="calendar-outline" size={18} />
+                        <Text style={styles.quickActionText}>Schedule</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="button" onPress={() => void shareActionCollection()} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                        <Ionicons color={theme.accent} name="share-outline" size={18} />
+                        <Text style={styles.quickActionText}>Share</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="button" onPress={() => router.push('/guide')} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                        <Ionicons color={theme.accent} name="search-outline" size={18} />
+                        <Text style={styles.quickActionText}>Bin guide</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : null}
+                {lifecycle?.stage === 'collected' && actionOutcomes[0]?.status !== 'brought-in' ? (
+                  <Pressable accessibilityRole="button" onPress={markBroughtIn} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+                    <Ionicons color={theme.accent} name="return-down-back-outline" size={19} />
+                    <Text style={styles.secondaryActionText}>Mark bin as brought in</Text>
+                  </Pressable>
+                ) : null}
+                {actionDisruption && lifecycle?.stage !== 'missed' ? (
+                  <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(actionDisruption.sourceUrl)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+                    <Ionicons color={theme.accent} name="megaphone-outline" size={19} />
+                    <Text style={styles.secondaryActionText}>View council update</Text>
+                  </Pressable>
+                ) : null}
+                {lifecycle?.stage === 'missed' ? (
+                  <View style={styles.quickActions}>
+                    <Pressable accessibilityRole="button" onPress={() => router.push('/reports')} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                      <Ionicons color={theme.accent} name="document-text-outline" size={18} />
+                      <Text style={styles.quickActionText}>{actionReport ? 'View report' : 'Reports'}</Text>
+                    </Pressable>
+                    {actionReport ? (
+                      <Pressable accessibilityRole="button" onPress={() => void copyActionReportReference()} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                        <Ionicons color={theme.accent} name={reportReferenceCopied ? 'checkmark-outline' : 'copy-outline'} size={18} />
+                        <Text style={styles.quickActionText}>{reportReferenceCopied ? 'Copied' : 'Copy reference'}</Text>
+                      </Pressable>
+                    ) : null}
+                    {actionReport ? (
+                      <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(actionReport.officialServiceUrl)} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                        <Ionicons color={theme.accent} name="open-outline" size={18} />
+                        <Text style={styles.quickActionText}>Council website</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+                {lifecycle?.canConfirmCollected && lifecycle.stage !== 'missed' ? (
+                  <View style={styles.outcomeActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={confirmCollected}
+                      style={({ pressed }) => [styles.collectedButton, pressed && styles.pressed]}>
+                      <Ionicons color="#FFFFFF" name="checkmark-circle-outline" size={19} />
+                      <Text style={styles.completeButtonText}>It was collected</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: !lifecycle.canReportMissed }}
+                      disabled={!lifecycle.canReportMissed}
+                      onPress={reportMissed}
+                      style={({ pressed }) => [styles.missedButton, !lifecycle.canReportMissed && styles.actionDisabled, pressed && styles.pressed]}>
+                      <Ionicons color={theme.danger} name="alert-circle-outline" size={19} />
+                      <Text style={styles.missedButtonText}>No, it was missed</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {lifecycle?.blockedReason ? <Text style={styles.blockedReason}>{lifecycle.blockedReason}</Text> : null}
               </View>
             ) : next ? (
               <Pressable
@@ -320,11 +510,11 @@ export default function HomeScreen() {
                 <View style={[styles.collectionColour, { backgroundColor: collectionDisplayMeta(next).colour }]} />
                 <BinGlyph colour={collectionDisplayMeta(next).colour} size={36} />
                 <View style={styles.cardCopy}>
-                  <Text style={styles.cardKicker}>NEXT COLLECTION</Text>
+                  <Text style={styles.cardKicker}>Next collection</Text>
                   <Text style={styles.cardTitle}>{nextDayCollections.map((collection) => collectionDisplayMeta(collection).label).join(' + ')}</Text>
                   <Text style={styles.cardBody}>{formatCollectionDate(next.date, 'weekday')}</Text>
                 </View>
-                <Ionicons color="#5F7F82" name="chevron-forward" size={20} />
+                <Ionicons color={theme.tertiaryText} name="chevron-forward" size={20} />
               </Pressable>
             ) : (
               <Pressable
@@ -332,12 +522,12 @@ export default function HomeScreen() {
                 disabled={refreshing || !online}
                 onPress={refreshOrChooseAddress}
                 style={({ pressed }) => [styles.emptySchedule, pressed && styles.pressed]}>
-                <Ionicons color="#0A746A" name={online ? 'calendar-outline' : 'cloud-offline-outline'} size={26} />
+                <Ionicons color={online ? theme.accent : theme.secondaryText} name={online ? 'calendar-outline' : 'cloud-offline-outline'} size={26} />
                 <View style={styles.emptyScheduleCopy}>
                   <Text style={styles.emptyScheduleTitle}>{collectionDataState === 'error' ? 'Council check unavailable' : 'No verified dates for this place'}</Text>
                   <Text style={styles.emptyScheduleBody}>{online ? 'Tap to check the live council source again.' : 'Reconnect to check for collection dates.'}</Text>
                 </View>
-                <Ionicons color="#5F7F82" name="arrow-forward" size={19} />
+                <Ionicons color={theme.tertiaryText} name="arrow-forward" size={19} />
               </Pressable>
             )}
 
@@ -349,15 +539,15 @@ export default function HomeScreen() {
               onPress={refreshOrChooseAddress}
               style={({ pressed }) => [styles.sourceLine, pressed && styles.pressed]}>
               {refreshing
-                ? <ActivityIndicator color={appColours.brand} />
-                : <Ionicons color={online ? appColours.brand : '#6D8084'} name={online ? 'checkmark-circle-outline' : 'cloud-offline-outline'} size={20} />}
+                ? <ActivityIndicator color={theme.accent} />
+                : <Ionicons color={online ? theme.accent : theme.secondaryText} name={online ? 'checkmark-circle-outline' : 'cloud-offline-outline'} size={20} />}
               <Text accessibilityLiveRegion="polite" numberOfLines={3} style={styles.sourceText}>{sourceSummary()}</Text>
-              <Ionicons color="#6E8789" name="refresh" size={18} />
+              <Ionicons color={theme.secondaryText} name="refresh" size={18} />
             </Pressable>
 
             {changeNotice ? (
               <View accessibilityLiveRegion="polite" style={styles.changeNotice}>
-                <View style={styles.changeIcon}><Ionicons color="#8C571E" name="alert-circle-outline" size={21} /></View>
+                <View style={styles.changeIcon}><Ionicons color={theme.warning} name="alert-circle-outline" size={21} /></View>
                 <View style={styles.changeCopy}>
                   <Text style={styles.changeTitle}>Your council changed a date</Text>
                   <Text style={styles.changeBody}>{changeNotice.replace(/^Collection date changed · /, '')}</Text>
@@ -370,12 +560,12 @@ export default function HomeScreen() {
               <>
                 <View style={styles.sectionHeading}>
                   <View>
-                    <Text style={styles.sectionKicker}>COMING UP</Text>
+                    <Text style={styles.sectionKicker}>Coming up</Text>
                     <Text style={styles.sectionTitle}>Next collections</Text>
                   </View>
                   <Pressable accessibilityRole="button" onPress={() => router.push('/schedule')} style={styles.linkButton}>
                     <Text style={styles.linkText}>Full schedule</Text>
-                    <Ionicons color={appColours.brand} name="arrow-forward" size={16} />
+                    <Ionicons color={theme.accent} name="arrow-forward" size={16} />
                   </Pressable>
                 </View>
                 <View style={styles.scheduleList}>
@@ -385,7 +575,7 @@ export default function HomeScreen() {
                     return (
                       <View key={collection.id} style={styles.scheduleRow}>
                         <View style={styles.dayBlock}>
-                          <Text style={styles.dayName}>{diff === 0 ? 'TODAY' : formatCollectionDate(collection.date, 'day')}</Text>
+                          <Text style={styles.dayName}>{diff === 0 ? 'Today' : formatCollectionDate(collection.date, 'day')}</Text>
                           <Text style={styles.dayNumber}>{formatCollectionDate(collection.date, 'dateNumber')}</Text>
                         </View>
                         <View style={[styles.iconDisc, { backgroundColor: meta.tint }]}>
@@ -404,12 +594,12 @@ export default function HomeScreen() {
             ) : null}
 
             <Pressable accessibilityRole="button" onPress={() => router.push('/guide')} style={({ pressed }) => [styles.guideShortcut, pressed && styles.pressed]}>
-              <View style={styles.guideIcon}><Ionicons color="#F3FFF9" name="search" size={22} /></View>
+              <View style={styles.guideIcon}><Ionicons color={theme.heroText} name="search" size={22} /></View>
               <View style={styles.guideCopy}>
                 <Text style={styles.guideTitle}>Where does this item go?</Text>
                 <Text style={styles.guideBody}>Search the recycling guide or find a nearby drop-off.</Text>
               </View>
-              <Ionicons color="#A6DCCE" name="arrow-forward" size={20} />
+              <Ionicons color={theme.heroSecondary} name="arrow-forward" size={20} />
             </Pressable>
           </ScrollView>
         </View>
@@ -423,11 +613,11 @@ export default function HomeScreen() {
         <SafeAreaView edges={['top', 'bottom']} style={styles.pickerPage}>
           <View style={styles.pickerHeader}>
             <View>
-              <Text style={styles.modalKicker}>CURRENT PLACE</Text>
+              <Text style={styles.modalKicker}>Current place</Text>
               <Text style={styles.modalTitle}>Choose an address</Text>
             </View>
             <Pressable accessibilityLabel="Close address picker" accessibilityRole="button" onPress={() => setShowAddressPicker(false)} style={styles.modalClose}>
-              <Ionicons color="#31575C" name="close" size={22} />
+              <Ionicons color={theme.text} name="close" size={22} />
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.pickerContent}>
@@ -445,21 +635,21 @@ export default function HomeScreen() {
                     }}
                     style={({ pressed }) => [styles.pickerRow, active && styles.pickerRowActive, pressed && styles.pressed]}>
                     <View style={[styles.pickerIcon, active && styles.pickerIconActive]}>
-                      <Ionicons color={active ? '#FFFFFF' : appColours.brand} name={active ? 'home' : 'home-outline'} size={21} />
+                      <Ionicons color={active ? '#FFFFFF' : theme.accent} name={active ? 'home' : 'home-outline'} size={21} />
                     </View>
                     <View style={styles.pickerCopy}>
                       <Text style={styles.pickerTitle}>{address.label}</Text>
                       <Text style={styles.pickerBody}>{address.line1} · {address.postcode}</Text>
                     </View>
-                    {active ? <Ionicons color={appColours.brand} name="checkmark-circle" size={23} /> : null}
+                    {active ? <Ionicons color={theme.accent} name="checkmark-circle" size={23} /> : null}
                   </Pressable>
                 );
               })}
             </View>
             <Pressable accessibilityRole="button" onPress={() => { setShowAddressPicker(false); router.push('/places'); }} style={({ pressed }) => [styles.manageButton, pressed && styles.pressed]}>
-              <Ionicons color={appColours.brand} name="add-circle-outline" size={21} />
+              <Ionicons color={theme.accent} name="add-circle-outline" size={21} />
               <Text style={styles.manageButtonText}>Add or manage addresses</Text>
-              <Ionicons color="#688184" name="chevron-forward" size={19} />
+              <Ionicons color={theme.secondaryText} name="chevron-forward" size={19} />
             </Pressable>
           </ScrollView>
         </SafeAreaView>
@@ -468,112 +658,127 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: appColours.background },
-  loadingPage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: appColours.background },
-  loadingText: { color: '#536F73', fontFamily: appFonts.text, fontSize: 15, fontWeight: '600' },
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  page: { flex: 1, backgroundColor: theme.background },
+  loadingPage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: theme.background },
+  loadingText: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 15, fontWeight: '600' },
   setupHero: { paddingHorizontal: 22, paddingBottom: 30, borderBottomLeftRadius: 34, borderBottomRightRadius: 34 },
-  setupTitle: { color: '#F6FFF9', fontFamily: appFonts.display, fontSize: 36, lineHeight: 40, fontWeight: '700', letterSpacing: -1.15, marginTop: 7, maxWidth: 350 },
-  setupSubtitle: { color: '#B7DCCF', fontSize: 15, lineHeight: 21, fontWeight: '500', marginTop: 10, maxWidth: 340 },
+  setupTitle: { color: theme.heroText, fontFamily: appFonts.display, fontSize: 36, lineHeight: 40, fontWeight: '700', letterSpacing: -1.15, marginTop: 7, maxWidth: 350 },
+  setupSubtitle: { color: theme.heroSecondary, fontSize: 15, lineHeight: 21, fontWeight: '500', marginTop: 10, maxWidth: 340 },
   setupContent: { padding: 18, paddingBottom: 122, gap: 17 },
-  setupCard: { backgroundColor: appColours.card, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, padding: 18, gap: 12, shadowColor: '#142329', shadowOpacity: 0.07, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
-  fieldLabel: { color: '#526F72', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.75, fontWeight: '700' },
-  input: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: '#C9D6D1', color: '#153A40', paddingHorizontal: 15, backgroundColor: '#FBFCFA', fontSize: 17, fontWeight: '700' },
-  inputError: { borderColor: '#B34840' },
-  errorText: { color: '#9F3832', fontSize: 13, lineHeight: 18, fontWeight: '600', marginTop: -5 },
-  primaryButton: { minHeight: 52, borderRadius: 14, backgroundColor: appColours.brand, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  setupCard: { backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, padding: 18, gap: 12 },
+  fieldLabel: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.35, fontWeight: '700' },
+  input: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: theme.separator, color: theme.text, paddingHorizontal: 15, backgroundColor: theme.elevated, fontSize: 17, fontWeight: '700' },
+  inputError: { borderColor: theme.danger },
+  errorText: { color: theme.danger, fontSize: 13, lineHeight: 18, fontWeight: '600', marginTop: -5 },
+  primaryButton: { minHeight: 52, borderRadius: 14, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   orRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  orLine: { height: StyleSheet.hairlineWidth, flex: 1, backgroundColor: '#D9E1DD' },
-  orText: { color: '#718587', fontSize: 12, fontWeight: '700' },
-  locationButton: { minHeight: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, backgroundColor: '#E5F3ED' },
-  locationButtonText: { color: appColours.brand, fontSize: 15, fontWeight: '700' },
+  orLine: { height: StyleSheet.hairlineWidth, flex: 1, backgroundColor: theme.separator },
+  orText: { color: theme.tertiaryText, fontSize: 12, fontWeight: '700' },
+  locationButton: { minHeight: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, backgroundColor: theme.accentSoft },
+  locationButtonText: { color: theme.accent, fontSize: 15, fontWeight: '700' },
   privacyLine: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', paddingHorizontal: 5 },
-  privacyText: { color: '#587175', fontSize: 13, lineHeight: 18, flex: 1 },
+  privacyText: { color: theme.secondaryText, fontSize: 13, lineHeight: 18, flex: 1 },
   hero: { paddingHorizontal: 20, paddingBottom: 27, borderBottomLeftRadius: 34, borderBottomRightRadius: 34 },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10 },
   heroBrand: { flex: 1 },
-  eyebrow: { color: '#8CE1BF', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 1.05, fontWeight: '700' },
-  greeting: { color: '#F6FFF9', fontFamily: appFonts.display, fontSize: 32, lineHeight: 37, fontWeight: '700', letterSpacing: -0.95, marginTop: 2 },
+  heroActions: { flexDirection: 'row', gap: 8 },
+  eyebrow: { color: '#64B5FF', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.45, fontWeight: '700' },
+  greeting: { color: theme.heroText, fontFamily: appFonts.display, fontSize: 32, lineHeight: 37, fontWeight: '700', letterSpacing: -0.95, marginTop: 2 },
   addressButton: { height: 46, width: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
   addressLine: { marginTop: 18, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', maxWidth: '88%', marginBottom: -7 },
-  addressText: { color: '#B6E9D2', fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  addressText: { color: theme.heroSecondary, fontSize: 15, fontWeight: '600', flexShrink: 1 },
   answerRow: { marginTop: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 15 },
   answerCopy: { flex: 1 },
-  nextKicker: { color: '#89BDAA', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.95, fontWeight: '700' },
+  nextKicker: { color: '#8CC8FF', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.45, fontWeight: '700' },
   answerTitle: { color: '#FFFFFF', fontFamily: appFonts.display, fontSize: 27, lineHeight: 31, fontWeight: '700', letterSpacing: -0.7, marginTop: 6 },
-  answerSubtitle: { color: '#C3DFD5', fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 7, maxWidth: 300 },
+  answerSubtitle: { color: theme.heroSecondary, fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 7, maxWidth: 300 },
   nextTypes: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
-  countdownOrb: { height: 92, width: 92, borderRadius: 46, borderWidth: 1, borderColor: 'rgba(164,255,214,0.44)', backgroundColor: 'rgba(2,13,23,0.22)', alignItems: 'center', justifyContent: 'center' },
-  countdownNumber: { color: '#B9FFD8', fontFamily: appFonts.rounded, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.4, textAlign: 'center' },
-  countdownCaption: { color: '#8CE1BF', fontSize: 12, fontWeight: '800', letterSpacing: 1.05, marginTop: 2 },
+  countdownOrb: { height: 92, width: 92, borderRadius: 46, borderWidth: 1, borderColor: 'rgba(100,181,255,0.52)', backgroundColor: 'rgba(2,13,23,0.22)', alignItems: 'center', justifyContent: 'center' },
+  countdownNumber: { color: '#D7ECFF', fontFamily: appFonts.rounded, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.4, textAlign: 'center' },
+  countdownCaption: { color: '#8CC8FF', fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginTop: 2 },
   content: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 120, gap: 20 },
-  setupRequiredCard: { minHeight: 92, backgroundColor: appColours.card, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, flexDirection: 'row', alignItems: 'center', padding: 15, gap: 13 },
-  actionIcon: { height: 46, width: 46, borderRadius: 15, backgroundColor: appColours.brand, alignItems: 'center', justifyContent: 'center' },
-  actionCard: { backgroundColor: appColours.card, borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, padding: 17, gap: 14, shadowColor: '#142329', shadowOpacity: 0.07, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
-  actionCardComplete: { backgroundColor: '#F0FAF5', borderColor: '#B9DCD0' },
+  setupRequiredCard: { minHeight: 92, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', padding: 15, gap: 13 },
+  actionIcon: { height: 46, width: 46, borderRadius: 15, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
+  actionCard: { backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, padding: 17, gap: 14, shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  actionCardComplete: { backgroundColor: theme.accentSoft, borderColor: theme.separator },
   actionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  actionTitle: { color: '#14323B', fontFamily: appFonts.display, fontSize: 22, lineHeight: 27, fontWeight: '700', letterSpacing: -0.5, marginTop: 3 },
+  actionTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 22, lineHeight: 27, fontWeight: '700', letterSpacing: -0.5, marginTop: 3 },
+  lifecycleDetail: { color: theme.secondaryText, fontSize: 13.5, lineHeight: 19, marginTop: -5 },
   actionBins: { gap: 10 },
   actionBinRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  actionBinName: { color: '#17373E', fontSize: 16, fontWeight: '700' },
-  completeButton: { minHeight: 52, backgroundColor: appColours.brand, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  completeButtonDone: { backgroundColor: '#DFF1E9' },
+  actionBinName: { color: theme.text, fontSize: 16, fontWeight: '700' },
+  completeButton: { minHeight: 52, backgroundColor: theme.accent, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  completeButtonDone: { backgroundColor: theme.accentSoft },
   completeButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  completeButtonTextDone: { color: appColours.brand },
-  collectionCard: { overflow: 'hidden', minHeight: 94, backgroundColor: appColours.card, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, flexDirection: 'row', alignItems: 'center', paddingRight: 16, shadowColor: '#142329', shadowOpacity: 0.07, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  completeButtonTextDone: { color: theme.accent },
+  outcomeActions: { gap: 9 },
+  quickActions: { flexDirection: 'row', gap: 8 },
+  quickAction: { flex: 1, minHeight: 48, borderRadius: 12, backgroundColor: theme.groupedBackground, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  quickActionText: { color: theme.accent, fontSize: 12, fontWeight: '700' },
+  secondaryAction: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  secondaryActionText: { color: theme.accent, fontSize: 14, fontWeight: '700' },
+  collectedButton: { minHeight: 50, backgroundColor: theme.accent, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  missedButton: { minHeight: 50, backgroundColor: theme.surface, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.danger, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  missedButtonText: { color: theme.danger, fontSize: 16, fontWeight: '700' },
+  actionDisabled: { opacity: 0.45 },
+  blockedReason: { color: theme.secondaryText, fontSize: 12.5, lineHeight: 18, textAlign: 'center' },
+  collectionCard: { overflow: 'hidden', minHeight: 94, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', paddingRight: 16, shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   collectionColour: { width: 7, alignSelf: 'stretch', marginRight: 13 },
   cardCopy: { flex: 1, marginLeft: 12 },
-  cardKicker: { color: '#657F82', fontSize: 12, fontWeight: '700', letterSpacing: 0.65, marginBottom: 4 },
-  cardTitle: { color: '#102B35', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  cardBody: { color: '#5C7378', fontSize: 13, marginTop: 4, fontWeight: '500', lineHeight: 18 },
-  emptySchedule: { minHeight: 88, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: '#AFC7BD', paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cardKicker: { color: theme.secondaryText, fontSize: 12, fontWeight: '700', letterSpacing: 0.35, marginBottom: 4 },
+  cardTitle: { color: theme.text, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  cardBody: { color: theme.secondaryText, fontSize: 13, marginTop: 4, fontWeight: '500', lineHeight: 18 },
+  emptySchedule: { minHeight: 88, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.separator, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   emptyScheduleCopy: { flex: 1 },
-  emptyScheduleTitle: { color: '#173F44', fontSize: 15, fontWeight: '700' },
-  emptyScheduleBody: { color: '#5D777A', fontSize: 13, lineHeight: 18, marginTop: 3 },
+  emptyScheduleTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  emptyScheduleBody: { color: theme.secondaryText, fontSize: 13, lineHeight: 18, marginTop: 3 },
   sourceLine: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
-  sourceText: { flex: 1, color: '#536F73', fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
-  changeNotice: { borderRadius: 18, backgroundColor: '#F8EDD9', padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: '#E8CFAC' },
-  changeIcon: { height: 40, width: 40, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  sourceText: { flex: 1, color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
+  changeNotice: { borderRadius: 14, backgroundColor: `${theme.warning}14`, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: `${theme.warning}45` },
+  changeIcon: { height: 40, width: 40, borderRadius: 14, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center' },
   changeCopy: { flex: 1 },
-  changeTitle: { color: '#673F18', fontSize: 14.5, fontWeight: '700' },
-  changeBody: { color: '#765128', fontSize: 13, lineHeight: 18, marginTop: 3, fontWeight: '600' },
-  changeFoot: { color: '#735B3F', fontSize: 12, lineHeight: 17, marginTop: 5 },
+  changeTitle: { color: theme.text, fontSize: 14.5, fontWeight: '700' },
+  changeBody: { color: theme.secondaryText, fontSize: 13, lineHeight: 18, marginTop: 3, fontWeight: '600' },
+  changeFoot: { color: theme.secondaryText, fontSize: 12, lineHeight: 17, marginTop: 5 },
   sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  sectionKicker: { color: '#617E80', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.9, fontWeight: '700' },
-  sectionTitle: { color: '#14323B', fontFamily: appFonts.display, fontSize: 24, lineHeight: 29, fontWeight: '700', letterSpacing: -0.65, marginTop: 3 },
+  sectionKicker: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.9, fontWeight: '700' },
+  sectionTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 24, lineHeight: 29, fontWeight: '700', letterSpacing: -0.65, marginTop: 3 },
   linkButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 3 },
-  linkText: { color: appColours.brand, fontSize: 13, fontWeight: '800' },
-  scheduleList: { backgroundColor: appColours.card, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden' },
-  scheduleRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E9E5', gap: 11 },
+  linkText: { color: theme.accent, fontSize: 13, fontWeight: '800' },
+  scheduleList: { backgroundColor: theme.surface, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
+  scheduleRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator, gap: 11 },
   dayBlock: { width: 42, alignItems: 'center' },
-  dayName: { color: '#617E80', fontSize: 12, fontWeight: '700', letterSpacing: 0.4 },
-  dayNumber: { color: '#15323B', fontFamily: appFonts.rounded, fontSize: 21, fontWeight: '600', fontVariant: ['tabular-nums'], letterSpacing: -0.4, marginTop: 1 },
+  dayName: { color: theme.secondaryText, fontSize: 12, fontWeight: '700', letterSpacing: 0.4 },
+  dayNumber: { color: theme.text, fontFamily: appFonts.rounded, fontSize: 21, fontWeight: '600', fontVariant: ['tabular-nums'], letterSpacing: -0.4, marginTop: 1 },
   iconDisc: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   rowCopy: { flex: 1 },
-  rowTitle: { color: '#12313A', fontSize: 15, fontWeight: '700' },
-  rowBody: { color: '#60787C', fontSize: 12.5, fontWeight: '500', marginTop: 2 },
+  rowTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  rowBody: { color: theme.secondaryText, fontSize: 12.5, fontWeight: '500', marginTop: 2 },
   dot: { height: 8, width: 8, borderRadius: 4 },
-  guideShortcut: { backgroundColor: '#204B48', borderRadius: 19, minHeight: 82, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  guideIcon: { height: 42, width: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0D8375' },
+  guideShortcut: { backgroundColor: theme.hero, borderRadius: 16, minHeight: 82, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  guideIcon: { height: 42, width: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.accent },
   guideCopy: { flex: 1 },
-  guideTitle: { color: '#F3FFF9', fontSize: 15, fontWeight: '700' },
-  guideBody: { color: '#B8D8CC', fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
+  guideTitle: { color: theme.heroText, fontSize: 15, fontWeight: '700' },
+  guideBody: { color: theme.heroSecondary, fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
-  pickerPage: { flex: 1, backgroundColor: appColours.background },
-  pickerHeader: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DCE5E0' },
-  modalKicker: { color: appColours.brand, fontSize: 12, letterSpacing: 0.9, fontWeight: '700' },
-  modalTitle: { color: '#14323B', fontFamily: appFonts.display, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.75, marginTop: 3 },
-  modalClose: { height: 44, width: 44, borderRadius: 22, backgroundColor: '#E8EFEB', alignItems: 'center', justifyContent: 'center' },
+  pickerPage: { flex: 1, backgroundColor: theme.background },
+  pickerHeader: { backgroundColor: theme.surface, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+  modalKicker: { color: theme.accent, fontSize: 12, letterSpacing: 0.9, fontWeight: '700' },
+  modalTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.75, marginTop: 3 },
+  modalClose: { height: 44, width: 44, borderRadius: 22, backgroundColor: theme.elevated, alignItems: 'center', justifyContent: 'center' },
   pickerContent: { padding: 18, paddingBottom: 30, gap: 16 },
-  pickerList: { backgroundColor: appColours.card, borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden' },
-  pickerRow: { minHeight: 82, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E9E5' },
-  pickerRowActive: { backgroundColor: '#F0FAF5' },
-  pickerIcon: { height: 42, width: 42, borderRadius: 15, backgroundColor: '#E4F3ED', alignItems: 'center', justifyContent: 'center' },
-  pickerIconActive: { backgroundColor: appColours.brand },
+  pickerList: { backgroundColor: theme.surface, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
+  pickerRow: { minHeight: 82, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+  pickerRowActive: { backgroundColor: theme.accentSoft },
+  pickerIcon: { height: 42, width: 42, borderRadius: 15, backgroundColor: theme.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  pickerIconActive: { backgroundColor: theme.accent },
   pickerCopy: { flex: 1 },
-  pickerTitle: { color: '#163B41', fontSize: 15, fontWeight: '700' },
-  pickerBody: { color: '#5E777B', fontSize: 12.5, lineHeight: 17, marginTop: 3 },
-  manageButton: { minHeight: 54, backgroundColor: '#E2F2EB', borderRadius: 16, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  manageButtonText: { flex: 1, color: appColours.brand, fontSize: 15, fontWeight: '700' },
-});
+  pickerTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  pickerBody: { color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, marginTop: 3 },
+  manageButton: { minHeight: 54, backgroundColor: theme.accentSoft, borderRadius: 16, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  manageButtonText: { flex: 1, color: theme.accent, fontSize: 15, fontWeight: '700' },
+  });
+}

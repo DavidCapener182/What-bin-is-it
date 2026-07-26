@@ -19,8 +19,8 @@ export function RouteHead({
       <title>{fullTitle}</title>
       <meta name="application-name" content="What Bin Is It Tonight?" />
       <meta name="description" content={description} />
-      <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F3F4F0" />
-      <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#08212D" />
+      <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
+      <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
       <link rel="canonical" href={canonical} />
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content="What Bin Is It Tonight?" />

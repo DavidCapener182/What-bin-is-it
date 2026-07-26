@@ -1,75 +1,144 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { PwaSettingsCard } from '@/components/pwa-settings-card';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta, wasteTypes } from '@/lib/data';
-import { appColours, appFonts } from '@/lib/design-system';
 import { requestNotificationPermission } from '@/lib/notifications';
-import { WasteType } from '@/lib/types';
+import { useAppTheme } from '@/lib/theme';
+import { AppearancePreference, PlaceReminderPreferences, WasteType } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { useProductState } from '@/lib/use-product-state';
 
-const times = [{ hour: 18, label: '6pm' }, { hour: 19, label: '7pm' }, { hour: 20, label: '8pm' }];
+const times = [18, 19, 20, 21];
 
-function ChevronRow({
+function Row({
   icon,
-  iconColour = appColours.brand,
-  iconBackground = '#E4F3ED',
   title,
   detail,
   onPress,
+  danger = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
-  iconColour?: string;
-  iconBackground?: string;
   title: string;
   detail: string;
   onPress: () => void;
+  danger?: boolean;
 }) {
+  const theme = useAppTheme();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.chevronRow, pressed && styles.pressed]}>
-      <View style={[styles.roundIcon, { backgroundColor: iconBackground }]}>
-        <Ionicons color={iconColour} name={icon} size={20} />
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, { borderBottomColor: theme.separator }, pressed && styles.pressed]}>
+      <View style={[styles.rowIcon, { backgroundColor: danger ? `${theme.danger}16` : theme.accentSoft }]}>
+        <Ionicons color={danger ? theme.danger : theme.accent} name={icon} size={20} />
       </View>
-      <View style={styles.infoCopy}>
-        <Text style={styles.infoTitle}>{title}</Text>
-        <Text style={styles.infoText}>{detail}</Text>
+      <View style={styles.rowCopy}>
+        <Text style={[styles.rowTitle, { color: danger ? theme.danger : theme.text }]}>{title}</Text>
+        <Text style={[styles.rowDetail, { color: theme.secondaryText }]}>{detail}</Text>
       </View>
-      <Ionicons color="#6F878A" name="chevron-forward" size={19} />
+      <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
+    </Pressable>
+  );
+}
+
+function ToggleRow({
+  title,
+  detail,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  title: string;
+  detail: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  const theme = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled }}
+      disabled={disabled}
+      onPress={() => onChange(!value)}
+      style={({ pressed }) => [styles.toggleRow, { borderBottomColor: theme.separator }, pressed && styles.pressed, disabled && styles.disabled]}>
+      <View style={styles.rowCopy}>
+        <Text style={[styles.toggleTitle, { color: theme.text }]}>{title}</Text>
+        <Text style={[styles.toggleDetail, { color: theme.secondaryText }]}>{detail}</Text>
+      </View>
+      <Switch
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        pointerEvents="none"
+        trackColor={{ false: theme.tertiaryText, true: theme.accent }}
+        value={value}
+      />
     </Pressable>
   );
 }
 
 export default function SettingsScreen() {
+  const theme = useAppTheme();
   const {
     preferences,
     addresses,
     activeAddress,
     collections,
     sourceStatus,
+    lastVerifiedAt,
     updatePreferences,
     toggleWasteType,
+    refreshCollections,
+    clearAllAppData,
   } = useAppData();
+  const {
+    appearance,
+    setAppearance,
+    reports,
+    history,
+    reminderPreferencesFor,
+    updatePlaceReminders,
+    clearProductData,
+  } = useProductState();
   const [busy, setBusy] = useState(false);
+  const placePreferences = reminderPreferencesFor(activeAddress?.id);
   const presentWasteTypes = new Set(collections.map((collection) => collection.wasteType));
   const relevantWasteTypes = collections.length
     ? wasteTypes.filter((type) => presentWasteTypes.has(type))
     : [];
 
+  function updatePlace(next: Partial<PlaceReminderPreferences>) {
+    if (!activeAddress) return;
+    updatePlaceReminders(activeAddress.id, next);
+  }
+
   async function changeNotifications(next: boolean) {
+    if (!activeAddress) {
+      router.push('/places');
+      return;
+    }
     setBusy(true);
     try {
       if (next) {
         const permission = await requestNotificationPermission();
         if (!permission.granted) {
-          Alert.alert('Notifications are off', permission.reason);
+          Alert.alert('Notifications are not ready', permission.reason);
           return;
         }
       }
+      updatePlace({ enabled: next });
       updatePreferences({ enabled: next });
     } catch {
       Alert.alert('Could not update reminders', 'Please try again.');
@@ -78,38 +147,67 @@ export default function SettingsScreen() {
     }
   }
 
-  function reportIncorrectData() {
-    const subject = encodeURIComponent('Incorrect bin collection data');
-    const body = encodeURIComponent([
-      'What is wrong?',
-      '',
-      `Place: ${activeAddress?.label ?? 'No saved place'}`,
-      `Postcode: ${activeAddress?.postcode ?? 'Not available'}`,
-      `Council: ${activeAddress?.councilName ?? 'Not available'}`,
-      `Displayed status: ${sourceStatus}`,
-      '',
-      'Expected result:',
-    ].join('\n'));
-    void Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
+  function changeReminderTime(hour: number, minute = 0) {
+    updatePlace({ reminderHour: hour, reminderMinute: minute });
+    updatePreferences({ reminderHour: hour, reminderMinute: minute });
+  }
+
+  function adjustReminderTime(amountMinutes: number) {
+    const current = placePreferences.reminderHour * 60 + placePreferences.reminderMinute;
+    const next = (current + amountMinutes + (24 * 60)) % (24 * 60);
+    changeReminderTime(Math.floor(next / 60), next % 60);
+  }
+
+  function changeWasteType(type: WasteType) {
+    updatePlace({
+      wasteTypes: {
+        ...placePreferences.wasteTypes,
+        [type]: !placePreferences.wasteTypes[type],
+      },
+    });
+    if (preferences.wasteTypes[type] === placePreferences.wasteTypes[type]) toggleWasteType(type);
+  }
+
+  function confirmClear() {
+    Alert.alert(
+      'Clear all app data?',
+      'This removes saved addresses, schedules, reminder settings, activity, and local report tracking from this device. It cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear all data',
+          style: 'destructive',
+          onPress: () => {
+            void Promise.all([clearAllAppData(), clearProductData()]).then(() => router.replace('/onboarding'));
+          },
+        },
+      ],
+    );
   }
 
   return (
     <AppShell activeRoute="/settings">
       <RouteHead
         title="Settings"
-        description="Manage saved places, bin reminders, app installation, privacy and collection data."
+        description="Manage saved places, reminders, appearance, privacy, reports and support."
         path="/settings"
       />
-      <View style={styles.page}>
-        <SafeAreaView edges={['top']} style={styles.safe}>
-          <Text style={styles.kicker}>MAKE IT YOURS</Text>
-          <Text style={styles.title}>Settings</Text>
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
+          <View style={styles.headerRow}>
+            <Pressable accessibilityLabel="Close settings" accessibilityRole="button" onPress={() => router.back()} style={styles.close}>
+              <Ionicons color={theme.accent} name="chevron-back" size={24} />
+            </Pressable>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Settings</Text>
+            <View style={styles.close} />
+          </View>
         </SafeAreaView>
+
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>PLACES</Text>
-            <View style={styles.settingCard}>
-              <ChevronRow
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Addresses</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Row
                 detail={addresses.length ? `${addresses.length} saved · ${activeAddress?.label ?? 'choose a place'}` : 'Add your first UK postcode'}
                 icon="location-outline"
                 onPress={() => router.push('/places')}
@@ -118,124 +216,205 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <PwaSettingsCard />
-
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>NOTIFICATIONS</Text>
-            <View style={styles.settingCard}>
-              <Pressable
-                accessibilityRole="switch"
-                accessibilityState={{ checked: preferences.enabled, disabled: busy }}
-                disabled={busy}
-                onPress={() => void changeNotifications(!preferences.enabled)}
-                style={({ pressed }) => [styles.notificationRow, pressed && styles.pressed]}>
-                <View style={styles.bell}><Ionicons color="#FFFFFF" name="notifications" size={22} /></View>
-                <View style={styles.heroCopy}>
-                  <Text style={styles.heroTitle}>Bin-night reminders</Text>
-                  <Text style={styles.heroText}>{addresses.length ? 'Get an alert before verified collections.' : 'Add an address to schedule reminders.'}</Text>
-                </View>
-                <Switch
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
-                  style={styles.passiveSwitch}
-                  value={preferences.enabled}
-                  thumbColor="#FFFFFF"
-                  trackColor={{ false: '#839C9E', true: '#34C759' }}
-                />
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Reminders for {activeAddress?.label ?? 'a saved place'}</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <ToggleRow
+                detail={activeAddress ? 'Alert before verified collections at this place.' : 'Add an address first.'}
+                disabled={busy || !activeAddress}
+                onChange={(value) => void changeNotifications(value)}
+                title="Bin-night reminder"
+                value={activeAddress ? placePreferences.enabled : false}
+              />
+              <ToggleRow
+                detail={`Optional ${placePreferences.morningHour}:00 prompt on collection morning.`}
+                disabled={!placePreferences.enabled}
+                onChange={(morningReminder) => updatePlace({ morningReminder })}
+                title="Morning reminder"
+                value={placePreferences.morningReminder}
+              />
+              <ToggleRow
+                detail={`A second prompt at ${placePreferences.secondReminderHour}:00 if the bin is not marked out.`}
+                disabled={!placePreferences.enabled}
+                onChange={(secondReminder) => updatePlace({ secondReminder })}
+                title="Second reminder"
+                value={placePreferences.secondReminder}
+              />
+              <ToggleRow
+                detail="Ask whether the collection was completed after the collection window."
+                disabled={!placePreferences.enabled}
+                onChange={(collectionFollowUp) => updatePlace({ collectionFollowUp })}
+                title="Collection follow-up"
+                value={placePreferences.collectionFollowUp}
+              />
+              <ToggleRow
+                detail="Notify when a newly verified date differs from the saved schedule."
+                disabled={!placePreferences.enabled}
+                onChange={(collectionChangeAlerts) => updatePlace({ collectionChangeAlerts })}
+                title="Date-change alerts"
+                value={placePreferences.collectionChangeAlerts}
+              />
+              <ToggleRow
+                detail="Notify only when a verified council service alert is available."
+                disabled={!placePreferences.enabled}
+                onChange={(disruptionAlerts) => updatePlace({ disruptionAlerts })}
+                title="Disruption alerts"
+                value={placePreferences.disruptionAlerts}
+              />
+              <ToggleRow
+                detail="Follow-up reminder when a council recollection date is recorded."
+                disabled={!placePreferences.enabled}
+                onChange={(recollectionAlerts) => updatePlace({ recollectionAlerts })}
+                title="Recollection alerts"
+                value={placePreferences.recollectionAlerts}
+              />
+            </View>
+
+            <Text style={[styles.inlineLabel, { color: theme.secondaryText }]}>Evening reminder time</Text>
+            <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
+              {([
+                [1, 'Day before'],
+                [0, 'Collection day'],
+              ] as const).map(([value, label]) => (
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: placePreferences.reminderDayOffset === value, disabled: !placePreferences.enabled }}
+                  disabled={!placePreferences.enabled}
+                  key={value}
+                  onPress={() => updatePlace({ reminderDayOffset: value })}
+                  style={[styles.segmentOption, placePreferences.reminderDayOffset === value && { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.segmentText, { color: placePreferences.reminderDayOffset === value ? theme.accent : theme.secondaryText }]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
+              {times.map((hour) => (
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0, disabled: !placePreferences.enabled }}
+                  disabled={!placePreferences.enabled}
+                  key={hour}
+                  onPress={() => changeReminderTime(hour)}
+                  style={[styles.segmentOption, placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0 && { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.segmentText, { color: placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0 ? theme.accent : theme.secondaryText }]}>{hour}:00</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={[styles.timeStepper, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Pressable accessibilityLabel="Set reminder 15 minutes earlier" accessibilityRole="button" disabled={!placePreferences.enabled} onPress={() => adjustReminderTime(-15)} style={styles.timeButton}>
+                <Ionicons color={theme.accent} name="remove" size={21} />
+              </Pressable>
+              <View style={styles.timeCopy}>
+                <Text style={[styles.timeTitle, { color: theme.text }]}>Custom time</Text>
+                <Text style={[styles.timeValue, { color: theme.secondaryText }]}>{String(placePreferences.reminderHour).padStart(2, '0')}:{String(placePreferences.reminderMinute).padStart(2, '0')}</Text>
+              </View>
+              <Pressable accessibilityLabel="Set reminder 15 minutes later" accessibilityRole="button" disabled={!placePreferences.enabled} onPress={() => adjustReminderTime(15)} style={styles.timeButton}>
+                <Ionicons color={theme.accent} name="add" size={21} />
               </Pressable>
             </View>
+
+            {relevantWasteTypes.length ? (
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                {relevantWasteTypes.map((type) => (
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: placePreferences.wasteTypes[type] }}
+                    key={type}
+                    onPress={() => changeWasteType(type)}
+                    style={[styles.binRow, { borderBottomColor: theme.separator }]}>
+                    <View style={[styles.dot, { backgroundColor: collectionMeta[type].colour }]} />
+                    <Text style={[styles.binLabel, { color: theme.text }]}>{collectionMeta[type].label}</Text>
+                    <Switch
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                      pointerEvents="none"
+                      trackColor={{ false: theme.tertiaryText, true: theme.accent }}
+                      value={placePreferences.wasteTypes[type]}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>REMINDER TIME</Text>
-            <View style={styles.timePicker}>
-              {times.map((time) => (
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Appearance</Text>
+            <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
+              {(['system', 'light', 'dark'] as AppearancePreference[]).map((value) => (
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: preferences.reminderHour === time.hour, disabled: busy }}
-                  disabled={busy}
-                  key={time.hour}
-                  onPress={() => updatePreferences({ reminderHour: time.hour })}
-                  style={[styles.timeOption, preferences.reminderHour === time.hour && styles.timeOptionActive]}>
-                  <Text style={[styles.timeText, preferences.reminderHour === time.hour && styles.timeTextActive]}>{time.label}</Text>
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: appearance === value }}
+                  key={value}
+                  onPress={() => setAppearance(value)}
+                  style={[styles.segmentOption, appearance === value && { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.segmentText, { color: appearance === value ? theme.accent : theme.secondaryText }]}>
+                    {value[0].toUpperCase() + value.slice(1)}
+                  </Text>
                 </Pressable>
               ))}
             </View>
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>BINS AT THIS PLACE</Text>
-            <View style={styles.settingCard}>
-              {relevantWasteTypes.length ? relevantWasteTypes.map((type, index) => {
-                const meta = collectionMeta[type];
-                return (
-                  <Pressable
-                    accessibilityRole="switch"
-                    accessibilityState={{ checked: preferences.wasteTypes[type], disabled: busy }}
-                    disabled={busy}
-                    key={type}
-                    onPress={() => toggleWasteType(type as WasteType)}
-                    style={({ pressed }) => [styles.binSetting, index !== relevantWasteTypes.length - 1 && styles.binBorder, pressed && styles.pressed]}>
-                    <View style={[styles.typeDot, { backgroundColor: meta.colour }]} />
-                    <Text style={styles.binLabel}>{meta.label}</Text>
-                    <Switch
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                      style={styles.passiveSwitch}
-                      value={preferences.wasteTypes[type]}
-                      thumbColor="#FFFFFF"
-                      trackColor={{ false: '#B9C8C6', true: '#34C759' }}
-                    />
-                  </Pressable>
-                );
-              }) : (
-                <View style={styles.inlineEmpty}>
-                  <Ionicons color="#627D80" name="information-circle-outline" size={21} />
-                  <Text style={styles.inlineEmptyText}>Bin choices will appear after this place returns verified collection dates.</Text>
-                </View>
-              )}
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Reports and activity</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Row detail="Use after a verified collection window has passed" icon="alert-circle-outline" onPress={() => router.push('/report-missed')} title="Report a missed collection" />
+              <Row detail={`${reports.length} locally tracked`} icon="document-text-outline" onPress={() => router.push('/reports')} title="Missed collection reports" />
+              <Row detail={`${history.length} recorded actions`} icon="time-outline" onPress={() => router.push('/history')} title="Activity history" />
             </View>
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>COLLECTION DATA</Text>
-            <View style={styles.settingCard}>
-              <ChevronRow
-                detail={activeAddress ? sourceStatus : 'Add an address to connect its council'}
-                icon="checkmark-circle-outline"
-                onPress={() => router.push('/schedule')}
-                title="Verified schedule"
-              />
-              <ChevronRow
-                detail="Tell us about a wrong date, bin type or missing collection"
-                icon="flag-outline"
-                iconBackground="#F8E9E5"
-                iconColour="#A74638"
-                onPress={reportIncorrectData}
-                title="Report incorrect data"
-              />
-            </View>
-          </View>
+          <PwaSettingsCard />
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>DATA & PRIVACY</Text>
-            <View style={styles.settingCard}>
-              <View style={styles.privacyRow}>
-                <Ionicons color={appColours.brand} name="lock-closed-outline" size={20} />
-                <Text style={styles.privacyText}>Saved places and preferences stay on this device. Your postcode and selected council property are sent only when checking live dates. Location is requested only after you tap the location button.</Text>
+          {Platform.OS !== 'web' ? (
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>App notifications</Text>
+              <View style={[styles.platformNote, { backgroundColor: theme.accentSoft }]}>
+                <Ionicons color={theme.accent} name="phone-portrait-outline" size={21} />
+                <Text style={[styles.platformText, { color: theme.text }]}>This installed app uses your phone’s notification settings. If alerts are blocked, enable them in iOS or Android Settings.</Text>
               </View>
             </View>
+          ) : null}
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Collection data and privacy</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Row detail={activeAddress?.councilName ?? 'Add an address to connect its council'} icon="business-outline" onPress={() => router.push('/schedule')} title="Council" />
+              <Row detail={lastVerifiedAt ? new Date(lastVerifiedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : sourceStatus} icon="refresh-outline" onPress={() => void refreshCollections()} title="Refresh verified dates" />
+              <Row detail="See how council dates, locations and report routes are sourced" icon="server-outline" onPress={() => router.push('/data-sources')} title="View data sources" />
+              <View style={styles.privacyRow}>
+                <Ionicons color={theme.accent} name="lock-closed-outline" size={20} />
+                <Text style={[styles.privacyText, { color: theme.secondaryText }]}>
+                  Saved places, local report tracking, and preferences stay on this device. Postcode and property identifiers are sent only when you request live council data.
+                </Text>
+              </View>
+              <Row danger detail="Remove all local addresses, schedules, reports and preferences" icon="trash-outline" onPress={confirmClear} title="Clear all app data" />
+            </View>
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>ABOUT</Text>
-            <View style={styles.settingCard}>
-              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>App</Text><Text style={styles.aboutValue}>What Bin Is It Tonight?</Text></View>
-              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>Version</Text><Text style={styles.aboutValue}>1.0.0</Text></View>
-              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>Platform</Text><Text style={styles.aboutValue}>{Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android' : 'Web app'}</Text></View>
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Help and feedback</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Row detail="Wrong date, bin, address or council in the app" icon="flag-outline" onPress={() => router.push('/report-incorrect')} title="Report incorrect app information" />
+              <Row detail="Help with using the app" icon="help-circle-outline" onPress={() => router.push({ pathname: '/support', params: { topic: 'app-help' } })} title="Help" />
+              <Row detail="Tell us about a crash or feature that did not work" icon="bug-outline" onPress={() => router.push({ pathname: '/support', params: { topic: 'app-problem' } })} title="Report an app problem" />
+              <Row detail="Request another household item or search term" icon="add-circle-outline" onPress={() => router.push({ pathname: '/support', params: { topic: 'guide-item' } })} title="Suggest an item" />
+              <Row detail="Open the support form" icon="mail-outline" onPress={() => router.push('/support')} title="Contact support" />
             </View>
           </View>
-          <Text style={styles.footer}>Built to make collection day simple.</Text>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>About</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <View style={styles.about}>
+                <Text style={[styles.aboutName, { color: theme.text }]}>What Bin Is It Tonight?</Text>
+                <Text style={[styles.aboutDetail, { color: theme.secondaryText }]}>Version 1.1.0 · Verified council dates only</Text>
+              </View>
+              <Row detail="How local information is stored and requested" icon="lock-closed-outline" onPress={() => router.push('/privacy')} title="Privacy" />
+              <Row detail="Important limits and safe-use information" icon="document-outline" onPress={() => router.push('/terms')} title="Terms" />
+              <Row detail="Council, postcode, report and map providers" icon="server-outline" onPress={() => router.push('/data-sources')} title="Data sources" />
+            </View>
+          </View>
         </ScrollView>
       </View>
     </AppShell>
@@ -243,41 +422,42 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: appColours.background },
-  safe: { backgroundColor: '#FFFFFF', paddingTop: 14, paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DDE6E1' },
-  kicker: { color: '#1D7A70', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 1, fontWeight: '700' },
-  title: { color: '#14323B', fontFamily: appFonts.display, fontSize: 32, lineHeight: 38, fontWeight: '700', letterSpacing: -1.05, marginTop: 3 },
-  content: { padding: 18, paddingBottom: 122, gap: 22 },
+  page: { flex: 1 },
+  header: { borderBottomWidth: StyleSheet.hairlineWidth },
+  headerRow: { height: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  close: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
+  content: { padding: 16, paddingBottom: 42, gap: 24 },
   section: { gap: 9 },
-  sectionLabel: { color: '#5D797C', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.85, fontWeight: '700', paddingHorizontal: 2 },
-  settingCard: { backgroundColor: appColours.card, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden', shadowColor: '#18333A', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  chevronRow: { minHeight: 68, padding: 14, flexDirection: 'row', gap: 11, alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4EBE7' },
-  roundIcon: { height: 40, width: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  infoCopy: { flex: 1 },
-  infoTitle: { color: '#1D3E43', fontSize: 15, fontWeight: '700' },
-  infoText: { color: '#5E777B', fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
-  notificationRow: { minHeight: 92, backgroundColor: '#092D39', padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bell: { height: 44, width: 44, borderRadius: 15, backgroundColor: appColours.brand, alignItems: 'center', justifyContent: 'center' },
-  heroCopy: { flex: 1 },
-  heroTitle: { color: '#F1FFF8', fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
-  heroText: { color: '#B4D8CB', fontSize: 12.5, lineHeight: 17, marginTop: 4, fontWeight: '500' },
-  timePicker: { flexDirection: 'row', backgroundColor: '#DCE4E0', padding: 3, borderRadius: 13, gap: 2 },
-  timeOption: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  timeOptionActive: { backgroundColor: '#FFFFFF', shadowColor: '#12323A', shadowOpacity: 0.11, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  timeText: { color: '#587376', fontFamily: appFonts.text, fontSize: 14, fontWeight: '600' },
-  timeTextActive: { color: appColours.brand, fontWeight: '700' },
-  binSetting: { minHeight: 60, paddingHorizontal: 15, alignItems: 'center', flexDirection: 'row', gap: 10 },
-  binBorder: { borderBottomColor: '#E5ECE7', borderBottomWidth: StyleSheet.hairlineWidth },
-  typeDot: { width: 12, height: 12, borderRadius: 6 },
-  binLabel: { flex: 1, color: '#1F4146', fontSize: 14.5, fontWeight: '700' },
-  passiveSwitch: { pointerEvents: 'none' },
-  inlineEmpty: { minHeight: 72, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  inlineEmptyText: { color: '#587376', fontSize: 13, lineHeight: 18, flex: 1 },
-  privacyRow: { padding: 15, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  privacyText: { color: '#536F73', fontSize: 13, lineHeight: 19, flex: 1 },
-  aboutRow: { minHeight: 50, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5ECE7', gap: 14 },
-  aboutLabel: { color: '#536D70', fontSize: 13, fontWeight: '600' },
-  aboutValue: { color: '#203F44', fontSize: 13, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
-  footer: { color: '#718587', textAlign: 'center', fontSize: 12.5, marginTop: -4 },
-  pressed: { opacity: 0.68, transform: [{ scale: 0.985 }] },
+  sectionLabel: { fontSize: 13, fontWeight: '600', paddingHorizontal: 3 },
+  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, overflow: 'hidden' },
+  row: { minHeight: 66, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowIcon: { width: 40, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  rowCopy: { flex: 1 },
+  rowTitle: { fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  rowDetail: { fontSize: 12.5, lineHeight: 17, marginTop: 3 },
+  toggleRow: { minHeight: 66, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  toggleTitle: { fontSize: 14.5, lineHeight: 19, fontWeight: '600' },
+  toggleDetail: { fontSize: 12.5, lineHeight: 17, marginTop: 3 },
+  inlineLabel: { fontSize: 12.5, fontWeight: '600', paddingHorizontal: 3, marginTop: 3 },
+  segment: { flexDirection: 'row', padding: 3, borderRadius: 11, gap: 2 },
+  segmentOption: { flex: 1, minHeight: 42, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segmentText: { fontSize: 13.5, fontWeight: '600' },
+  timeStepper: { minHeight: 60, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  timeButton: { width: 52, minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  timeCopy: { alignItems: 'center' },
+  timeTitle: { fontSize: 13, fontWeight: '600' },
+  timeValue: { fontSize: 13, marginTop: 2, fontVariant: ['tabular-nums'] },
+  binRow: { minHeight: 56, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  binLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
+  platformNote: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  platformText: { flex: 1, fontSize: 13.5, lineHeight: 19 },
+  privacyRow: { padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  privacyText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  about: { padding: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  aboutName: { fontSize: 15, fontWeight: '700' },
+  aboutDetail: { fontSize: 13, marginTop: 5 },
+  pressed: { opacity: 0.65 },
+  disabled: { opacity: 0.45 },
 });

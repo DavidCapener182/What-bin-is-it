@@ -47,7 +47,9 @@ test('keeps only bounded future bin reminders', () => {
   ], new Date('2026-07-26T12:00:00.000Z'));
 
   assert.equal(reminders.length, 1);
-  assert.equal(reminders[0].tag, 'collection-general-1');
+  assert.equal(reminders[0].tag, 'reminder-general-2026-07-31');
+  assert.equal(reminders[0].title, 'Bin reminder');
+  assert.equal(reminders[0].url, '/schedule');
   assert.throws(() => parsePushReminders([{
     ...reminders[0],
     triggerAt: '2025-01-01T12:00:00.000Z',

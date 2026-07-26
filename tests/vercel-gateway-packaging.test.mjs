@@ -40,6 +40,36 @@ test('the council gateway still accepts the relative path used by the app', () =
   assert.equal(invoked.status, 0, invoked.stderr || invoked.stdout);
 });
 
+test('builds a refreshable all-day calendar from exact source dates', () => {
+  const invoked = spawnSync(
+    process.execPath,
+    [
+      '--no-warnings',
+      '--experimental-strip-types',
+      '--input-type=module',
+      '-e',
+      `
+        const { calendarResponse } = await import(${JSON.stringify(gatewayPath)});
+        const response = calendarResponse({
+          councilName: 'Test Council',
+          providerId: 'lad-e00000001',
+          collections: [{ date: '2026-07-31', wasteType: 'general', label: 'General waste' }],
+        }, new Set(['general']));
+        const calendar = await response.text();
+        for (const expected of [
+          'DTSTART;VALUE=DATE:20260731',
+          'DTEND;VALUE=DATE:20260801',
+          'X-PUBLISHED-TTL:PT12H',
+        ]) {
+          if (!calendar.includes(expected)) throw new Error('Missing ' + expected);
+        }
+      `,
+    ],
+    { encoding: 'utf8' },
+  );
+  assert.equal(invoked.status, 0, invoked.stderr || invoked.stdout);
+});
+
 test('builds a Nitro Vercel output with durable workflows and bundled Expo assets', () => {
   assert.match(nitroConfigSource, /modules:\s*\['workflow\/nitro'\]/);
   assert.match(nitroConfigSource, /preset:\s*'vercel'/);

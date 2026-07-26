@@ -4,10 +4,9 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { verifiedCollectionsOnly } from '@/lib/collection-safety';
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
 import { sortCollections } from '@/lib/data';
-import { rescheduleCollectionReminders } from '@/lib/notifications';
 import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
-import { Collection, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
+import { Collection, DisruptionAlert, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
 
 const storageKey = '@what-bin-is-it-tonight/state-v4';
 const previousStorageKey = '@what-bin-is-it-tonight/state-v3';
@@ -20,17 +19,19 @@ const migratedStatus = 'Saved place restored · select this postcode again to ch
 const defaultPreferences: NotificationPreferences = {
   enabled: false,
   reminderHour: 19,
+  reminderMinute: 0,
   reminderDayOffset: 1,
   wasteTypes: { general: true, recycling: true, garden: true, food: true, other: true },
 };
 
-type AddressSchedule = {
+export type AddressSchedule = {
   collections: Collection[];
   sourceStatus: string;
   lastVerifiedAt?: string;
   lastError?: string;
   completedDate?: string;
   changeNotice?: string;
+  disruptions?: DisruptionAlert[];
 };
 export type CollectionDataState = 'no-address' | 'ready' | 'refreshing' | 'cached' | 'empty' | 'error';
 type State = {
@@ -52,6 +53,7 @@ export type CollectionRefreshOutcome = {
 };
 type AppDataContextValue = {
   addresses: SavedAddress[];
+  schedulesByAddressId: Record<string, AddressSchedule>;
   activeAddress?: SavedAddress;
   collections: Collection[];
   preferences: NotificationPreferences;
@@ -61,6 +63,7 @@ type AppDataContextValue = {
   lastError?: string;
   completedDate?: string;
   changeNotice?: string;
+  disruptions: DisruptionAlert[];
   ready: boolean;
   refreshing: boolean;
   setActiveAddress: (id: string) => void;
@@ -70,6 +73,7 @@ type AppDataContextValue = {
   toggleWasteType: (type: WasteType) => void;
   refreshCollections: () => Promise<CollectionRefreshOutcome | undefined>;
   markCollectionDateComplete: (date: string) => void;
+  clearAllAppData: () => Promise<void>;
 };
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
@@ -117,6 +121,23 @@ function validTimestamp(value: unknown) {
     : undefined;
 }
 
+function validDisruptions(value: unknown, addressId: string): DisruptionAlert[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((alert): alert is DisruptionAlert => (
+    Boolean(alert)
+    && typeof alert === 'object'
+    && typeof alert.id === 'string'
+    && typeof alert.title === 'string'
+    && typeof alert.detail === 'string'
+    && typeof alert.sourceUrl === 'string'
+    && alert.sourceUrl.startsWith('https://')
+    && typeof alert.startsAt === 'string'
+    && !Number.isNaN(Date.parse(alert.startsAt))
+    && typeof alert.verifiedAt === 'string'
+    && !Number.isNaN(Date.parse(alert.verifiedAt))
+  )).slice(0, 20).map((alert) => ({ ...alert, addressId }));
+}
+
 function normalisePreferences(value: unknown): NotificationPreferences {
   if (!value || typeof value !== 'object') return defaultPreferences;
   const preferences = value as Partial<NotificationPreferences>;
@@ -126,6 +147,9 @@ function normalisePreferences(value: unknown): NotificationPreferences {
     reminderHour: typeof preferences.reminderHour === 'number' && preferences.reminderHour >= 0 && preferences.reminderHour <= 23
       ? Math.round(preferences.reminderHour)
       : defaultPreferences.reminderHour,
+    reminderMinute: typeof preferences.reminderMinute === 'number' && preferences.reminderMinute >= 0 && preferences.reminderMinute <= 59
+      ? Math.round(preferences.reminderMinute)
+      : defaultPreferences.reminderMinute,
     reminderDayOffset: preferences.reminderDayOffset === 0 ? 0 : 1,
     wasteTypes: {
       general: typeof storedWasteTypes?.general === 'boolean' ? storedWasteTypes.general : true,
@@ -191,6 +215,7 @@ function hydrateCurrent(value: unknown): State | undefined {
       changeNotice: typeof rawSchedule?.changeNotice === 'string'
         ? rawSchedule.changeNotice.slice(0, 240)
         : undefined,
+      disruptions: validDisruptions(rawSchedule?.disruptions, address.id),
     };
     return result;
   }, {});
@@ -319,22 +344,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           : activeSchedule.lastError
             ? 'error'
             : 'empty';
-  const notificationCollections = useMemo(
-    () => state.addresses.flatMap((address) => (
-      state.schedulesByAddressId[address.id]?.collections.map((collection) => ({
-        ...collection,
-        id: `${address.id}:${collection.id}`,
-        placeLabel: address.label || address.line1,
-      })) ?? []
-    )),
-    [state.addresses, state.schedulesByAddressId]
-  );
-
-  useEffect(() => {
-    if (!ready) return;
-    void rescheduleCollectionReminders(notificationCollections, state.preferences).catch(() => undefined);
-  }, [notificationCollections, ready, state.preferences]);
-
   const refreshAddress = useCallback(async (targetAddress: SavedAddress, clearExisting: boolean): Promise<CollectionRefreshOutcome> => {
     setRefreshing(true);
     if (clearExisting) {
@@ -346,6 +355,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             collections: [],
             sourceStatus: `${targetAddress.councilName} found · checking live collection dates…`,
             lastError: undefined,
+            disruptions: [],
           },
         },
       }));
@@ -369,6 +379,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
               current.schedulesByAddressId[targetAddress.id]?.collections ?? [],
               collections,
             ),
+            disruptions: (result.alerts ?? []).map((alert) => ({
+              ...alert,
+              addressId: targetAddress.id,
+            })),
           },
         },
       }));
@@ -471,6 +485,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppDataContextValue>(() => ({
     addresses: state.addresses,
+    schedulesByAddressId: state.schedulesByAddressId,
     activeAddress,
     collections: activeSchedule.collections,
     preferences: state.preferences,
@@ -480,6 +495,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     lastError: activeSchedule.lastError,
     completedDate: activeSchedule.completedDate,
     changeNotice: activeSchedule.changeNotice,
+    disruptions: activeSchedule.disruptions ?? [],
     ready,
     refreshing,
     setActiveAddress: (id) => setState((current) => (
@@ -524,11 +540,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         };
       });
     },
+    clearAllAppData: async () => {
+      await AsyncStorage.multiRemove([storageKey, previousStorageKey, olderStorageKey, legacyStorageKey]);
+      setState(buildInitialState());
+      autoRefreshAttempts.current.clear();
+    },
   }), [
     activeAddress,
     activeSchedule.collections,
     activeSchedule.completedDate,
     activeSchedule.changeNotice,
+    activeSchedule.disruptions,
     activeSchedule.lastError,
     activeSchedule.lastVerifiedAt,
     activeSchedule.sourceStatus,
@@ -539,6 +561,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     refreshing,
     state.activeAddressId,
     state.addresses,
+    state.schedulesByAddressId,
     state.preferences,
   ]);
 
