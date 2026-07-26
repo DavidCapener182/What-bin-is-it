@@ -1,16 +1,19 @@
 {
   "expo": {
-    "name": "create-me-the-uk-bin-app",
-    "slug": "create-me-the-uk-bin-app",
+    "name": "BinDay UK",
+    "slug": "binday-uk",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "createmetheukbinapp",
-    "userInterfaceStyle": "automatic",
+    "scheme": "bindayuk",
+    "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "uk.binday.app",
+      "supportsTablet": true
     },
     "android": {
+      "package": "uk.binday.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -31,6 +34,13 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B7469",
+          "defaultChannel": "bin-reminders"
         }
       ]
     ],

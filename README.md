@@ -1,56 +1,83 @@
-# Welcome to your Expo app 👋
+# BinDay UK
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+One clear answer to the most important household question: **which bin goes out next?**
 
-## Get started
+BinDay UK is a native-feeling Expo app for iPhone and Android. It keeps a household’s saved places, surfaces the next collection at a glance, and schedules a reminder before collection day.
 
-1. Install dependencies
+## What is already built
 
-   ```bash
-   npm install
-   ```
+- iOS, Android, and web-preview Expo application with four polished product surfaces: Today, Schedule, Places, and Settings.
+- A local-first saved-place store, with UK postcode validation and a postcode lookup through the public Postcodes.io service.
+- A normalised `CouncilProvider` client contract for collection dates; no screen code is coupled to a specific council website.
+- Local collection reminders with per-bin choices and configurable evening reminder time.
+- A companion, deployable Cloudflare Worker skeleton under `services/council-gateway`, designed to keep council-specific logic off users’ phones.
+- Apple and Android application identifiers, EAS build profiles, notification plugin configuration, and an environment template.
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run the app
 
 ```bash
-npm run reset-project
+npm install
+npm run start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Then press `i` for the iOS Simulator, `a` for Android, or `w` for the web preview. You can also use:
 
-### Other setup steps
+```bash
+npm run ios
+npm run android
+npm run web
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+The app opens with clearly marked sample collection dates so the UI can be explored immediately. They are intentionally not presented as council data.
 
-## Learn more
+## Connect live council collection data
 
-To learn more about developing your project with Expo, look at the following resources:
+The client expects a single national gateway URL rather than trying to scrape a different council site from every phone:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+cp .env.example .env
+```
 
-## Join the community
+Set `EXPO_PUBLIC_COUNCIL_API_BASE` to the deployed gateway, then restart Expo. The app POSTs to:
 
-Join our community of developers creating universal apps.
+```text
+POST /v1/collections
+{ "postcode": "M1 1AE", "addressId": "...", "providerId": "gateway" }
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+and expects this stable response:
+
+```json
+{
+  "councilName": "Example Council",
+  "providerId": "example-council",
+  "verifiedAt": "2026-07-26T12:00:00.000Z",
+  "collections": [
+    { "date": "2026-07-28", "wasteType": "recycling" }
+  ]
+}
+```
+
+The worker is where each local authority gets its curated API, data-feed, or approved extraction adapter. This is the honest route to UK-wide coverage: council collection data is not published through one consistent national API, and it must not be fabricated. Add a tested adapter per source, cache results in the gateway, and return the normalised contract above.
+
+## Notifications
+
+Local reminders work on device once the user opts in. Remote push needs an EAS development/production build plus Apple/FCM credentials and an Expo project ID; Expo Go cannot test Android remote push. The app’s local scheduled notifications are independent of that remote-push setup.
+
+## Build for the stores
+
+Install and authenticate EAS CLI, then create the relevant build:
+
+```bash
+npx eas-cli build --platform ios --profile preview
+npx eas-cli build --platform android --profile preview
+```
+
+Before App Store / Play submission, replace the starter artwork under `assets/images/`, register the bundle IDs in the relevant developer accounts, deploy the gateway, and complete notification credentials.
+
+## Quality checks
+
+```bash
+npm run typecheck
+npm run lint
+```
