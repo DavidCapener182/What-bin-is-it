@@ -475,8 +475,29 @@ var index_default = {
 
 // api/_gateway/entry.ts
 var config = { runtime: "nodejs" };
-function handler(request) {
-  return index_default.fetch(request);
+function requestHeaders(values) {
+  const headers2 = new Headers();
+  for (const [name, value] of Object.entries(values)) {
+    if (Array.isArray(value)) headers2.set(name, value.join(", "));
+    else if (value !== void 0) headers2.set(name, value);
+  }
+  return headers2;
+}
+function requestBody(method, body) {
+  if (method === "GET" || method === "HEAD" || body === void 0) return void 0;
+  return typeof body === "string" ? body : JSON.stringify(body);
+}
+async function handler(request, response) {
+  const method = request.method?.toUpperCase() ?? "GET";
+  const url = new URL(request.url ?? "/", "https://what-bin-is-it-tonight.local");
+  const result = await index_default.fetch(new Request(url, {
+    body: requestBody(method, request.body),
+    headers: requestHeaders(request.headers),
+    method
+  }));
+  response.statusCode = result.status;
+  result.headers.forEach((value, name) => response.setHeader(name, value));
+  response.end(await result.text());
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

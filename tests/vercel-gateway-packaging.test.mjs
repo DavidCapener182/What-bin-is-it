@@ -40,6 +40,33 @@ test('ships a self-contained CommonJS function instead of raw TypeScript gateway
   assert.equal(loaded.status, 0, loaded.stderr || loaded.stdout);
 });
 
+test('accepts the relative request URLs supplied by the Vercel Node runtime', () => {
+  const invoked = spawnSync(
+    process.execPath,
+    ['-e', `
+      const route = require(${JSON.stringify(runtimeEntryPath)}).default;
+      const response = {
+        statusCode: 200,
+        headers: {},
+        setHeader(name, value) { this.headers[name] = value; },
+        end(body) { this.body = body; },
+      };
+      (async () => {
+        await route({
+          method: 'GET',
+          url: '/api/v1/addresses?postcode=BAD&providerId=lad-e08000011&resource=addresses',
+          headers: { host: 'what-bin-is-it-tonight.vercel.app', 'x-forwarded-proto': 'https' },
+        }, response);
+        if (response.statusCode !== 400) {
+          throw new Error('Expected 400, received ' + response.statusCode + ': ' + response.body);
+        }
+      })().catch((error) => { console.error(error); process.exit(1); });
+    `],
+    { encoding: 'utf8' },
+  );
+  assert.equal(invoked.status, 0, invoked.stderr || invoked.stdout);
+});
+
 test('configures Vercel to execute the bundled JavaScript gateway', () => {
   assert.equal(
     vercelConfig.functions?.['api/v1/[resource].js']?.maxDuration,
