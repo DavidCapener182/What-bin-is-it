@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
 import { makeSampleCollections, sortCollections } from '@/lib/data';
 import { rescheduleCollectionReminders } from '@/lib/notifications';
+import { matchingAddressId } from '@/lib/place-resolution';
 import { Collection, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
 
 const storageKey = '@what-bin-is-it-tonight/state-v2';
@@ -42,6 +43,10 @@ type LegacyState = {
   preferences?: NotificationPreferences;
   sourceStatus?: string;
 };
+export type CollectionRefreshOutcome = {
+  verified: boolean;
+  message: string;
+};
 type AppDataContextValue = {
   addresses: SavedAddress[];
   activeAddress?: SavedAddress;
@@ -51,10 +56,10 @@ type AppDataContextValue = {
   ready: boolean;
   refreshing: boolean;
   setActiveAddress: (id: string) => void;
-  addAddress: (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => void;
+  addAddress: (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => Promise<CollectionRefreshOutcome>;
   updatePreferences: (next: Partial<NotificationPreferences>) => void;
   toggleWasteType: (type: WasteType) => void;
-  refreshCollections: () => Promise<void>;
+  refreshCollections: () => Promise<CollectionRefreshOutcome | undefined>;
 };
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
@@ -243,6 +248,96 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     void rescheduleCollectionReminders(activeSchedule.collections, state.preferences).catch(() => undefined);
   }, [activeSchedule.collections, ready, state.activeAddressId, state.preferences]);
 
+  const refreshAddress = useCallback(async (targetAddress: SavedAddress, clearExisting: boolean): Promise<CollectionRefreshOutcome> => {
+    setRefreshing(true);
+    if (clearExisting) {
+      setState((current) => ({
+        ...current,
+        schedulesByAddressId: {
+          ...current.schedulesByAddressId,
+          [targetAddress.id]: {
+            collections: [],
+            sourceStatus: `${targetAddress.councilName} found · checking live collection dates…`,
+          },
+        },
+      }));
+    }
+    try {
+      const result = await fetchCollectionsForAddress(targetAddress);
+      const collections = sortCollections(result.collections);
+      const sourceStatus = result.notice?.trim()
+        || verifiedSourceStatus(result.councilName, result.verifiedAt);
+      setState((current) => ({
+        ...current,
+        schedulesByAddressId: {
+          ...current.schedulesByAddressId,
+          [targetAddress.id]: { collections, sourceStatus },
+        },
+      }));
+      return { verified: true, message: sourceStatus };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'We could not refresh your collection schedule.';
+      setState((current) => ({
+        ...current,
+        schedulesByAddressId: {
+          ...current.schedulesByAddressId,
+          [targetAddress.id]: {
+            collections: clearExisting
+              ? []
+              : current.schedulesByAddressId[targetAddress.id]?.collections ?? [],
+            sourceStatus: message,
+          },
+        },
+      }));
+      return { verified: false, message };
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  const addAddress = useCallback(async (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => {
+    const existingId = matchingAddressId(state.addresses, address.postcode);
+    const existing = existingId
+      ? state.addresses.find((savedAddress) => savedAddress.id === existingId)
+      : undefined;
+    const targetAddress: SavedAddress = {
+      ...existing,
+      ...address,
+      id: existing?.id ?? `address-${address.postcode.replace(/[^A-Z0-9]/gi, '').toLowerCase()}`,
+      isPrimary: existing?.isPrimary ?? state.addresses.length === 0,
+    };
+
+    setState((current) => {
+      const currentExistingId = matchingAddressId(current.addresses, targetAddress.postcode);
+      const currentExistingIndex = current.addresses.findIndex((savedAddress) => savedAddress.id === currentExistingId);
+      const resolvedTarget = currentExistingIndex >= 0
+        ? {
+            ...current.addresses[currentExistingIndex],
+            ...targetAddress,
+            id: current.addresses[currentExistingIndex].id,
+            isPrimary: current.addresses[currentExistingIndex].isPrimary,
+          }
+        : targetAddress;
+      const addresses = currentExistingIndex >= 0
+        ? current.addresses.map((savedAddress, index) => index === currentExistingIndex ? resolvedTarget : savedAddress)
+        : [...current.addresses, resolvedTarget];
+      return {
+        ...current,
+        addresses,
+        activeAddressId: resolvedTarget.id,
+        schedulesByAddressId: {
+          ...current.schedulesByAddressId,
+          [resolvedTarget.id]: {
+            collections: [],
+            sourceStatus: `${resolvedTarget.councilName} found · checking live collection dates…`,
+          },
+        },
+      };
+    });
+
+    return refreshAddress(targetAddress, true);
+  }, [refreshAddress, state.addresses]);
+
   const value = useMemo<AppDataContextValue>(() => ({
     addresses: state.addresses,
     activeAddress,
@@ -256,19 +351,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         ? { ...current, activeAddressId: id }
         : current
     )),
-    addAddress: (address) => setState((current) => {
-      const id = `address-${Date.now()}`;
-      const next = { ...address, id, isPrimary: current.addresses.length === 0 };
-      return {
-        ...current,
-        addresses: [...current.addresses, next],
-        activeAddressId: id,
-        schedulesByAddressId: {
-          ...current.schedulesByAddressId,
-          [id]: { collections: [], sourceStatus: emptyStatus },
-        },
-      };
-    }),
+    addAddress,
     updatePreferences: (next) => setState((current) => ({
       ...current,
       preferences: { ...current.preferences, ...next },
@@ -285,37 +368,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     })),
     refreshCollections: async () => {
       if (!activeAddress) return;
-      const targetAddress = activeAddress;
-      setRefreshing(true);
-      try {
-        const result = await fetchCollectionsForAddress(targetAddress);
-        const collections = sortCollections(result.collections);
-        const sourceStatus = result.notice?.trim()
-          || verifiedSourceStatus(result.councilName, result.verifiedAt);
-        setState((current) => ({
-          ...current,
-          schedulesByAddressId: {
-            ...current.schedulesByAddressId,
-            [targetAddress.id]: { collections, sourceStatus },
-          },
-        }));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'We could not refresh your collection schedule.';
-        setState((current) => ({
-          ...current,
-          schedulesByAddressId: {
-            ...current.schedulesByAddressId,
-            [targetAddress.id]: {
-              collections: current.schedulesByAddressId[targetAddress.id]?.collections ?? [],
-              sourceStatus: message,
-            },
-          },
-        }));
-      } finally {
-        setRefreshing(false);
-      }
+      return refreshAddress(activeAddress, false);
     },
-  }), [activeAddress, activeSchedule.collections, activeSchedule.sourceStatus, ready, refreshing, state.addresses, state.preferences]);
+  }), [activeAddress, activeSchedule.collections, activeSchedule.sourceStatus, addAddress, ready, refreshAddress, refreshing, state.addresses, state.preferences]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }

@@ -1,9 +1,34 @@
 import { Collection, CouncilService, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
 import { findCouncilByCode, findCouncilByName } from '@/lib/council-directory';
+import {
+  buildNearestPostcodeUrl,
+  isUkPostcode,
+  normalisePostcode,
+} from '@/lib/place-resolution';
+
+export { isUkPostcode, normalisePostcode } from '@/lib/place-resolution';
 
 type GatewayCollection = { date: string; wasteType: WasteType };
 type GatewayResponse = { councilName: string; providerId: string; collections: GatewayCollection[]; verifiedAt: string; notice?: string };
 type GatewayServicesResponse = { services: Omit<CouncilService, 'source'>[] };
+type PostcodesIoResult = {
+  postcode?: string;
+  admin_district?: string;
+  parish?: string;
+  region?: string;
+  latitude?: number;
+  longitude?: number;
+  codes?: { admin_district?: string };
+};
+export type ResolvedPlace = {
+  postcode: string;
+  line1: string;
+  councilName?: string;
+  providerId?: string;
+  councilCode?: string;
+  latitude?: number;
+  longitude?: number;
+};
 
 const apiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
 const validWasteTypes = new Set<WasteType>(['general', 'recycling', 'garden', 'food']);
@@ -45,23 +70,13 @@ async function gatewayError(response: Response, fallback: string) {
   return fallback;
 }
 
-export function normalisePostcode(input: string) {
-  const compact = input.trim().toUpperCase().replace(/\s+/g, '');
-  return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
-}
-
-export function isUkPostcode(input: string) {
-  const postcode = normalisePostcode(input);
-  return /^(GIR 0AA|(?:(?:[A-PR-UWYZ]\d[\dA-HJKSTUW]?|[A-PR-UWYZ][A-HK-Y]\d[\dABEHMNPRVWXY]?) \d[ABD-HJLNP-UW-Z]{2}))$/i.test(postcode);
-}
-
 /**
  * The app never scrapes a council web page. The gateway owns council-specific adapters,
  * normalises their result, caches it, and returns this stable contract to mobile clients.
  */
 export async function fetchCollectionsForAddress(address: SavedAddress): Promise<ProviderResult> {
   if (!apiBase) {
-    throw new Error('The national council gateway is not configured for this build.');
+    throw new Error(`${address.councilName} is selected, but live collection dates are not connected in this build yet.`);
   }
 
   const response = await fetchWithTimeout(`${apiBase}/v1/collections`, {
@@ -98,33 +113,40 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
   };
 }
 
-export async function lookupPostcode(postcodeInput: string): Promise<{ line1: string; councilName?: string; providerId?: string; councilCode?: string; latitude?: number; longitude?: number }> {
+function resolvePostcodeResult(result: PostcodesIoResult, fallbackPostcode?: string): ResolvedPlace {
+  const postcode = normalisePostcode(result.postcode ?? fallbackPostcode ?? '');
+  if (!isUkPostcode(postcode)) throw new Error('We could not match a full postcode to that location.');
+  const matchedCouncil = findCouncilByCode(result.codes?.admin_district)
+    ?? findCouncilByName(result.admin_district);
+  return {
+    postcode,
+    line1: result.parish || result.admin_district || result.region || postcode,
+    councilName: matchedCouncil?.name ?? result.admin_district,
+    providerId: matchedCouncil?.providerId,
+    councilCode: matchedCouncil?.code,
+    latitude: isFiniteCoordinate(result.latitude, -90, 90) ? result.latitude : undefined,
+    longitude: isFiniteCoordinate(result.longitude, -180, 180) ? result.longitude : undefined,
+  };
+}
+
+export async function lookupPostcode(postcodeInput: string): Promise<ResolvedPlace> {
   const postcode = normalisePostcode(postcodeInput);
   if (!isUkPostcode(postcode)) throw new Error('Enter a full UK postcode, for example M1 1AE.');
 
   const response = await fetchWithTimeout(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
   if (!response.ok) throw new Error('We could not find that postcode. Check the spacing and try again.');
-  const payload = (await response.json()) as {
-    result?: {
-      admin_district?: string;
-      parish?: string;
-      region?: string;
-      latitude?: number;
-      longitude?: number;
-      codes?: { admin_district?: string };
-    };
-  };
+  const payload = (await response.json()) as { result?: PostcodesIoResult };
   if (!payload.result) throw new Error('We could not find that postcode. Check the spacing and try again.');
-  const matchedCouncil = findCouncilByCode(payload.result.codes?.admin_district)
-    ?? findCouncilByName(payload.result.admin_district);
-  return {
-    line1: payload.result?.parish || payload.result?.admin_district || payload.result?.region || postcode,
-    councilName: matchedCouncil?.name ?? payload.result?.admin_district,
-    providerId: matchedCouncil?.providerId,
-    councilCode: matchedCouncil?.code,
-    latitude: isFiniteCoordinate(payload.result.latitude, -90, 90) ? payload.result.latitude : undefined,
-    longitude: isFiniteCoordinate(payload.result.longitude, -180, 180) ? payload.result.longitude : undefined,
-  };
+  return resolvePostcodeResult(payload.result, postcode);
+}
+
+export async function lookupNearestPostcode(latitude: number, longitude: number): Promise<ResolvedPlace> {
+  const response = await fetchWithTimeout(buildNearestPostcodeUrl(latitude, longitude));
+  if (!response.ok) throw new Error('We could not match your location to a UK postcode. Enter it manually instead.');
+  const payload = (await response.json()) as { result?: PostcodesIoResult[] };
+  const nearest = payload.result?.[0];
+  if (!nearest) throw new Error('We could not match your location to a UK postcode. Enter it manually instead.');
+  return resolvePostcodeResult(nearest);
 }
 
 function distanceKm(from: SavedAddress, latitude: number, longitude: number) {

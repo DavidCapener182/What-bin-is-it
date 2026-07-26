@@ -4,41 +4,68 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
-import { isUkPostcode, lookupPostcode, normalisePostcode } from '@/lib/council-provider';
+import {
+  isUkPostcode,
+  lookupNearestPostcode,
+  lookupPostcode,
+  ResolvedPlace,
+} from '@/lib/council-provider';
 import { councilDirectoryCounts } from '@/lib/council-directory';
+import { getDeviceCoordinates } from '@/lib/device-location';
 import { useAppData } from '@/lib/use-app-data';
 
 export default function PlacesScreen() {
   const { addresses, activeAddress, addAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
   const [postcode, setPostcode] = useState('');
-  const [lookingUp, setLookingUp] = useState(false);
+  const [lookupMode, setLookupMode] = useState<'postcode' | 'location'>();
   const [showAdd, setShowAdd] = useState(false);
+
+  async function saveResolvedPlace(result: ResolvedPlace) {
+    const outcome = await addAddress({
+      label: result.councilName ?? 'New place',
+      line1: result.line1,
+      postcode: result.postcode,
+      councilName: result.councilName ?? 'Council not matched',
+      providerId: result.providerId ?? 'unconnected',
+      latitude: result.latitude,
+      longitude: result.longitude,
+    });
+    setPostcode('');
+    setShowAdd(false);
+    Alert.alert(
+      outcome.verified ? 'Collection dates updated' : 'Place found',
+      outcome.verified
+        ? `${result.postcode} is now active. ${outcome.message}`
+        : `${result.postcode} is now active and any dates from your previous place have been cleared. ${outcome.message}`,
+    );
+  }
 
   async function addPlace() {
     if (!isUkPostcode(postcode)) {
       Alert.alert('Add a full postcode', 'Enter a postcode such as M1 1AE to find its local authority.');
       return;
     }
-    setLookingUp(true);
+    setLookupMode('postcode');
     try {
       const result = await lookupPostcode(postcode);
-      const cleaned = normalisePostcode(postcode);
-      addAddress({
-        label: result.councilName ?? 'New place',
-        line1: result.line1,
-        postcode: cleaned,
-        councilName: result.councilName ?? 'Council not matched',
-        providerId: result.providerId ?? 'unconnected',
-        latitude: result.latitude,
-        longitude: result.longitude,
-      });
-      setPostcode('');
-      setShowAdd(false);
-      Alert.alert('Place added', 'Your place has been saved. Connect the national council gateway to verify live collection dates.');
+      await saveResolvedPlace(result);
     } catch (error) {
       Alert.alert('Could not add this place', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
-      setLookingUp(false);
+      setLookupMode(undefined);
+    }
+  }
+
+  async function useCurrentLocation() {
+    setLookupMode('location');
+    try {
+      const coordinates = await getDeviceCoordinates();
+      const result = await lookupNearestPostcode(coordinates.latitude, coordinates.longitude);
+      await saveResolvedPlace(result);
+    } catch (error) {
+      Alert.alert('Could not use your location', error instanceof Error ? error.message : 'Try again in a moment.');
+    } finally {
+      setLookupMode(undefined);
     }
   }
 
@@ -51,6 +78,25 @@ export default function PlacesScreen() {
           <Text style={styles.subtitle}>Home, family, or that one friend who always forgets bin day.</Text>
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Pressable
+            accessibilityLabel="Use my current location"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: Boolean(lookupMode) }}
+            disabled={Boolean(lookupMode)}
+            onPress={useCurrentLocation}
+            style={({ pressed }) => [styles.locationCard, pressed && styles.pressed, lookupMode && styles.disabled]}>
+            <View style={styles.locationIcon}>
+              {lookupMode === 'location'
+                ? <ActivityIndicator color="#FFFFFF" />
+                : <Ionicons color="#FFFFFF" name="locate" size={21} />}
+            </View>
+            <View style={styles.locationCopy}>
+              <Text style={styles.locationTitle}>{lookupMode === 'location' ? 'Finding your postcode…' : 'Use my current location'}</Text>
+              <Text style={styles.locationBody}>Find your postcode and local council automatically.</Text>
+            </View>
+            <Ionicons color="#A9DDCA" name="arrow-forward" size={18} />
+          </Pressable>
+
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Saved places</Text>
             <Text style={styles.count}>{addresses.length} {addresses.length === 1 ? 'place' : 'places'}</Text>
@@ -88,8 +134,8 @@ export default function PlacesScreen() {
               <View style={styles.addHeader}><View><Text style={styles.addTitle}>Add a new place</Text><Text style={styles.addDescription}>We use your postcode to find the local authority.</Text></View><Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable></View>
               <Text style={styles.fieldLabel}>UK POSTCODE</Text>
               <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
-              <Pressable accessibilityRole="button" accessibilityState={{ disabled: lookingUp }} disabled={lookingUp} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookingUp && styles.disabled]}>
-                {lookingUp ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find this place</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
+              <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
+                {lookupMode === 'postcode' ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find this place</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
               </Pressable>
             </View>
           ) : (
@@ -99,7 +145,7 @@ export default function PlacesScreen() {
             </Pressable>
           )}
 
-          <View style={styles.note}><Ionicons color="#648485" name="shield-checkmark-outline" size={17} /><Text style={styles.noteText}>Your saved places are kept on this device. Collection data is only requested when you refresh.</Text></View>
+          <View style={styles.note}><Ionicons color="#648485" name="shield-checkmark-outline" size={17} /><Text style={styles.noteText}>Your location is used once to find the nearest postcode and is not tracked. Saved places stay on this device.</Text></View>
         </ScrollView>
       </View>
     </AppShell>
@@ -113,6 +159,11 @@ const styles = StyleSheet.create({
   title: { color: '#14323B', fontFamily: 'Georgia', fontSize: 30, letterSpacing: -0.8, marginTop: 6 },
   subtitle: { color: '#627B7E', fontSize: 12.5, lineHeight: 18, marginTop: 7, maxWidth: 310, fontWeight: '500' },
   content: { padding: 18, paddingBottom: 120, gap: 17 },
+  locationCard: { minHeight: 79, borderRadius: 19, paddingHorizontal: 15, backgroundColor: '#174D49', flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#142329', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  locationIcon: { height: 42, width: 42, borderRadius: 15, backgroundColor: '#0D8375', alignItems: 'center', justifyContent: 'center' },
+  locationCopy: { flex: 1 },
+  locationTitle: { color: '#F4FFF9', fontSize: 14, fontWeight: '900' },
+  locationBody: { color: '#B9DACE', fontSize: 11, lineHeight: 15, marginTop: 3, fontWeight: '600' },
   sectionHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 2 },
   sectionTitle: { color: '#2A4A50', fontSize: 14, fontWeight: '800' },
   count: { color: '#7C9192', fontSize: 11.5, fontWeight: '700' },

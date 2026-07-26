@@ -54,6 +54,12 @@
           "color": "#0B7469",
           "defaultChannel": "bin-reminders"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow What Bin Is It Tonight? to use your location once to find your postcode and local council."
+        }
       ]
     ],
     "experiments": {
