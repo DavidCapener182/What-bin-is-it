@@ -105,6 +105,28 @@ export default function HomeScreen() {
       ? 'rgba(255,255,255,0.16)'
       : 'rgba(15,42,58,0.10)'
     : undefined;
+  const heroColour = usesCouncilBinColour && primaryNextMeta
+    ? primaryNextMeta.colour
+    : theme.hero;
+  const heroForeground = usesCouncilBinColour
+    ? contrastTextForColour(heroColour)
+    : theme.heroText;
+  const heroSecondary = usesCouncilBinColour
+    ? heroForeground === '#FFFFFF'
+      ? 'rgba(255,255,255,0.78)'
+      : 'rgba(15,42,58,0.72)'
+    : theme.heroSecondary;
+  const heroAccent = usesCouncilBinColour
+    ? heroForeground === '#FFFFFF'
+      ? 'rgba(255,255,255,0.88)'
+      : 'rgba(15,42,58,0.82)'
+    : '#64B5FF';
+  const heroControl = heroForeground === '#FFFFFF'
+    ? 'rgba(255,255,255,0.14)'
+    : 'rgba(15,42,58,0.10)';
+  const heroOrb = heroForeground === '#FFFFFF'
+    ? 'rgba(15,42,58,0.14)'
+    : 'rgba(255,255,255,0.22)';
   const soonest = upcoming.slice(0, 3);
   const daysAway = next ? dayDifference(next.date) : null;
   const exactAddressRequired = activeAddress
@@ -330,27 +352,27 @@ export default function HomeScreen() {
           path="/"
         />
         <View style={styles.page}>
-          <LinearGradient colors={[theme.hero, theme.hero]} style={styles.hero}>
+          <LinearGradient colors={[heroColour, heroColour]} style={styles.hero}>
             <SafeAreaView edges={['top']}>
               <View style={styles.heroTop}>
                 <View style={styles.heroBrand}>
-                  <Text style={styles.eyebrow}>What Bin Is It Tonight?</Text>
-                  <Text style={styles.greeting}>Tonight</Text>
+                  <Text style={[styles.eyebrow, { color: heroAccent }]}>What Bin Is It Tonight?</Text>
+                  <Text style={[styles.greeting, { color: heroForeground }]}>Tonight</Text>
                 </View>
                 <View style={styles.heroActions}>
                   <Pressable
                     accessibilityLabel="Manage addresses"
                     accessibilityRole="button"
                     onPress={() => setShowAddressPicker(true)}
-                    style={({ pressed }) => [styles.addressButton, pressed && styles.pressed]}>
-                    <Ionicons color={theme.heroText} name="location-outline" size={21} />
+                    style={({ pressed }) => [styles.addressButton, { backgroundColor: heroControl }, pressed && styles.pressed]}>
+                    <Ionicons color={heroForeground} name="location-outline" size={21} />
                   </Pressable>
                   <Pressable
                     accessibilityLabel="Open settings"
                     accessibilityRole="button"
                     onPress={() => router.push('/settings')}
-                    style={({ pressed }) => [styles.addressButton, pressed && styles.pressed]}>
-                    <Ionicons color={theme.heroText} name="settings-outline" size={21} />
+                    style={({ pressed }) => [styles.addressButton, { backgroundColor: heroControl }, pressed && styles.pressed]}>
+                    <Ionicons color={heroForeground} name="settings-outline" size={21} />
                   </Pressable>
                 </View>
               </View>
@@ -360,16 +382,16 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 onPress={() => setShowAddressPicker(true)}
                 style={({ pressed }) => [styles.addressLine, pressed && styles.pressed]}>
-                <Ionicons color={theme.heroSecondary} name="home-outline" size={17} />
-                <Text numberOfLines={1} style={styles.addressText}>{activeAddress.label}</Text>
-                <Ionicons color={theme.heroSecondary} name="chevron-down" size={15} />
+                <Ionicons color={heroSecondary} name="home-outline" size={17} />
+                <Text numberOfLines={1} style={[styles.addressText, { color: heroSecondary }]}>{activeAddress.label}</Text>
+                <Ionicons color={heroSecondary} name="chevron-down" size={15} />
               </Pressable>
 
               <View accessibilityLiveRegion="polite" style={styles.answerRow}>
                 <View style={styles.answerCopy}>
-                  <Text style={styles.nextKicker}>{exactAddressRequired ? 'Address setup' : 'Your answer'}</Text>
-                  <Text style={styles.answerTitle}>{heroTitle}</Text>
-                  <Text style={styles.answerSubtitle}>{heroSubtitle}</Text>
+                  <Text style={[styles.nextKicker, { color: heroAccent }]}>{exactAddressRequired ? 'Address setup' : 'Your answer'}</Text>
+                  <Text style={[styles.answerTitle, { color: heroForeground }]}>{heroTitle}</Text>
+                  <Text style={[styles.answerSubtitle, { color: heroSecondary }]}>{heroSubtitle}</Text>
                   {tonightCollections.length ? (
                     <View style={styles.nextTypes}>
                       {tonightCollections.map((collection) => (
@@ -378,12 +400,12 @@ export default function HomeScreen() {
                     </View>
                   ) : null}
                 </View>
-                <View style={styles.countdownOrb}>
-                  <Text style={styles.countdownNumber}>
+                <View style={[styles.countdownOrb, { backgroundColor: heroOrb, borderColor: heroAccent }]}>
+                  <Text style={[styles.countdownNumber, { color: heroForeground }]}>
                     {tonightCollections.length ? 'TONIGHT' : daysAway === null ? '—' : daysAway}
                   </Text>
                   {!tonightCollections.length && daysAway !== null ? (
-                    <Text style={styles.countdownCaption}>{daysAway === 1 ? 'DAY' : 'DAYS'}</Text>
+                    <Text style={[styles.countdownCaption, { color: heroAccent }]}>{daysAway === 1 ? 'DAY' : 'DAYS'}</Text>
                   ) : null}
                 </View>
               </View>

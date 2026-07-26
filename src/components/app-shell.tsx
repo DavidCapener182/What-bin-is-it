@@ -32,7 +32,7 @@ export function AppShell({
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const tabRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
-  const dockBottomPadding = Platform.OS === 'web' ? 4 : Math.max(insets.bottom, 6);
+  const dockBottomPadding = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, 6);
   const primaryActive = tabs.some((tab) => tab.route === activeRoute);
 
   function openTab(route: PrimaryRoute) {

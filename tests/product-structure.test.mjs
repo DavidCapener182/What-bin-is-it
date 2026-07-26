@@ -45,6 +45,20 @@ test('upgrades cached schedules once to fetch council bin-colour metadata', () =
   assert.match(provider, /metadataVersion: collectionMetadataVersion/);
 });
 
+test('uses the main source-backed bin colour for the Today hero and collection card', () => {
+  const today = read('src/app/index.tsx');
+  assert.match(today, /const heroColour = usesCouncilBinColour/);
+  assert.match(today, /colors=\{\[heroColour, heroColour\]\}/);
+  assert.match(today, /contrastTextForColour\(heroColour\)/);
+});
+
+test('anchors the web navigation dock to the full visual viewport', () => {
+  const html = read('src/app/+html.tsx');
+  const shell = read('src/components/app-shell.tsx');
+  assert.match(html, /height: 100dvh/);
+  assert.match(shell, /Platform\.OS === 'web' \? 0/);
+});
+
 test('all main routes provide route-specific metadata', () => {
   const expected = [
     ['src/app/index.tsx', 'title="Today"'],

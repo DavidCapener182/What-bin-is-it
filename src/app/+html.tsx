@@ -21,7 +21,18 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: `
-          html, body, #root { min-height: 100%; background: #F2F2F7; }
+          html, body, #root {
+            width: 100%;
+            height: 100%;
+            min-height: 100%;
+            background: #F2F2F7;
+          }
+          @supports (height: 100dvh) {
+            html, body, #root {
+              height: 100dvh;
+              min-height: 100dvh;
+            }
+          }
           html { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
           body {
             margin: 0;
