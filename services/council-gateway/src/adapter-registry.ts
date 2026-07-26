@@ -1,3 +1,5 @@
+import { fetchKnowsleyMendixDates } from './knowsley-mendix.ts';
+
 export type WasteType = 'general' | 'recycling' | 'garden' | 'food';
 
 export type CollectionInput = { postcode: string; addressId?: string };
@@ -17,6 +19,10 @@ type KnowsleyAddressPayload = {
   UPRN?: unknown;
 };
 type KnowsleyCollectionPayload = {
+  NextBlue?: unknown;
+  NextFood?: unknown;
+  NextGrey?: unknown;
+  NextMaroon?: unknown;
   Nextmaroon?: unknown;
   Nextgrey?: unknown;
   Nextblue?: unknown;
@@ -40,8 +46,11 @@ function unwrapJson(value: unknown): unknown {
 }
 
 function parseCouncilDate(value: unknown) {
+  if (value && typeof value === 'object' && 'value' in value) {
+    return parseCouncilDate((value as { value?: unknown }).value);
+  }
   if (typeof value !== 'string') return undefined;
-  const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const match = value.trim().match(/^(?:[A-Za-z]+\s+)?(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!match) return undefined;
   const [, dayText, monthText, yearText] = match;
   const day = Number(dayText);
@@ -88,9 +97,10 @@ export function parseKnowsleyCollections(value: unknown): { date: string; wasteT
   if (!first || typeof first !== 'object') return [];
   const record = first as KnowsleyCollectionPayload;
   const fields: { value: unknown; wasteType: WasteType }[] = [
-    { value: record.Nextmaroon, wasteType: 'general' },
-    { value: record.Nextgrey, wasteType: 'recycling' },
-    { value: record.Nextblue, wasteType: 'garden' },
+    { value: record.NextMaroon ?? record.Nextmaroon, wasteType: 'general' },
+    { value: record.NextGrey ?? record.Nextgrey, wasteType: 'recycling' },
+    { value: record.NextBlue ?? record.Nextblue, wasteType: 'garden' },
+    { value: record.NextFood, wasteType: 'food' },
   ];
   return fields.flatMap(({ value: dateValue, wasteType }) => {
     const date = parseCouncilDate(dateValue);
@@ -129,12 +139,11 @@ const knowsleyAdapter: CouncilAdapter = {
     if (!input.addressId || !/^\d{1,20}$/.test(input.addressId)) {
       throw new Error('An exact Knowsley property must be selected before checking collection dates.');
     }
-    const response = await fetchWithTimeout(
-      `https://secured.knowsley.gov.uk/gis/get_refuse?UPRN=${encodeURIComponent(input.addressId)}`,
-      25_000,
+    const dates = await fetchKnowsleyMendixDates(
+      normalisePostcode(input.postcode),
+      input.addressId,
     );
-    if (!response.ok) throw new Error(`Knowsley refuse service returned ${response.status}.`);
-    const collections = parseKnowsleyCollections(await response.text());
+    const collections = parseKnowsleyCollections(dates);
     if (!collections.length) throw new Error('Knowsley returned no dated collections for this property.');
     return {
       councilName: 'Knowsley',

@@ -1,4 +1,4 @@
-import gateway from '../../services/council-gateway/src/index';
+import gateway from '../../services/council-gateway/src/index.ts';
 
 export const config = { runtime: 'edge' };
 

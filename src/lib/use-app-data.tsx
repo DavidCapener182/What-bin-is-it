@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { verifiedCollectionsOnly } from '@/lib/collection-safety';
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
@@ -215,6 +215,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(buildInitialState);
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const autoRefreshAttempts = useRef(new Set<string>());
 
   useEffect(() => {
     loadState()
@@ -283,6 +284,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (
+      !ready
+      || !activeAddress?.councilAddressId
+      || activeSchedule.collections.length > 0
+      || autoRefreshAttempts.current.has(activeAddress.id)
+    ) return;
+    autoRefreshAttempts.current.add(activeAddress.id);
+    void refreshAddress(activeAddress, false);
+  }, [activeAddress, activeSchedule.collections.length, ready, refreshAddress]);
+
   const addAddress = useCallback(async (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => {
     const exactExisting = address.councilAddressId
       ? state.addresses.find((savedAddress) => (
@@ -339,6 +351,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       };
     });
 
+    autoRefreshAttempts.current.add(targetAddress.id);
     return refreshAddress(targetAddress, true);
   }, [refreshAddress, state.addresses]);
 

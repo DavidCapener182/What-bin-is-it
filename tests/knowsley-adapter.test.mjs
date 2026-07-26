@@ -34,3 +34,17 @@ test('maps only dated official Knowsley collections', () => {
     { date: '2026-08-04', wasteType: 'recycling' },
   ]);
 });
+
+test('maps every dated collection from the current Knowsley Mendix response', () => {
+  assert.deepEqual(parseKnowsleyCollections({
+    NextMaroon: { value: 'Friday 31/07/2026' },
+    NextGrey: { value: 'Friday 07/08/2026' },
+    NextBlue: { value: 'Friday 07/08/2026' },
+    NextFood: { value: 'Friday 31/07/2026' },
+  }), [
+    { date: '2026-07-31', wasteType: 'general' },
+    { date: '2026-08-07', wasteType: 'recycling' },
+    { date: '2026-08-07', wasteType: 'garden' },
+    { date: '2026-07-31', wasteType: 'food' },
+  ]);
+});

@@ -1,4 +1,4 @@
-import { getAdapter } from './adapter-registry';
+import { getAdapter } from './adapter-registry.ts';
 
 type CollectionRequest = { postcode?: unknown; addressId?: unknown; providerId?: unknown };
 const wasteTypes = new Set(['general', 'recycling', 'garden', 'food']);
