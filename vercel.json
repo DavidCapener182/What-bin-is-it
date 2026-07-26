@@ -4,7 +4,9 @@
   "buildCommand": "npm run build:api && npx expo export --platform web",
   "outputDirectory": "dist",
   "functions": {
-    "api/v1/[resource].js": {}
+    "api/v1/[resource].js": {
+      "maxDuration": 30
+    }
   },
   "redirects": [
     {

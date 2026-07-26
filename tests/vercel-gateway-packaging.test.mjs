@@ -42,8 +42,8 @@ test('ships a self-contained CommonJS function instead of raw TypeScript gateway
 
 test('configures Vercel to execute the bundled JavaScript gateway', () => {
   assert.equal(
-    Object.hasOwn(vercelConfig.functions ?? {}, 'api/v1/[resource].js'),
-    true,
-    'Vercel must execute the self-contained CommonJS bundle',
+    vercelConfig.functions?.['api/v1/[resource].js']?.maxDuration,
+    30,
+    'Vercel must execute the self-contained CommonJS bundle with time for live council requests',
   );
 });
