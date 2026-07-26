@@ -5,6 +5,7 @@ import { verifiedCollectionsOnly } from '@/lib/collection-safety';
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
 import { sortCollections } from '@/lib/data';
 import { rescheduleCollectionReminders } from '@/lib/notifications';
+import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
 import { Collection, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
 
@@ -19,7 +20,7 @@ const defaultPreferences: NotificationPreferences = {
   enabled: false,
   reminderHour: 19,
   reminderDayOffset: 1,
-  wasteTypes: { general: true, recycling: true, garden: true, food: true },
+  wasteTypes: { general: true, recycling: true, garden: true, food: true, other: true },
 };
 
 type AddressSchedule = { collections: Collection[]; sourceStatus: string };
@@ -49,6 +50,7 @@ type AppDataContextValue = {
   ready: boolean;
   refreshing: boolean;
   setActiveAddress: (id: string) => void;
+  removeAddress: (id: string) => void;
   addAddress: (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => Promise<CollectionRefreshOutcome>;
   updatePreferences: (next: Partial<NotificationPreferences>) => void;
   toggleWasteType: (type: WasteType) => void;
@@ -103,6 +105,7 @@ function normalisePreferences(value: unknown): NotificationPreferences {
       recycling: typeof storedWasteTypes?.recycling === 'boolean' ? storedWasteTypes.recycling : true,
       garden: typeof storedWasteTypes?.garden === 'boolean' ? storedWasteTypes.garden : true,
       food: typeof storedWasteTypes?.food === 'boolean' ? storedWasteTypes.food : true,
+      other: typeof storedWasteTypes?.other === 'boolean' ? storedWasteTypes.other : true,
     },
   };
 }
@@ -368,6 +371,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         ? { ...current, activeAddressId: id }
         : current
     )),
+    removeAddress: (id) => setState((current) => removeAddressFromState(current, id)),
     addAddress,
     updatePreferences: (next) => setState((current) => ({
       ...current,

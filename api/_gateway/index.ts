@@ -2,7 +2,7 @@ import { getAdapter } from './adapter-registry.ts';
 import { fetchOpenStreetMapServices } from './openstreetmap-services.ts';
 
 type CollectionRequest = { postcode?: unknown; addressId?: unknown; providerId?: unknown };
-const wasteTypes = new Set(['general', 'recycling', 'garden', 'food']);
+const wasteTypes = new Set(['general', 'recycling', 'garden', 'food', 'other']);
 const serviceTypes = new Set(['recycling-centre', 'recycling-point', 'reuse', 'collection']);
 
 const headers = {
@@ -16,6 +16,12 @@ const headers = {
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+function publicError(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.length > 0
+    ? error.message.slice(0, 180)
+    : fallback;
 }
 
 function isPostcode(value: unknown): value is string {
@@ -50,7 +56,21 @@ function validCollectionResult(value: unknown) {
     && result.collections.every((collection) => {
       if (!collection || typeof collection !== 'object') return false;
       const item = collection as { date?: unknown; wasteType?: unknown };
-      return typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && wasteTypes.has(item.wasteType as string);
+      const details = collection as { label?: unknown; colour?: unknown };
+      return (
+        typeof item.date === 'string'
+        && /^\d{4}-\d{2}-\d{2}$/.test(item.date)
+        && wasteTypes.has(item.wasteType as string)
+        && (details.label === undefined || (
+          typeof details.label === 'string'
+          && details.label.length > 0
+          && details.label.length <= 80
+        ))
+        && (details.colour === undefined || (
+          typeof details.colour === 'string'
+          && /^#[0-9A-F]{6}$/.test(details.colour)
+        ))
+      );
     })
   );
 }
@@ -80,6 +100,7 @@ function validServiceResult(value: unknown) {
       latitude?: unknown;
       longitude?: unknown;
       source?: unknown;
+      materials?: unknown;
     };
     return (
       typeof item.id === 'string'
@@ -88,6 +109,18 @@ function validServiceResult(value: unknown) {
       && validCoordinate(item.latitude, -90, 90)
       && validCoordinate(item.longitude, -180, 180)
       && (item.source === 'council' || item.source === 'openstreetmap')
+      && (
+        item.materials === undefined
+        || (
+          Array.isArray(item.materials)
+          && item.materials.length <= 40
+          && item.materials.every((material) => (
+            typeof material === 'string'
+            && material.length > 0
+            && material.length <= 80
+          ))
+        )
+      )
     );
   });
 }
@@ -111,7 +144,7 @@ export default {
         return json({ addresses });
       } catch (error) {
         console.error('Council address provider failed', providerId, error);
-        return json({ error: 'The council address search is temporarily unavailable.' }, 502);
+        return json({ error: publicError(error, 'The council address search is temporarily unavailable.') }, 502);
       }
     }
     if (request.method === 'GET' && pathname === '/v1/services') {
@@ -129,7 +162,7 @@ export default {
         return json({ services });
       } catch (error) {
         console.error('Council service provider failed', providerId, error);
-        return json({ error: 'The local service search is temporarily unavailable.' }, 502);
+        return json({ error: publicError(error, 'The local service search is temporarily unavailable.') }, 502);
       }
     }
     if (request.method !== 'POST' || pathname !== '/v1/collections') return json({ error: 'Not found' }, 404);
@@ -155,7 +188,7 @@ export default {
       return json(result);
     } catch (error) {
       console.error('Council provider failed', body.providerId, error);
-      return json({ error: 'The council source is temporarily unavailable.' }, 502);
+      return json({ error: publicError(error, 'The council source is temporarily unavailable.') }, 502);
     }
   },
 };

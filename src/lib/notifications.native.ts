@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { collectionMeta, sortCollections } from '@/lib/data';
+import { collectionDisplayMeta, sortCollections } from '@/lib/data';
 import { Collection, NotificationPreferences } from '@/lib/types';
 
 Notifications.setNotificationHandler({
@@ -74,7 +74,7 @@ async function reconcileCollectionReminders(collections: Collection[], preferenc
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Bin reminder',
-          body: `${collectionMeta[collection.wasteType].label} collection is ${preferences.reminderDayOffset === 0 ? 'today' : 'tomorrow'}. Put it out before 7am.`,
+          body: `${collectionDisplayMeta(collection).label} collection is ${preferences.reminderDayOffset === 0 ? 'today' : 'tomorrow'}. Put it out before 7am.`,
           data: { kind: reminderKind, url: '/calendar', collectionId: collection.id },
           sound: 'default',
         },

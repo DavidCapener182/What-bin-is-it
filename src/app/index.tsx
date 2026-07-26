@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppShell } from '@/components/app-shell';
 import { BinGlyph, WasteIcon } from '@/components/bin-glyph';
 import { CollectionBadge } from '@/components/collection-badge';
-import { collectionMeta, dayDifference, formatCollectionDate, sortCollections, wasteTypes } from '@/lib/data';
+import { collectionDisplayMeta, collectionMeta, dayDifference, formatCollectionDate, sortCollections, wasteTypes } from '@/lib/data';
+import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { useAppData } from '@/lib/use-app-data';
 
 export default function HomeScreen() {
@@ -17,6 +18,17 @@ export default function HomeScreen() {
   const daysAway = next ? dayDifference(next.date) : null;
   const nextDayCollections = next ? upcoming.filter((collection) => collection.date === next.date) : [];
   const soonest = upcoming.slice(0, 3);
+  const exactAddressRequired = activeAddress
+    ? requiresExactCouncilAddress(activeAddress.providerId, activeAddress.councilAddressId)
+    : false;
+
+  function refreshOrChooseAddress() {
+    if (!activeAddress || exactAddressRequired) {
+      router.push('/places');
+      return;
+    }
+    void refreshCollections();
+  }
 
   return (
     <AppShell activeRoute="/">
@@ -50,7 +62,7 @@ export default function HomeScreen() {
                 {next && (
                   <View style={styles.nextTypes}>
                     {nextDayCollections.map((collection) => (
-                      <CollectionBadge key={collection.id} wasteType={collection.wasteType} />
+                      <CollectionBadge collection={collection} key={collection.id} />
                     ))}
                   </View>
                 )}
@@ -65,11 +77,11 @@ export default function HomeScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {next ? (
-            <Pressable accessibilityLabel={`Open schedule for ${collectionMeta[next.wasteType].label}`} accessibilityRole="button" onPress={() => router.push('/calendar')} style={({ pressed }) => [styles.collectionCard, pressed && styles.pressed]}>
-              <View style={[styles.collectionColour, { backgroundColor: collectionMeta[next.wasteType].colour }]} />
-              <BinGlyph colour={collectionMeta[next.wasteType].colour} size={36} />
+            <Pressable accessibilityLabel={`Open schedule for ${collectionDisplayMeta(next).label}`} accessibilityRole="button" onPress={() => router.push('/calendar')} style={({ pressed }) => [styles.collectionCard, pressed && styles.pressed]}>
+              <View style={[styles.collectionColour, { backgroundColor: collectionDisplayMeta(next).colour }]} />
+              <BinGlyph colour={collectionDisplayMeta(next).colour} size={36} />
               <View style={styles.cardCopy}>
-                <Text style={styles.cardTitle}>{collectionMeta[next.wasteType].label} bin</Text>
+                <Text style={styles.cardTitle}>{collectionDisplayMeta(next).label}</Text>
                 <Text style={styles.cardBody}>
                   {daysAway === 0
                     ? 'Put it out before 7am today.'
@@ -94,7 +106,7 @@ export default function HomeScreen() {
           {soonest.length ? (
             <View style={styles.scheduleList}>
               {soonest.map((collection) => {
-                const meta = collectionMeta[collection.wasteType];
+                const meta = collectionDisplayMeta(collection);
                 const diff = dayDifference(collection.date);
                 return (
                   <View key={collection.id} style={styles.scheduleRow}>
@@ -124,12 +136,12 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               disabled={refreshing}
-              onPress={() => activeAddress ? void refreshCollections() : router.push('/places')}
+              onPress={refreshOrChooseAddress}
               style={({ pressed }) => [styles.emptySchedule, pressed && styles.pressed]}>
               <Ionicons color="#0A746A" name="calendar-outline" size={25} />
               <View style={styles.emptyScheduleCopy}>
-                <Text style={styles.emptyScheduleTitle}>{activeAddress ? 'No verified dates for this place' : 'Add your address'}</Text>
-                <Text style={styles.emptyScheduleBody}>{activeAddress ? 'Tap to check its live council source.' : 'Use your postcode or current location to get started.'}</Text>
+                <Text style={styles.emptyScheduleTitle}>{exactAddressRequired ? 'Choose your exact address' : activeAddress ? 'No verified dates for this place' : 'Add your address'}</Text>
+                <Text style={styles.emptyScheduleBody}>{exactAddressRequired ? 'This council needs a property match for the correct collection round.' : activeAddress ? 'Tap to check its live council source.' : 'Use your postcode or current location to get started.'}</Text>
               </View>
               <Ionicons color="#71909B" name="arrow-forward" size={18} />
             </Pressable>
@@ -163,7 +175,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             disabled={refreshing}
-            onPress={() => activeAddress ? void refreshCollections() : router.push('/places')}
+            onPress={refreshOrChooseAddress}
             style={({ pressed }) => [styles.sourceCard, pressed && styles.pressed, refreshing && styles.disabled]}>
             <View style={styles.sourceIcon}><Ionicons color="#0A6C61" name="sync-outline" size={19} /></View>
             <View style={styles.sourceCopy}>

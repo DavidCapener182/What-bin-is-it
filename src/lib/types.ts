@@ -1,10 +1,12 @@
-export type WasteType = 'general' | 'recycling' | 'garden' | 'food';
+export type WasteType = 'general' | 'recycling' | 'garden' | 'food' | 'other';
 
 export type Collection = {
   id: string;
   date: string;
   wasteType: WasteType;
   source: 'council';
+  label?: string;
+  colour?: string;
 };
 
 export type SavedAddress = {
@@ -36,6 +38,7 @@ export type CouncilService = {
   distanceKm?: number;
   source: 'council' | 'openstreetmap';
   website?: string;
+  materials?: string[];
 };
 
 export type NotificationPreferences = {

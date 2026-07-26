@@ -24,6 +24,27 @@ test('normalises official Knowsley address-search results', () => {
   }]);
 });
 
+test('deduplicates Knowsley property rows with the same display address', () => {
+  const results = parseKnowsleyAddresses(JSON.stringify([
+    {
+      FullAddress: '1 Gort Road, Huyton, L36 7XA',
+      Postcode: 'L36 7XA',
+      UPRN: '000040017128',
+    },
+    {
+      FullAddress: '1 Gort Road, Huyton, L36 7XA',
+      Postcode: 'L36 7XA',
+      UPRN: '000040017129',
+    },
+  ]));
+
+  assert.deepEqual(results, [{
+    id: '000040017128',
+    line1: '1 Gort Road, Huyton',
+    postcode: 'L36 7XA',
+  }]);
+});
+
 test('maps only dated official Knowsley collections', () => {
   assert.deepEqual(parseKnowsleyCollections(JSON.stringify([{
     Nextmaroon: '28/07/2026',

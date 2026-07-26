@@ -37,8 +37,10 @@ test('never exposes postcode database unparished-area wording', () => {
   );
 });
 
-test('requires a property selection for a migrated Knowsley postcode-only place', () => {
+test('requires a property selection for any connected postcode-only place', () => {
   assert.equal(requiresExactCouncilAddress('lad-e08000011'), true);
   assert.equal(requiresExactCouncilAddress('lad-e08000011', '000040017128'), false);
-  assert.equal(requiresExactCouncilAddress('lad-e09000033'), false);
+  assert.equal(requiresExactCouncilAddress('lad-e08000014'), true);
+  assert.equal(requiresExactCouncilAddress('lad-e09000033', '100023336956'), false);
+  assert.equal(requiresExactCouncilAddress('unconnected'), false);
 });

@@ -1,3 +1,5 @@
+import { parseRecyclingMaterials } from '../../src/lib/recycling-materials.ts';
+
 export type OpenStreetMapService = {
   id: string;
   name: string;
@@ -7,6 +9,7 @@ export type OpenStreetMapService = {
   longitude: number;
   source: 'openstreetmap';
   website?: string;
+  materials: string[];
 };
 
 type OpenStreetMapPayload = {
@@ -49,6 +52,7 @@ export function parseOpenStreetMapServices(payload: unknown): OpenStreetMapServi
       longitude,
       source: 'openstreetmap',
       website: tags.website,
+      materials: parseRecyclingMaterials(tags),
     });
     return services;
   }, []);

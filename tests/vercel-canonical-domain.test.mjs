@@ -7,6 +7,14 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const config = JSON.parse(readFileSync(resolve(root, 'vercel.json'), 'utf8'));
 
+test('serves Expo static routes without an html extension', () => {
+  assert.equal(
+    config.cleanUrls,
+    true,
+    'Expo exports places.html and find.html, so Vercel must map /places and /find to those files',
+  );
+});
+
 test('redirects Vercel deployment aliases to the canonical app origin', () => {
   const redirect = config.redirects?.find(
     (candidate) => candidate.destination === 'https://what-bin-is-it-tonight.vercel.app/$1',

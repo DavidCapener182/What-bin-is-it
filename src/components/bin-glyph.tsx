@@ -13,6 +13,7 @@ export function WasteIcon({ colour, type }: { colour: string; type: WasteType })
     recycling: 'refresh-circle',
     garden: 'leaf',
     food: 'nutrition',
+    other: 'trash-outline',
   };
   return (
     <View style={styles.icon}>

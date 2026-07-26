@@ -7,13 +7,14 @@ import { AppShell } from '@/components/app-shell';
 import { collectionMeta } from '@/lib/data';
 import { fetchNearbyServices } from '@/lib/council-provider';
 import { GuideDestination, GuideItem, searchGuide } from '@/lib/household-guide';
+import { recyclingMaterialsLabel } from '@/lib/recycling-materials';
 import { CouncilService } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 
 type FindMode = 'guide' | 'services';
 
 const destinationLabel: Record<GuideDestination, string> = {
-  general: 'General waste', recycling: 'Mixed recycling', garden: 'Garden waste', food: 'Food caddy', service: 'Find a service', check: 'Check locally',
+  general: 'General waste', recycling: 'Mixed recycling', garden: 'Garden waste', food: 'Food caddy', other: 'Council bin', service: 'Find a service', check: 'Check locally',
 };
 
 function destinationColour(destination: GuideDestination) {
@@ -42,6 +43,13 @@ function serviceIcon(type: CouncilService['type']) {
   if (type === 'reuse') return 'heart-outline';
   if (type === 'collection') return 'cube-outline';
   return 'refresh-circle-outline';
+}
+
+function serviceTypeLabel(type: CouncilService['type']) {
+  if (type === 'recycling-centre') return 'Household waste recycling centre';
+  if (type === 'reuse') return 'Reuse service';
+  if (type === 'collection') return 'Collection service';
+  return 'Recycling point';
 }
 
 export default function FindScreen() {
@@ -99,7 +107,7 @@ export default function FindScreen() {
               <View style={styles.locationLine}><Ionicons color="#0A746A" name="location-outline" size={18} /><View style={styles.locationCopy}><Text style={styles.locationLabel}>SEARCHING AROUND</Text><Text style={styles.locationName}>{activeAddress ? `${activeAddress.label} · ${activeAddress.postcode}` : 'Add a place first'}</Text></View></View>
               <Pressable accessibilityRole="button" accessibilityState={{ disabled: finding || !activeAddress }} disabled={finding || !activeAddress} onPress={findServices} style={({ pressed }) => [styles.findButton, pressed && styles.pressed, (finding || !activeAddress) && styles.disabled]}>{finding ? <ActivityIndicator color="#FFFFFF" /> : <><Ionicons color="#FFFFFF" name="locate" size={18} /><Text style={styles.findButtonText}>{services ? 'Search again' : 'Find nearby services'}</Text></>}</Pressable>
               <View style={styles.servicesNote}><Ionicons color="#657F81" name="information-circle-outline" size={16} /><Text style={styles.servicesNoteText}>The app asks only when you tap search. Council gateway results take priority; otherwise nearby OpenStreetMap sites are shown. Always check opening times and accepted waste before travelling.</Text></View>
-              {services ? <View style={styles.serviceResults}>{services.length ? <><View style={styles.guideHeader}><View><Text style={styles.sectionKicker}>NEARBY OPTIONS</Text><Text style={styles.sectionTitle}>Take it to the right place</Text></View><Text style={styles.resultCount}>{services.length} found</Text></View>{services.map((service) => <Pressable accessibilityLabel={`Open directions to ${service.name}`} accessibilityRole="link" key={service.id} onPress={() => openDirections(service)} style={({ pressed }) => [styles.serviceCard, pressed && styles.pressed]}><View style={styles.serviceIcon}><Ionicons color="#0E776D" name={serviceIcon(service.type)} size={23} /></View><View style={styles.serviceCopy}><Text style={styles.serviceName}>{service.name}</Text><Text numberOfLines={1} style={styles.serviceAddress}>{service.address || (service.type === 'recycling-centre' ? 'Household waste recycling centre' : 'Recycling point')}</Text><Text style={styles.serviceMeta}>{service.distanceKm !== undefined ? `${service.distanceKm.toFixed(1)} km away` : 'Directions available'} · {service.source === 'council' ? 'Council source' : 'Map data'}</Text></View><Ionicons color="#0D776B" name="navigate-outline" size={20} /></Pressable>)}</> : <View style={styles.empty}><Ionicons color="#729092" name="map-outline" size={28} /><Text style={styles.emptyTitle}>Nothing nearby was found</Text><Text style={styles.emptyText}>Try again later, or use your council’s website to check their household waste site list.</Text></View>}</View> : null}
+              {services ? <View style={styles.serviceResults}>{services.length ? <><View style={styles.guideHeader}><View><Text style={styles.sectionKicker}>NEARBY OPTIONS</Text><Text style={styles.sectionTitle}>Take it to the right place</Text></View><Text style={styles.resultCount}>{services.length} found</Text></View>{services.map((service) => <Pressable accessibilityLabel={`Open directions to ${service.name}`} accessibilityRole="link" key={service.id} onPress={() => openDirections(service)} style={({ pressed }) => [styles.serviceCard, pressed && styles.pressed]}><View style={styles.serviceIcon}><Ionicons color="#0E776D" name={serviceIcon(service.type)} size={23} /></View><View style={styles.serviceCopy}><Text style={styles.serviceName}>{service.name}</Text><Text style={styles.serviceType}>{serviceTypeLabel(service.type)}</Text>{service.address && <Text numberOfLines={2} style={styles.serviceAddress}>{service.address}</Text>}<Text style={[styles.serviceMaterials, !service.materials?.length && styles.serviceMaterialsUnknown]}>{recyclingMaterialsLabel(service.materials)}</Text><Text style={styles.serviceMeta}>{service.distanceKm !== undefined ? `${service.distanceKm.toFixed(1)} km away` : 'Directions available'} · {service.source === 'council' ? 'Council source' : 'Map data'}</Text></View><Ionicons color="#0D776B" name="navigate-outline" size={20} /></Pressable>)}</> : <View style={styles.empty}><Ionicons color="#729092" name="map-outline" size={28} /><Text style={styles.emptyTitle}>Nothing nearby was found</Text><Text style={styles.emptyText}>Try again later, or use your council’s website to check their household waste site list.</Text></View>}</View> : null}
             </>
           )}
         </ScrollView>
@@ -160,12 +168,15 @@ const styles = StyleSheet.create({
   servicesNoteText: { flex: 1, color: '#718789', fontSize: 10, lineHeight: 14 },
   serviceResults: { gap: 10 },
   resultCount: { color: '#57797A', fontSize: 10.5, fontWeight: '800' },
-  serviceCard: { minHeight: 78, padding: 13, borderRadius: 17, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', gap: 11, shadowColor: '#17353A', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  serviceCard: { minHeight: 112, padding: 13, borderRadius: 17, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', gap: 11, shadowColor: '#17353A', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   serviceIcon: { height: 40, width: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E2F2EB' },
   serviceCopy: { flex: 1 },
   serviceName: { color: '#1B4146', fontSize: 13, fontWeight: '900' },
-  serviceAddress: { color: '#6C8486', fontSize: 10.5, marginTop: 3, fontWeight: '600' },
-  serviceMeta: { color: '#0A756B', fontSize: 9.5, marginTop: 3, fontWeight: '800' },
+  serviceType: { color: '#0A756B', fontSize: 10.5, marginTop: 3, fontWeight: '800' },
+  serviceAddress: { color: '#6C8486', fontSize: 10.5, lineHeight: 14, marginTop: 3, fontWeight: '600' },
+  serviceMaterials: { color: '#315A5C', fontSize: 10.5, lineHeight: 14, marginTop: 5, fontWeight: '700' },
+  serviceMaterialsUnknown: { color: '#7B8987', fontWeight: '600' },
+  serviceMeta: { color: '#0A756B', fontSize: 9.5, marginTop: 5, fontWeight: '800' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.55 },
 });

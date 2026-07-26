@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import { Collection, CouncilAddressOption, CouncilService, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
 import { findCouncilByCode, findCouncilByName } from '@/lib/council-directory';
+import { parseRecyclingMaterials } from '@/lib/recycling-materials';
 import {
   buildNearestPostcodeUrl,
   cleanPostcodeLocality,
@@ -11,7 +12,7 @@ import {
 
 export { isUkPostcode, normalisePostcode } from '@/lib/place-resolution';
 
-type GatewayCollection = { date: string; wasteType: WasteType };
+type GatewayCollection = { date: string; wasteType: WasteType; label?: string; colour?: string };
 type GatewayResponse = { councilName: string; providerId: string; collections: GatewayCollection[]; verifiedAt: string; notice?: string };
 type GatewayAddressesResponse = { addresses: CouncilAddressOption[] };
 type GatewayServicesResponse = { services: CouncilService[] };
@@ -40,7 +41,7 @@ const apiBase = configuredApiBase
     ? `${globalThis.location.origin}/api`
     : 'https://what-bin-is-it-tonight.vercel.app/api');
 export const councilGatewayConfigured = Boolean(apiBase);
-const validWasteTypes = new Set<WasteType>(['general', 'recycling', 'garden', 'food']);
+const validWasteTypes = new Set<WasteType>(['general', 'recycling', 'garden', 'food', 'other']);
 const validServiceTypes = new Set<CouncilService['type']>(['recycling-centre', 'recycling-point', 'reuse', 'collection']);
 
 async function fetchWithTimeout(input: string, init?: RequestInit, timeoutMs = 15_000) {
@@ -104,7 +105,19 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
     || Number.isNaN(Date.parse(payload.verifiedAt))
     || !Array.isArray(payload.collections)
     || (payload.notice !== undefined && typeof payload.notice !== 'string')
-    || payload.collections.some((collection) => !isIsoDate(collection?.date) || !validWasteTypes.has(collection?.wasteType))
+    || payload.collections.some((collection) => (
+      !isIsoDate(collection?.date)
+      || !validWasteTypes.has(collection?.wasteType)
+      || (collection.label !== undefined && (
+        typeof collection.label !== 'string'
+        || collection.label.length === 0
+        || collection.label.length > 80
+      ))
+      || (collection.colour !== undefined && (
+        typeof collection.colour !== 'string'
+        || !/^#[0-9A-F]{6}$/i.test(collection.colour)
+      ))
+    ))
   ) {
     throw new Error('The council source returned collection data in an unexpected format.');
   }
@@ -118,6 +131,8 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
       date: collection.date,
       wasteType: collection.wasteType,
       source: 'council',
+      label: collection.label,
+      colour: collection.colour?.toUpperCase(),
     })),
   };
 }
@@ -211,6 +226,18 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
           && isFiniteCoordinate(service.latitude, -90, 90)
           && isFiniteCoordinate(service.longitude, -180, 180)
           && (service.source === 'council' || service.source === 'openstreetmap')
+          && (
+            service.materials === undefined
+            || (
+              Array.isArray(service.materials)
+              && service.materials.length <= 40
+              && service.materials.every((material) => (
+                typeof material === 'string'
+                && material.length > 0
+                && material.length <= 80
+              ))
+            )
+          )
         ))
         && payload.services.length
       ) {
@@ -249,6 +276,7 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
       distanceKm: distanceKm(address, latitude, longitude),
       source: 'openstreetmap',
       website: tags.website,
+      materials: parseRecyclingMaterials(tags),
     });
     return found;
   }, []);

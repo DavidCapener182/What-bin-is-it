@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
@@ -29,7 +30,7 @@ function savedPlaceSummary(address: SavedAddress) {
 }
 
 export default function PlacesScreen() {
-  const { addresses, activeAddress, addAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
+  const { addresses, activeAddress, addAddress, removeAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
   const [postcode, setPostcode] = useState('');
   const [lookupMode, setLookupMode] = useState<'postcode' | 'location'>();
   const [showAdd, setShowAdd] = useState(false);
@@ -213,18 +214,35 @@ export default function PlacesScreen() {
               ) : addresses.map((address, index) => {
                 const active = address.id === activeAddress?.id;
                 return (
-                  <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityRole="button" accessibilityState={{ selected: active }} key={address.id} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
-                    <View style={[styles.homeIcon, active && styles.homeIconActive]}><Ionicons color={active ? '#E8FFF5' : '#0E756B'} name={active ? 'home' : 'home-outline'} size={20} /></View>
-                    <View style={styles.placeCopy}>
-                      <View style={styles.labelRow}><Text style={styles.placeLabel}>{address.label}</Text>{active && <View style={styles.activePill}><Text style={styles.activePillText}>ACTIVE</Text></View>}</View>
-                      <Text style={styles.placeAddress}>{savedPlaceSummary(address)}</Text>
-                      <Text style={styles.council}>{address.councilName}</Text>
-                    </View>
-                    {active ? <Ionicons color="#0E756B" name="checkmark-circle" size={22} /> : <Ionicons color="#8AA0A1" name="chevron-forward" size={19} />}
-                  </Pressable>
+                  <ReanimatedSwipeable
+                    friction={2}
+                    key={address.id}
+                    overshootRight={false}
+                    renderRightActions={() => (
+                      <Pressable
+                        accessibilityLabel={`Remove ${address.label}`}
+                        accessibilityRole="button"
+                        onPress={() => removeAddress(address.id)}
+                        style={({ pressed }) => [styles.removeAction, pressed && styles.removeActionPressed]}>
+                        <Ionicons color="#FFFFFF" name="trash-outline" size={21} />
+                        <Text style={styles.removeActionText}>Remove</Text>
+                      </Pressable>
+                    )}
+                    rightThreshold={44}>
+                    <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityHint="Swipe left to reveal the remove action" accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
+                      <View style={[styles.homeIcon, active && styles.homeIconActive]}><Ionicons color={active ? '#E8FFF5' : '#0E756B'} name={active ? 'home' : 'home-outline'} size={20} /></View>
+                      <View style={styles.placeCopy}>
+                        <View style={styles.labelRow}><Text style={styles.placeLabel}>{address.label}</Text>{active && <View style={styles.activePill}><Text style={styles.activePillText}>ACTIVE</Text></View>}</View>
+                        <Text style={styles.placeAddress}>{savedPlaceSummary(address)}</Text>
+                        <Text style={styles.council}>{address.councilName}</Text>
+                      </View>
+                      {active ? <Ionicons color="#0E756B" name="checkmark-circle" size={22} /> : <Ionicons color="#8AA0A1" name="chevron-forward" size={19} />}
+                    </Pressable>
+                  </ReanimatedSwipeable>
                 );
               })}
             </View>
+            {addresses.length > 0 && <View style={styles.swipeHint}><Ionicons color="#748B8C" name="swap-horizontal-outline" size={15} /><Text style={styles.swipeHintText}>Swipe an address left to remove it.</Text></View>}
 
             <Pressable accessibilityRole="button" accessibilityState={{ disabled: refreshing || resolvingExactAddress || !activeAddress }} onPress={refreshOrCompleteAddress} disabled={refreshing || resolvingExactAddress || !activeAddress} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, (refreshing || resolvingExactAddress || !activeAddress) && styles.disabled]}>
               {refreshing || resolvingExactAddress ? <ActivityIndicator color="#0B7168" /> : <Ionicons color="#0B7168" name={exactAddressRequired ? 'home-outline' : 'cloud-download-outline'} size={22} />}
@@ -317,6 +335,11 @@ const styles = StyleSheet.create({
   activePillText: { color: '#0A6D55', fontSize: 8, letterSpacing: 0.7, fontWeight: '900' },
   placeAddress: { color: '#657D80', fontSize: 11.5, marginTop: 4, fontWeight: '600' },
   council: { color: '#7B9292', fontSize: 10.5, marginTop: 3 },
+  removeAction: { width: 92, alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: '#B4413B' },
+  removeActionPressed: { backgroundColor: '#94342F' },
+  removeActionText: { color: '#FFFFFF', fontSize: 10.5, fontWeight: '900' },
+  swipeHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, paddingHorizontal: 4 },
+  swipeHintText: { color: '#748B8C', fontSize: 10.5, fontWeight: '600' },
   syncCard: { borderRadius: 17, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#E3F3EB' },
   syncCopy: { flex: 1 },
   syncTitle: { color: '#174247', fontSize: 13.5, fontWeight: '900' },

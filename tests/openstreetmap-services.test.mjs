@@ -14,6 +14,9 @@ test('normalises nearby map services for the server-side gateway', () => {
           amenity: 'recycling',
           name: 'Community recycling point',
           'addr:street': 'High Street',
+          'recycling:glass_bottles': 'yes',
+          'recycling:paper': 'yes',
+          'recycling:clothes': 'no',
         },
       },
       {
@@ -37,6 +40,7 @@ test('normalises nearby map services for the server-side gateway', () => {
       longitude: -2.84,
       source: 'openstreetmap',
       website: undefined,
+      materials: ['Glass bottles', 'Paper'],
     },
     {
       id: 'osm-202',
@@ -47,6 +51,7 @@ test('normalises nearby map services for the server-side gateway', () => {
       longitude: -2.85,
       source: 'openstreetmap',
       website: 'https://example.gov.uk/tip',
+      materials: [],
     },
   ]);
 });

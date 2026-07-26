@@ -7,7 +7,23 @@ export const collectionMeta: Record<WasteType, { label: string; shortLabel: stri
   recycling: { label: 'Mixed recycling', shortLabel: 'RECYCLING', colour: '#1784D1', tint: '#E3F3FF', example: 'Paper, cans & plastic' },
   garden: { label: 'Garden waste', shortLabel: 'GARDEN', colour: '#3D8B54', tint: '#E7F4E7', example: 'Clippings & leaves' },
   food: { label: 'Food waste', shortLabel: 'FOOD', colour: '#9A6334', tint: '#F8EEDF', example: 'Food scraps' },
+  other: { label: 'Council bin', shortLabel: 'COUNCIL BIN', colour: '#52656C', tint: '#E9EEEE', example: 'Named by your council' },
 };
+
+export function collectionDisplayMeta(collection: Pick<Collection, 'wasteType' | 'label' | 'colour'>) {
+  const base = collectionMeta[collection.wasteType];
+  const label = collection.label?.trim() || base.label;
+  const colour = collection.colour && /^#[0-9A-F]{6}$/i.test(collection.colour)
+    ? collection.colour.toUpperCase()
+    : base.colour;
+  return {
+    ...base,
+    label,
+    shortLabel: label.toUpperCase().slice(0, 24),
+    colour,
+    tint: collection.wasteType === 'other' ? '#E9EEEE' : base.tint,
+  };
+}
 
 function dateAtStartOfDay(value: string | Date) {
   const date = typeof value === 'string' ? new Date(`${value}T12:00:00`) : new Date(value);

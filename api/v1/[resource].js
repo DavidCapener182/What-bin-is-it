@@ -178,8 +178,184 @@ async function fetchKnowsleyMendixDates(postcode, uprn) {
   }
 }
 
-// api/_gateway/adapter-registry.ts
+// api/_gateway/nationwide-bin-source.ts
 function normalisePostcode(value) {
+  const compact = value.trim().toUpperCase().replace(/\s+/g, "");
+  return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
+}
+function isIsoDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+function safeHttpsUrl(value) {
+  if (typeof value !== "string" || value.length > 500) return void 0;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function providerIdForLadCode(value) {
+  return `lad-${value.toLowerCase()}`;
+}
+function stripPostcode(display, postcode) {
+  const trimmed = display.trim();
+  return trimmed.toUpperCase().endsWith(postcode) ? trimmed.slice(0, -postcode.length).replace(/,\s*$/, "").trim() : trimmed;
+}
+function parseNationwideAddresses(value, requestedPostcode, expectedProviderId) {
+  if (!value || typeof value !== "object") {
+    throw new Error("The nationwide address source returned an invalid response.");
+  }
+  const payload = value;
+  const postcode = normalisePostcode(requestedPostcode);
+  if (normalisePostcode(typeof payload.postcode === "string" ? payload.postcode : "") !== postcode || !payload.council || typeof payload.council.ladCode !== "string" || typeof payload.council.name !== "string" || typeof payload.council.slug !== "string" || !/^[a-z0-9-]{1,100}$/.test(payload.council.slug)) {
+    throw new Error("The nationwide address source returned an invalid response.");
+  }
+  const providerId = providerIdForLadCode(payload.council.ladCode);
+  if (providerId !== expectedProviderId.toLowerCase()) {
+    throw new Error("The postcode source returned a different council than expected.");
+  }
+  if (payload.council.supported === false) {
+    throw new Error(`${payload.council.name} does not expose a public live collection lookup.`);
+  }
+  if (!Array.isArray(payload.addresses)) {
+    throw new Error("The nationwide address source returned an invalid response.");
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const addresses = payload.addresses.reduce((result, address) => {
+    if (!address || typeof address.uprn !== "string" && typeof address.uprn !== "number" || typeof address.display !== "string" || typeof address.postcode !== "string") return result;
+    const id = String(address.uprn).trim();
+    const addressPostcode = normalisePostcode(address.postcode);
+    const line1 = stripPostcode(address.display, addressPostcode);
+    if (!/^\d{1,20}$/.test(id) || seen.has(id) || addressPostcode !== postcode || !line1 || line1.length > 240) return result;
+    seen.add(id);
+    result.push({ id, line1, postcode: addressPostcode });
+    return result;
+  }, []);
+  return {
+    councilName: payload.council.name.trim().slice(0, 160),
+    councilSlug: payload.council.slug,
+    providerId,
+    officialUrl: safeHttpsUrl(payload.council.officialUrl),
+    addresses
+  };
+}
+function classifyWasteType(value) {
+  const normalised = value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (/\b(food|caddy|kitchen)\b/.test(normalised)) return "food";
+  if (/\b(garden waste|green waste|compost|organic waste)\b/.test(normalised)) return "garden";
+  if (/\b(recycl\w*|paper|cardboard|card|glass|plastic|carton|metal|cans?)\b/.test(normalised)) return "recycling";
+  if (/\b(general|residual|refuse|rubbish|landfill|non recyclable|domestic waste)\b/.test(normalised)) return "general";
+  return "other";
+}
+function parseNationwideCollections(value) {
+  if (!value || typeof value !== "object") return [];
+  const collections = value.collections;
+  if (!Array.isArray(collections)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  return collections.reduce((result, collection) => {
+    if (!collection || !isIsoDate(collection.date)) return result;
+    const rawType = typeof collection.type === "string" ? collection.type.trim() : "";
+    const rawLabel = typeof collection.label === "string" ? collection.label.trim() : "";
+    const label = (rawLabel || rawType).slice(0, 80);
+    if (!label) return result;
+    const key = `${collection.date}|${label.toLowerCase()}`;
+    if (seen.has(key)) return result;
+    seen.add(key);
+    const colour = typeof collection.colour === "string" && /^#[0-9a-f]{6}$/i.test(collection.colour) ? collection.colour.toUpperCase() : void 0;
+    result.push({
+      date: collection.date,
+      wasteType: classifyWasteType(`${rawType} ${rawLabel}`),
+      label,
+      ...colour ? { colour } : {}
+    });
+    return result;
+  }, []);
+}
+async function fetchJson(url, timeoutMs = 2e4) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        accept: "application/json",
+        "user-agent": "What Bin Is It Tonight?/1.0"
+      }
+    });
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = void 0;
+    }
+    return { response, payload };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+async function fetchNationwideAddressLookup(postcode, expectedProviderId) {
+  const canonicalPostcode = normalisePostcode(postcode);
+  const { response, payload } = await fetchJson(
+    `https://binday.org.uk/api/addresses?postcode=${encodeURIComponent(canonicalPostcode)}`
+  );
+  if (!response.ok) {
+    throw new Error("The nationwide exact-address lookup is temporarily unavailable.");
+  }
+  return parseNationwideAddresses(payload, canonicalPostcode, expectedProviderId);
+}
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+async function fetchNationwideCollections(postcode, addressId, expectedProviderId) {
+  if (!addressId || !/^\d{1,20}$/.test(addressId)) {
+    throw new Error("Choose your exact property before checking its collection dates.");
+  }
+  const lookup = await fetchNationwideAddressLookup(postcode, expectedProviderId);
+  const address = lookup.addresses.find((candidate) => candidate.id === addressId);
+  if (!address) {
+    throw new Error("The selected property was not returned for this postcode.");
+  }
+  const url = new URL("https://binday.org.uk/api/collections");
+  url.searchParams.set("postcode", address.postcode);
+  url.searchParams.set("uprn", address.id);
+  url.searchParams.set("address", `${address.line1} ${address.postcode}`);
+  url.searchParams.set("council", lookup.councilSlug);
+  let payload;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await fetchJson(url.toString());
+    payload = result.payload;
+    if (result.response.status === 202) {
+      if (attempt === 7) throw new Error("The council lookup is still processing. Please try again shortly.");
+      await wait(1500);
+      continue;
+    }
+    if (!result.response.ok) {
+      const message = payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string" ? payload.error.slice(0, 180) : "The nationwide collection lookup is temporarily unavailable.";
+      throw new Error(message);
+    }
+    break;
+  }
+  const typedPayload = payload;
+  if (typedPayload?.estimated === true) {
+    throw new Error("This source returned only estimated dates, so the app did not save them.");
+  }
+  const collections = parseNationwideCollections(payload);
+  if (!collections.length) throw new Error("No dated collections were returned for this property.");
+  return {
+    councilName: lookup.councilName,
+    providerId: lookup.providerId,
+    verifiedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    notice: `Live ${lookup.councilName} collection data via the Bin Day nationwide council lookup.`,
+    collections
+  };
+}
+
+// api/_gateway/adapter-registry.ts
+function normalisePostcode2(value) {
   const compact = value.trim().toUpperCase().replace(/\s+/g, "");
   return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
 }
@@ -212,18 +388,22 @@ function parseCouncilDate(value) {
 function parseKnowsleyAddresses(value) {
   const payload = unwrapJson(value);
   if (!Array.isArray(payload)) return [];
-  const seen = /* @__PURE__ */ new Set();
+  const seenIds = /* @__PURE__ */ new Set();
+  const seenAddresses = /* @__PURE__ */ new Set();
   return payload.reduce((addresses, item) => {
     if (!item || typeof item !== "object") return addresses;
     const candidate = item;
     if (typeof candidate.FullAddress !== "string" || typeof candidate.Postcode !== "string" || typeof candidate.UPRN !== "string" && typeof candidate.UPRN !== "number") return addresses;
     const id = String(candidate.UPRN).trim();
-    const postcode = normalisePostcode(candidate.Postcode);
-    if (!/^\d{1,20}$/.test(id) || seen.has(id)) return addresses;
+    const postcode = normalisePostcode2(candidate.Postcode);
+    if (!/^\d{1,20}$/.test(id) || seenIds.has(id)) return addresses;
     const fullAddress = candidate.FullAddress.trim();
     const line1 = fullAddress.toUpperCase().endsWith(postcode) ? fullAddress.slice(0, -postcode.length).replace(/,\s*$/, "").trim() : fullAddress;
     if (!line1) return addresses;
-    seen.add(id);
+    const displayKey = `${line1.toUpperCase()}|${postcode}`;
+    if (seenAddresses.has(displayKey)) return addresses;
+    seenIds.add(id);
+    seenAddresses.add(displayKey);
     addresses.push({ id, line1, postcode });
     return addresses;
   }, []);
@@ -262,20 +442,20 @@ async function fetchWithTimeout(url, timeoutMs = 2e4) {
 var knowsleyAdapter = {
   id: "lad-e08000011",
   async getAddresses(postcode) {
-    const search = `${normalisePostcode(postcode).split(" ").join("*")}*`;
+    const search = `${normalisePostcode2(postcode).split(" ").join("*")}*`;
     const response = await fetchWithTimeout(
       `https://address.knowsley.gov.uk/api/addressSearchstatutory?addresssearch=${encodeURIComponent(search)}`
     );
     if (!response.ok) throw new Error(`Knowsley address search returned ${response.status}.`);
     const addresses = parseKnowsleyAddresses(await response.text());
-    return addresses.filter((address) => address.postcode === normalisePostcode(postcode));
+    return addresses.filter((address) => address.postcode === normalisePostcode2(postcode));
   },
   async getCollections(input) {
     if (!input.addressId || !/^\d{1,20}$/.test(input.addressId)) {
       throw new Error("An exact Knowsley property must be selected before checking collection dates.");
     }
     const dates = await fetchKnowsleyMendixDates(
-      normalisePostcode(input.postcode),
+      normalisePostcode2(input.postcode),
       input.addressId
     );
     const collections = parseKnowsleyCollections(dates);
@@ -293,7 +473,57 @@ var adapters = {
   [knowsleyAdapter.id]: knowsleyAdapter
 };
 function getAdapter(providerId) {
-  return adapters[providerId];
+  const directAdapter = adapters[providerId];
+  if (directAdapter) return directAdapter;
+  if (!/^lad-[ensw]\d{8}$/.test(providerId)) return void 0;
+  return {
+    id: providerId,
+    async getAddresses(postcode) {
+      return (await fetchNationwideAddressLookup(postcode, providerId)).addresses;
+    },
+    async getCollections(input) {
+      return fetchNationwideCollections(input.postcode, input.addressId, providerId);
+    }
+  };
+}
+
+// src/lib/recycling-materials.ts
+var materialLabels = {
+  aluminium: "Aluminium",
+  batteries: "Batteries",
+  beverage_cartons: "Drink cartons",
+  books: "Books",
+  cans: "Cans",
+  cardboard: "Cardboard",
+  clothes: "Clothes",
+  cooking_oil: "Cooking oil",
+  electrical_items: "Electrical items",
+  engine_oil: "Engine oil",
+  fluorescent_tubes: "Fluorescent tubes",
+  foil: "Foil",
+  food: "Food waste",
+  fridges: "Fridges",
+  garden_waste: "Garden waste",
+  glass: "Glass",
+  glass_bottles: "Glass bottles",
+  green_waste: "Green waste",
+  magazines: "Magazines",
+  metal: "Metal",
+  newspapers: "Newspapers",
+  paper: "Paper",
+  paper_packaging: "Paper packaging",
+  plastic: "Plastic",
+  plastic_bottles: "Plastic bottles",
+  plastic_packaging: "Plastic packaging",
+  scrap_metal: "Scrap metal",
+  shoes: "Shoes",
+  small_appliances: "Small appliances",
+  textiles: "Textiles",
+  waste: "Household waste",
+  wood: "Wood"
+};
+function parseRecyclingMaterials(tags) {
+  return Object.entries(materialLabels).filter(([key]) => tags[`recycling:${key}`]?.toLowerCase() === "yes").map(([, label]) => label);
 }
 
 // api/_gateway/openstreetmap-services.ts
@@ -318,7 +548,8 @@ function parseOpenStreetMapServices(payload) {
       latitude,
       longitude,
       source: "openstreetmap",
-      website: tags.website
+      website: tags.website,
+      materials: parseRecyclingMaterials(tags)
     });
     return services;
   }, []);
@@ -364,7 +595,7 @@ async function fetchOpenStreetMapServices(postcode) {
 }
 
 // api/_gateway/index.ts
-var wasteTypes = /* @__PURE__ */ new Set(["general", "recycling", "garden", "food"]);
+var wasteTypes = /* @__PURE__ */ new Set(["general", "recycling", "garden", "food", "other"]);
 var serviceTypes = /* @__PURE__ */ new Set(["recycling-centre", "recycling-point", "reuse", "collection"]);
 var headers = {
   "content-type": "application/json; charset=utf-8",
@@ -377,12 +608,15 @@ var headers = {
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers });
 }
+function publicError(error, fallback) {
+  return error instanceof Error && error.message.length > 0 ? error.message.slice(0, 180) : fallback;
+}
 function isPostcode(value) {
   if (typeof value !== "string") return false;
-  const postcode = normalisePostcode2(value);
+  const postcode = normalisePostcode3(value);
   return /^(GIR 0AA|(?:(?:[A-PR-UWYZ]\d[\dA-HJKSTUW]?|[A-PR-UWYZ][A-HK-Y]\d[\dABEHMNPRVWXY]?) \d[ABD-HJLNP-UW-Z]{2}))$/i.test(postcode);
 }
-function normalisePostcode2(value) {
+function normalisePostcode3(value) {
   const compact = value.trim().toUpperCase().replace(/\s+/g, "");
   return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
 }
@@ -395,7 +629,8 @@ function validCollectionResult(value) {
   return typeof result.councilName === "string" && typeof result.providerId === "string" && typeof result.verifiedAt === "string" && !Number.isNaN(Date.parse(result.verifiedAt)) && Array.isArray(result.collections) && result.collections.every((collection) => {
     if (!collection || typeof collection !== "object") return false;
     const item = collection;
-    return typeof item.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && wasteTypes.has(item.wasteType);
+    const details = collection;
+    return typeof item.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && wasteTypes.has(item.wasteType) && (details.label === void 0 || typeof details.label === "string" && details.label.length > 0 && details.label.length <= 80) && (details.colour === void 0 || typeof details.colour === "string" && /^#[0-9A-F]{6}$/.test(details.colour));
   });
 }
 function validAddressResult(value) {
@@ -409,7 +644,7 @@ function validServiceResult(value) {
   return Array.isArray(value) && value.every((service) => {
     if (!service || typeof service !== "object") return false;
     const item = service;
-    return typeof item.id === "string" && typeof item.name === "string" && serviceTypes.has(item.type) && validCoordinate2(item.latitude, -90, 90) && validCoordinate2(item.longitude, -180, 180) && (item.source === "council" || item.source === "openstreetmap");
+    return typeof item.id === "string" && typeof item.name === "string" && serviceTypes.has(item.type) && validCoordinate2(item.latitude, -90, 90) && validCoordinate2(item.longitude, -180, 180) && (item.source === "council" || item.source === "openstreetmap") && (item.materials === void 0 || Array.isArray(item.materials) && item.materials.length <= 40 && item.materials.every((material) => typeof material === "string" && material.length > 0 && material.length <= 80));
   });
 }
 var index_default = {
@@ -426,12 +661,12 @@ var index_default = {
       const adapter2 = getAdapter(providerId);
       if (!adapter2?.getAddresses) return json({ error: "This council does not have a live address search connected yet." }, 404);
       try {
-        const addresses = await adapter2.getAddresses(normalisePostcode2(postcode));
+        const addresses = await adapter2.getAddresses(normalisePostcode3(postcode));
         if (!validAddressResult(addresses)) return json({ error: "The council address source returned an invalid response." }, 502);
         return json({ addresses });
       } catch (error) {
         console.error("Council address provider failed", providerId, error);
-        return json({ error: "The council address search is temporarily unavailable." }, 502);
+        return json({ error: publicError(error, "The council address search is temporarily unavailable.") }, 502);
       }
     }
     if (request.method === "GET" && pathname === "/v1/services") {
@@ -441,12 +676,12 @@ var index_default = {
       if (!providerId || !/^[a-z0-9-]+$/.test(providerId)) return json({ error: "Unknown council provider." }, 400);
       const adapter2 = getAdapter(providerId);
       try {
-        const services = adapter2?.getServices ? (await adapter2.getServices({ postcode: normalisePostcode2(postcode) })).map((service) => ({ ...service, source: "council" })) : await fetchOpenStreetMapServices(normalisePostcode2(postcode));
+        const services = adapter2?.getServices ? (await adapter2.getServices({ postcode: normalisePostcode3(postcode) })).map((service) => ({ ...service, source: "council" })) : await fetchOpenStreetMapServices(normalisePostcode3(postcode));
         if (!validServiceResult(services)) return json({ error: "The council service source returned an invalid response." }, 502);
         return json({ services });
       } catch (error) {
         console.error("Council service provider failed", providerId, error);
-        return json({ error: "The local service search is temporarily unavailable." }, 502);
+        return json({ error: publicError(error, "The local service search is temporarily unavailable.") }, 502);
       }
     }
     if (request.method !== "POST" || pathname !== "/v1/collections") return json({ error: "Not found" }, 404);
@@ -461,14 +696,14 @@ var index_default = {
     const adapter = getAdapter(body.providerId);
     if (!adapter) return json({ error: "This council provider has not been connected yet." }, 404);
     try {
-      const result = await adapter.getCollections({ postcode: normalisePostcode2(body.postcode), addressId: typeof body.addressId === "string" ? body.addressId : void 0 });
+      const result = await adapter.getCollections({ postcode: normalisePostcode3(body.postcode), addressId: typeof body.addressId === "string" ? body.addressId : void 0 });
       if (!validCollectionResult(result) || result.providerId !== adapter.id) {
         return json({ error: "The council source returned an invalid response." }, 502);
       }
       return json(result);
     } catch (error) {
       console.error("Council provider failed", body.providerId, error);
-      return json({ error: "The council source is temporarily unavailable." }, 502);
+      return json({ error: publicError(error, "The council source is temporarily unavailable.") }, 502);
     }
   }
 };

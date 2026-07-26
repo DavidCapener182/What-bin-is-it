@@ -1,10 +1,12 @@
-const wasteTypes = new Set(['general', 'recycling', 'garden', 'food']);
+const wasteTypes = new Set(['general', 'recycling', 'garden', 'food', 'other']);
 
 export type VerifiedCollection = {
   id: string;
   date: string;
-  wasteType: 'general' | 'recycling' | 'garden' | 'food';
+  wasteType: 'general' | 'recycling' | 'garden' | 'food' | 'other';
   source: 'council';
+  label?: string;
+  colour?: string;
 };
 
 function isIsoDate(value: unknown): value is string {
@@ -28,6 +30,15 @@ export function verifiedCollectionsOnly(value: unknown): VerifiedCollection[] {
       && isIsoDate(collection.date)
       && wasteTypes.has(collection.wasteType as string)
       && collection.source === 'council'
+      && (collection.label === undefined || (
+        typeof collection.label === 'string'
+        && collection.label.length > 0
+        && collection.label.length <= 80
+      ))
+      && (collection.colour === undefined || (
+        typeof collection.colour === 'string'
+        && /^#[0-9A-F]{6}$/i.test(collection.colour)
+      ))
     );
   });
 }

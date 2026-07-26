@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { WasteIcon } from '@/components/bin-glyph';
-import { collectionMeta, dayDifference, formatCollectionDate, sortCollections } from '@/lib/data';
+import { collectionDisplayMeta, dayDifference, formatCollectionDate, sortCollections } from '@/lib/data';
 import { useAppData } from '@/lib/use-app-data';
 
 export default function CalendarScreen() {
@@ -50,7 +50,7 @@ export default function CalendarScreen() {
                 </View>
                 <View style={styles.collectionsCard}>
                   {dayCollections.map((collection, index) => {
-                    const meta = collectionMeta[collection.wasteType];
+                    const meta = collectionDisplayMeta(collection);
                     return (
                       <View key={collection.id} style={[styles.collectionRow, index !== dayCollections.length - 1 && styles.collectionBorder]}>
                         <View style={[styles.iconCircle, { backgroundColor: meta.tint }]}><WasteIcon colour={meta.colour} type={collection.wasteType} /></View>

@@ -29,7 +29,7 @@ export function matchingAddressId(addresses: { id: string; postcode: string }[],
 }
 
 export function requiresExactCouncilAddress(providerId: string, councilAddressId?: string) {
-  return providerId === 'lad-e08000011' && !councilAddressId;
+  return /^lad-[ensw]\d{8}$/.test(providerId) && !councilAddressId;
 }
 
 export function buildNearestPostcodeUrl(latitude: number, longitude: number) {

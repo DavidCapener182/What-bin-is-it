@@ -1,11 +1,30 @@
 import { fetchKnowsleyMendixDates } from './knowsley-mendix.ts';
+import {
+  fetchNationwideAddressLookup,
+  fetchNationwideCollections,
+} from './nationwide-bin-source.ts';
 
-export type WasteType = 'general' | 'recycling' | 'garden' | 'food';
+export type WasteType = 'general' | 'recycling' | 'garden' | 'food' | 'other';
 
 export type CollectionInput = { postcode: string; addressId?: string };
-export type CollectionOutput = { councilName: string; providerId: string; verifiedAt: string; collections: { date: string; wasteType: WasteType }[]; notice?: string };
+export type CollectionOutput = {
+  councilName: string;
+  providerId: string;
+  verifiedAt: string;
+  collections: { date: string; wasteType: WasteType; label?: string; colour?: string }[];
+  notice?: string;
+};
 export type CouncilAddress = { id: string; line1: string; postcode: string };
-export type CouncilService = { id: string; name: string; type: 'recycling-centre' | 'recycling-point' | 'reuse' | 'collection'; address?: string; latitude: number; longitude: number; website?: string };
+export type CouncilService = {
+  id: string;
+  name: string;
+  type: 'recycling-centre' | 'recycling-point' | 'reuse' | 'collection';
+  address?: string;
+  latitude: number;
+  longitude: number;
+  website?: string;
+  materials?: string[];
+};
 export type CouncilAdapter = {
   id: string;
   getCollections(input: CollectionInput): Promise<CollectionOutput>;
@@ -68,7 +87,8 @@ function parseCouncilDate(value: unknown) {
 export function parseKnowsleyAddresses(value: unknown): CouncilAddress[] {
   const payload = unwrapJson(value);
   if (!Array.isArray(payload)) return [];
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenAddresses = new Set<string>();
   return payload.reduce<CouncilAddress[]>((addresses, item) => {
     if (!item || typeof item !== 'object') return addresses;
     const candidate = item as KnowsleyAddressPayload;
@@ -79,13 +99,16 @@ export function parseKnowsleyAddresses(value: unknown): CouncilAddress[] {
     ) return addresses;
     const id = String(candidate.UPRN).trim();
     const postcode = normalisePostcode(candidate.Postcode);
-    if (!/^\d{1,20}$/.test(id) || seen.has(id)) return addresses;
+    if (!/^\d{1,20}$/.test(id) || seenIds.has(id)) return addresses;
     const fullAddress = candidate.FullAddress.trim();
     const line1 = fullAddress.toUpperCase().endsWith(postcode)
       ? fullAddress.slice(0, -postcode.length).replace(/,\s*$/, '').trim()
       : fullAddress;
     if (!line1) return addresses;
-    seen.add(id);
+    const displayKey = `${line1.toUpperCase()}|${postcode}`;
+    if (seenAddresses.has(displayKey)) return addresses;
+    seenIds.add(id);
+    seenAddresses.add(displayKey);
     addresses.push({ id, line1, postcode });
     return addresses;
   }, []);
@@ -163,5 +186,16 @@ const adapters: Record<string, CouncilAdapter> = {
 };
 
 export function getAdapter(providerId: string) {
-  return adapters[providerId];
+  const directAdapter = adapters[providerId];
+  if (directAdapter) return directAdapter;
+  if (!/^lad-[ensw]\d{8}$/.test(providerId)) return undefined;
+  return {
+    id: providerId,
+    async getAddresses(postcode) {
+      return (await fetchNationwideAddressLookup(postcode, providerId)).addresses;
+    },
+    async getCollections(input) {
+      return fetchNationwideCollections(input.postcode, input.addressId, providerId);
+    },
+  } satisfies CouncilAdapter;
 }

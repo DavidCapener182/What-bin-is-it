@@ -1,10 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { collectionMeta } from '@/lib/data';
-import { WasteType } from '@/lib/types';
+import { collectionDisplayMeta } from '@/lib/data';
+import { Collection } from '@/lib/types';
 
-export function CollectionBadge({ wasteType }: { wasteType: WasteType }) {
-  const meta = collectionMeta[wasteType];
+export function CollectionBadge({ collection }: { collection: Pick<Collection, 'wasteType' | 'label' | 'colour'> }) {
+  const meta = collectionDisplayMeta(collection);
   return (
     <View style={[styles.badge, { backgroundColor: meta.tint, borderColor: meta.colour }]}>
       <View style={[styles.dot, { backgroundColor: meta.colour }]} />
