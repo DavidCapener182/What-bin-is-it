@@ -96,7 +96,10 @@ test('creates an iOS timeline that changes the answer at midnight', () => {
 
   assert.equal(timeline[0].props.headline, 'Nothing goes out tonight');
   assert.equal(timeline[1].props.headline, 'Maroon general waste bin + Food waste caddy');
-  assert.equal(timeline[1].date.toISOString(), '2026-07-29T23:00:00.000Z');
+  assert.equal(timeline[1].date.getFullYear(), 2026);
+  assert.equal(timeline[1].date.getMonth(), 6);
+  assert.equal(timeline[1].date.getDate(), 30);
+  assert.equal(timeline[1].date.getHours(), 0);
 });
 
 test('reads only the active saved address and its verified schedule for Android widgets', () => {
