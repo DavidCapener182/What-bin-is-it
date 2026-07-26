@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { RouteHead } from '@/components/route-head';
 import {
   fetchCouncilAddresses,
   isUkPostcode,
@@ -12,7 +14,6 @@ import {
   lookupPostcode,
   ResolvedPlace,
 } from '@/lib/council-provider';
-import { councilDirectoryCounts } from '@/lib/council-directory';
 import { appColours, appFonts } from '@/lib/design-system';
 import { getDeviceCoordinates } from '@/lib/device-location';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
@@ -31,8 +32,11 @@ function savedPlaceSummary(address: SavedAddress) {
 }
 
 export default function PlacesScreen() {
+  const params = useLocalSearchParams<{ postcode?: string }>();
   const { addresses, activeAddress, addAddress, removeAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
-  const [postcode, setPostcode] = useState('');
+  const initialPostcode = typeof params.postcode === 'string' ? params.postcode : '';
+  const initialLookupHandled = useRef(false);
+  const [postcode, setPostcode] = useState(initialPostcode);
   const [lookupMode, setLookupMode] = useState<'postcode' | 'location'>();
   const [showAdd, setShowAdd] = useState(false);
   const [addressChoice, setAddressChoice] = useState<AddressChoice>();
@@ -84,20 +88,40 @@ export default function PlacesScreen() {
     await saveResolvedPlace(result);
   }
 
-  async function addPlace() {
-    if (!isUkPostcode(postcode)) {
+  async function addPlace(postcodeValue = postcode) {
+    if (!isUkPostcode(postcodeValue)) {
       Alert.alert('Add a full postcode', 'Enter a postcode such as M1 1AE to find its local authority.');
       return;
     }
     setLookupMode('postcode');
     try {
-      const result = await lookupPostcode(postcode);
+      const result = await lookupPostcode(postcodeValue);
       await continueWithResolvedPlace(result);
     } catch (error) {
       Alert.alert('Could not add this place', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
       setLookupMode(undefined);
     }
+  }
+
+  useEffect(() => {
+    if (initialLookupHandled.current || !initialPostcode || !isUkPostcode(initialPostcode)) return;
+    initialLookupHandled.current = true;
+    setShowAdd(true);
+    void addPlace(initialPostcode);
+    // The incoming postcode is a one-time continuation from Today.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPostcode]);
+
+  function confirmRemoveAddress(address: SavedAddress) {
+    Alert.alert(
+      `Remove ${address.label}?`,
+      `${address.line1} and its saved collection dates will be removed from this device.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeAddress(address.id) },
+      ],
+    );
   }
 
   async function useCurrentLocation() {
@@ -150,12 +174,17 @@ export default function PlacesScreen() {
 
   return (
     <>
-      <AppShell activeRoute="/places">
+      <AppShell activeRoute="/settings">
+        <RouteHead
+          title="Manage Places"
+          description="Add, choose or remove saved addresses used for verified UK bin collection dates."
+          path="/places"
+        />
         <View style={styles.page}>
           <SafeAreaView edges={['top']} style={styles.safe}>
             <Text style={styles.kicker}>YOUR ADDRESSES</Text>
-            <Text style={styles.title}>Places</Text>
-            <Text style={styles.subtitle}>Home, family, or that one friend who always forgets bin day.</Text>
+            <Text style={styles.title}>Manage places</Text>
+            <Text style={styles.subtitle}>Choose the addresses whose live council dates you want to keep.</Text>
           </SafeAreaView>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Pressable
@@ -187,8 +216,8 @@ export default function PlacesScreen() {
                   {addresses.length > 0 && <Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable>}
                 </View>
                 <Text style={styles.fieldLabel}>UK POSTCODE</Text>
-                <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
-                <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
+                <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={() => void addPlace()} placeholder="e.g. M1 1AE" placeholderTextColor="#70888B" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
+                <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(lookupMode) }} disabled={Boolean(lookupMode)} onPress={() => void addPlace()} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookupMode && styles.disabled]}>
                   {lookupMode === 'postcode' ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find my collection dates</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
                 </Pressable>
               </View>
@@ -223,7 +252,7 @@ export default function PlacesScreen() {
                       <Pressable
                         accessibilityLabel={`Remove ${address.label}`}
                         accessibilityRole="button"
-                        onPress={() => removeAddress(address.id)}
+                        onPress={() => confirmRemoveAddress(address)}
                         style={({ pressed }) => [styles.removeAction, pressed && styles.removeActionPressed]}>
                         <Ionicons color="#FFFFFF" name="trash-outline" size={21} />
                         <Text style={styles.removeActionText}>Remove</Text>
@@ -253,11 +282,6 @@ export default function PlacesScreen() {
               </View>
               <Ionicons color="#0B7168" name="arrow-forward" size={17} />
             </Pressable>
-
-            <View style={styles.directoryCard}>
-              <View style={styles.directoryIcon}><Ionicons color="#926023" name="map-outline" size={19} /></View>
-              <View style={styles.directoryCopy}><Text style={styles.directoryTitle}>UK council directory</Text><Text style={styles.directoryBody}>{councilDirectoryCounts.England + councilDirectoryCounts.Scotland + councilDirectoryCounts.Wales + councilDirectoryCounts['Northern Ireland']} local authorities mapped from your postcode.</Text></View>
-            </View>
 
             <View style={styles.note}><Ionicons color="#648485" name="shield-checkmark-outline" size={17} /><Text style={styles.noteText}>Your location is used once to find the nearest postcode and is not tracked. Your selected address stays on this device. Collection dates are shown only when returned by the council source.</Text></View>
           </ScrollView>
@@ -307,7 +331,7 @@ export default function PlacesScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: appColours.background },
   safe: { backgroundColor: '#FFFFFF', paddingTop: 14, paddingHorizontal: 20, paddingBottom: 22 },
-  kicker: { color: '#1D7A70', fontFamily: appFonts.text, fontSize: 10.5, letterSpacing: 1.15, fontWeight: '700' },
+  kicker: { color: '#1D7A70', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 1, fontWeight: '700' },
   title: { color: '#14323B', fontFamily: appFonts.display, fontSize: 32, lineHeight: 38, fontWeight: '700', letterSpacing: -1.05, marginTop: 3 },
   subtitle: { color: '#627B7E', fontSize: 12.5, lineHeight: 18, marginTop: 7, maxWidth: 310, fontWeight: '500' },
   content: { padding: 18, paddingBottom: 120, gap: 17 },
@@ -315,15 +339,15 @@ const styles = StyleSheet.create({
   locationIcon: { height: 42, width: 42, borderRadius: 15, backgroundColor: '#0D8375', alignItems: 'center', justifyContent: 'center' },
   locationCopy: { flex: 1 },
   locationTitle: { color: '#F4FFF9', fontSize: 14, fontWeight: '700' },
-  locationBody: { color: '#B9DACE', fontSize: 11, lineHeight: 15, marginTop: 3, fontWeight: '600' },
+  locationBody: { color: '#B9DACE', fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '600' },
   sectionHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 2 },
   sectionTitle: { color: '#2A4A50', fontSize: 14, fontWeight: '800' },
-  count: { color: '#7C9192', fontSize: 11.5, fontWeight: '700' },
+  count: { color: '#687F81', fontSize: 12, fontWeight: '700' },
   placeList: { backgroundColor: appColours.card, borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, overflow: 'hidden', shadowColor: '#1B363A', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   emptyPlaces: { minHeight: 84, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   emptyPlacesCopy: { flex: 1 },
   emptyPlacesTitle: { color: '#1B3B42', fontSize: 13.5, fontWeight: '700' },
-  emptyPlacesBody: { color: '#728789', fontSize: 11, marginTop: 4 },
+  emptyPlacesBody: { color: '#61797C', fontSize: 12.5, lineHeight: 17, marginTop: 4 },
   placeCard: { minHeight: 91, paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
   placeBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E4EBE6' },
   placeActive: { backgroundColor: '#F2FBF6' },
@@ -333,51 +357,46 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   placeLabel: { color: '#1B3B42', fontSize: 14.5, fontWeight: '700', letterSpacing: -0.15 },
   activePill: { backgroundColor: '#D2F0DF', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
-  activePillText: { color: '#0A6D55', fontSize: 8, letterSpacing: 0.6, fontWeight: '700' },
-  placeAddress: { color: '#657D80', fontSize: 11.5, marginTop: 4, fontWeight: '600' },
-  council: { color: '#7B9292', fontSize: 10.5, marginTop: 3 },
+  activePillText: { color: '#0A6D55', fontSize: 11, letterSpacing: 0.45, fontWeight: '700' },
+  placeAddress: { color: '#5B7478', fontSize: 12.5, marginTop: 4, fontWeight: '600' },
+  council: { color: '#667E80', fontSize: 12, marginTop: 3 },
   removeAction: { width: 92, alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: '#B4413B' },
   removeActionPressed: { backgroundColor: '#94342F' },
-  removeActionText: { color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' },
+  removeActionText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   swipeHint: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, paddingHorizontal: 4 },
-  swipeHintText: { color: '#748B8C', fontSize: 10.5, fontWeight: '600' },
+  swipeHintText: { color: '#647D80', fontSize: 12, fontWeight: '600' },
   syncCard: { borderRadius: 17, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#E3F3EB' },
   syncCopy: { flex: 1 },
   syncTitle: { color: '#174247', fontSize: 13.5, fontWeight: '700' },
-  syncBody: { color: '#5C7C7C', fontSize: 11, marginTop: 3, fontWeight: '500' },
-  directoryCard: { borderRadius: 17, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#FAEEDC' },
-  directoryIcon: { height: 36, width: 36, borderRadius: 18, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
-  directoryCopy: { flex: 1 },
-  directoryTitle: { color: '#573C1E', fontSize: 13.5, fontWeight: '700' },
-  directoryBody: { color: '#866841', fontSize: 10.5, marginTop: 3, lineHeight: 14, fontWeight: '600' },
+  syncBody: { color: '#537274', fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
   addPanel: { backgroundColor: appColours.card, padding: 17, borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, gap: 12, shadowColor: '#1B363A', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   addHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   addHeaderCopy: { flex: 1 },
   addTitle: { color: '#14383E', fontFamily: appFonts.display, fontSize: 20, lineHeight: 25, fontWeight: '700', letterSpacing: -0.4 },
-  addDescription: { color: '#738789', fontSize: 11.5, marginTop: 4 },
-  fieldLabel: { color: '#547677', fontSize: 9.5, letterSpacing: 0.9, fontWeight: '700', marginTop: 5 },
+  addDescription: { color: '#61797C', fontSize: 12.5, lineHeight: 17, marginTop: 4 },
+  fieldLabel: { color: '#547677', fontSize: 12, letterSpacing: 0.75, fontWeight: '700', marginTop: 5 },
   input: { height: 47, borderRadius: 12, borderWidth: 1, borderColor: '#D7E1DB', color: '#163C40', paddingHorizontal: 13, backgroundColor: '#FBFCFA', fontSize: 15, fontWeight: '700' },
   addButton: { height: 46, borderRadius: 13, backgroundColor: '#0B7469', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 2 },
   addButtonText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' },
   newPlace: { minHeight: 79, borderRadius: 18, borderWidth: 1.5, borderColor: '#B7D3C7', borderStyle: 'dashed', alignItems: 'center', flexDirection: 'row', gap: 12, paddingHorizontal: 15 },
   plus: { height: 37, width: 37, borderRadius: 13, backgroundColor: '#DDF0E7', alignItems: 'center', justifyContent: 'center' },
   newPlaceTitle: { color: '#1A4549', fontSize: 13.5, fontWeight: '700' },
-  newPlaceCopy: { color: '#6C8587', fontSize: 11.5, marginTop: 3 },
+  newPlaceCopy: { color: '#5E777A', fontSize: 12.5, marginTop: 3 },
   note: { paddingHorizontal: 5, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  noteText: { color: '#718585', fontSize: 10.5, lineHeight: 15, flex: 1 },
+  noteText: { color: '#5D7477', fontSize: 12, lineHeight: 17, flex: 1 },
   addressModal: { flex: 1, backgroundColor: appColours.background },
   modalHeader: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 20, flexDirection: 'row', gap: 12, borderBottomWidth: 1, borderBottomColor: '#E5ECE7' },
   modalHeaderCopy: { flex: 1 },
-  modalKicker: { color: '#1D7A70', fontFamily: appFonts.text, fontSize: 10, letterSpacing: 1.05, fontWeight: '700' },
+  modalKicker: { color: '#1D7A70', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.9, fontWeight: '700' },
   modalTitle: { color: '#14323B', fontFamily: appFonts.display, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.8, marginTop: 3 },
-  modalBody: { color: '#667F81', fontSize: 11.5, lineHeight: 16, marginTop: 7, maxWidth: 320 },
+  modalBody: { color: '#5C7578', fontSize: 13, lineHeight: 18, marginTop: 7, maxWidth: 320 },
   modalClose: { height: 36, width: 36, borderRadius: 18, backgroundColor: '#EDF3EF', alignItems: 'center', justifyContent: 'center' },
   addressList: { padding: 16, paddingBottom: 30 },
   addressOption: { minHeight: 70, backgroundColor: appColours.card, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: appColours.separator, marginBottom: 9, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 11, shadowColor: '#17353A', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
   addressOptionIcon: { height: 39, width: 39, borderRadius: 13, backgroundColor: '#E3F2EC', alignItems: 'center', justifyContent: 'center' },
   addressOptionCopy: { flex: 1 },
   addressOptionTitle: { color: '#173D43', fontSize: 13, lineHeight: 17, fontWeight: '800' },
-  addressOptionPostcode: { color: '#72888A', fontSize: 10.5, marginTop: 3, fontWeight: '600' },
+  addressOptionPostcode: { color: '#5E777A', fontSize: 12, marginTop: 3, fontWeight: '600' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.6 },
 });

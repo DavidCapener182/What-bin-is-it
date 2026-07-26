@@ -11,8 +11,36 @@ test('serves Expo static routes without an html extension', () => {
   assert.equal(
     config.cleanUrls,
     true,
-    'Expo exports places.html and find.html, so Vercel must map /places and /find to those files',
+    'Expo exports static route HTML, so Vercel must serve clean route URLs',
   );
+});
+
+test('keeps the renamed schedule and guide routes backwards compatible', () => {
+  assert.ok(config.redirects?.some((redirect) => (
+    redirect.source === '/calendar'
+    && redirect.destination === '/schedule'
+    && redirect.permanent === true
+  )));
+  assert.ok(config.redirects?.some((redirect) => (
+    redirect.source === '/find'
+    && redirect.destination === '/guide'
+    && redirect.permanent === true
+  )));
+});
+
+test('adds baseline browser security headers', () => {
+  const headers = config.headers?.flatMap((rule) => rule.headers ?? []) ?? [];
+  const names = new Set(headers.map((header) => header.key.toLowerCase()));
+  for (const name of [
+    'content-security-policy',
+    'permissions-policy',
+    'referrer-policy',
+    'strict-transport-security',
+    'x-content-type-options',
+    'x-frame-options',
+  ]) {
+    assert.ok(names.has(name), `missing ${name}`);
+  }
 });
 
 test('redirects Vercel deployment aliases to the canonical app origin', () => {

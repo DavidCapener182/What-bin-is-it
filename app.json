@@ -44,7 +44,23 @@
       "description": "UK bin collection reminders, local recycling guidance, and nearby waste services."
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "redirects": [
+            {
+              "source": "/calendar",
+              "destination": "/schedule",
+              "permanent": true
+            },
+            {
+              "source": "/find",
+              "destination": "/guide",
+              "permanent": true
+            }
+          ]
+        }
+      ],
       [
         "expo-splash-screen",
         {

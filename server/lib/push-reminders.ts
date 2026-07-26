@@ -16,7 +16,7 @@ export type PushReminderPayload = {
   triggerAt: string;
   title: 'Bin reminder';
   body: string;
-  url: '/calendar';
+  url: '/schedule';
   tag: string;
 };
 
@@ -140,7 +140,7 @@ export function parsePushReminders(value: unknown, now = new Date()): PushRemind
       triggerAt: new Date(triggerTime).toISOString(),
       title: 'Bin reminder',
       body: reminder.body,
-      url: '/calendar',
+      url: '/schedule',
       tag: `collection-${reminder.collectionId}`.slice(0, 220),
     };
   });

@@ -94,6 +94,8 @@ self.addEventListener('fetch', (event) => {
         return (await cache.match(request))
           || (await cache.match(url.pathname))
           || (await cache.match(url.pathname.replace(/\\/$/, '') + '.html'))
+          || (await cache.match('/offline'))
+          || (await cache.match('/offline.html'))
           || (await cache.match('/'));
       }
     })());
@@ -122,7 +124,7 @@ self.addEventListener('push', (event) => {
     tag: typeof payload.tag === 'string' ? payload.tag : 'bin-reminder',
     renotify: true,
     data: {
-      url: typeof payload.url === 'string' ? payload.url : '/calendar',
+      url: typeof payload.url === 'string' ? payload.url : '/schedule',
     },
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -130,7 +132,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url || '/calendar', self.location.origin).href;
+  const target = new URL(event.notification.data?.url || '/schedule', self.location.origin).href;
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);

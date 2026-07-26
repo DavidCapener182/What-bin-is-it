@@ -42,7 +42,7 @@ test('keeps only bounded future bin reminders', () => {
       triggerAt: '2026-07-30T18:00:00.000Z',
       title: 'Bin reminder',
       body: 'General waste collection is tomorrow. Put it out before 7am.',
-      url: '/calendar',
+      url: '/schedule',
     },
   ], new Date('2026-07-26T12:00:00.000Z'));
 

@@ -51,7 +51,7 @@ async function cancelCollectionReminders() {
   await Promise.all(scheduled
     .filter((request) => (
       request.content.data?.kind === reminderKind
-      || (request.content.data?.url === '/calendar' && typeof request.content.data?.collectionId === 'string')
+      || (request.content.data?.url === '/schedule' && typeof request.content.data?.collectionId === 'string')
     ))
     .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)));
 }

@@ -59,7 +59,7 @@ export function planCollectionReminders(
         triggerAt,
         title: 'Bin reminder',
         body: `${label} collection${place ? ` for ${place}` : ''} is ${preferences.reminderDayOffset === 0 ? 'today' : 'tomorrow'}. Put it out before 7am.`,
-        url: '/calendar',
+        url: '/schedule',
       };
     })
     .filter((reminder) => reminder.triggerAt > now)

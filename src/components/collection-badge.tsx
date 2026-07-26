@@ -16,5 +16,5 @@ export function CollectionBadge({ collection }: { collection: Pick<Collection, '
 const styles = StyleSheet.create({
   badge: { height: 25, borderRadius: 13, paddingHorizontal: 9, alignItems: 'center', flexDirection: 'row', gap: 5, borderWidth: 1 },
   dot: { height: 6, width: 6, borderRadius: 3 },
-  label: { color: '#183A3D', fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
+  label: { color: '#183A3D', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
 });

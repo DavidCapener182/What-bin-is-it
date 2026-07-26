@@ -9,13 +9,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { appColours, appFonts } from '@/lib/design-system';
 
-type Route = '/' | '/calendar' | '/find' | '/places' | '/settings';
+type Route = '/' | '/schedule' | '/guide' | '/settings';
 
 const tabs: { route: Route; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },
-  { route: '/calendar', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar' },
-  { route: '/find', label: 'Find', icon: 'search-outline', activeIcon: 'search' },
-  { route: '/places', label: 'Places', icon: 'location-outline', activeIcon: 'location' },
+  { route: '/schedule', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar' },
+  { route: '/guide', label: 'Guide', icon: 'search-outline', activeIcon: 'search' },
   { route: '/settings', label: 'Settings', icon: 'options-outline', activeIcon: 'options' },
 ];
 
@@ -43,23 +42,23 @@ export function AppShell({ activeRoute, children }: { activeRoute: Route; childr
               tint="systemChromeMaterialLight"
             />
             <View accessibilityRole="tablist" style={styles.tabBar}>
-            {tabs.map((tab) => {
-              const active = tab.route === activeRoute;
-              return (
-                <Pressable
-                  accessibilityLabel={tab.label}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  key={tab.route}
-                  onPress={() => openTab(tab.route)}
-                  style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}>
-                  <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
-                    <Ionicons color={active ? appColours.brand : '#74878C'} name={active ? tab.activeIcon : tab.icon} size={21} />
-                  </View>
-                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
-                </Pressable>
-              );
-            })}
+              {tabs.map((tab) => {
+                const active = tab.route === activeRoute;
+                return (
+                  <Pressable
+                    accessibilityLabel={tab.label}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    key={tab.route}
+                    onPress={() => openTab(tab.route)}
+                    style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}>
+                    <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
+                      <Ionicons color={active ? appColours.brand : '#657B80'} name={active ? tab.activeIcon : tab.icon} size={22} />
+                    </View>
+                    <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -100,7 +99,7 @@ const styles = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 58, gap: 1 },
   iconWrap: { height: 29, width: 40, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   iconWrapActive: { backgroundColor: 'rgba(8,122,112,0.11)' },
-  tabLabel: { color: '#74878C', fontFamily: appFonts.text, fontSize: 10, fontWeight: '600', letterSpacing: -0.1 },
+  tabLabel: { color: '#657B80', fontFamily: appFonts.text, fontSize: 12, fontWeight: '600', letterSpacing: -0.1 },
   tabLabelActive: { color: appColours.brand, fontWeight: '700' },
   tabPressed: { opacity: 0.62, transform: [{ scale: 0.94 }] },
 });

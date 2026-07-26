@@ -9,8 +9,9 @@ import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
 import { Collection, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
 
-const storageKey = '@what-bin-is-it-tonight/state-v3';
-const previousStorageKey = '@what-bin-is-it-tonight/state-v2';
+const storageKey = '@what-bin-is-it-tonight/state-v4';
+const previousStorageKey = '@what-bin-is-it-tonight/state-v3';
+const olderStorageKey = '@what-bin-is-it-tonight/state-v2';
 const legacyStorageKey = '@uk-bin-app/state-v1';
 const startStatus = 'Add your postcode or use your location to get verified council dates.';
 const emptyStatus = 'No verified collection dates yet · refresh to check this council.';
@@ -23,7 +24,15 @@ const defaultPreferences: NotificationPreferences = {
   wasteTypes: { general: true, recycling: true, garden: true, food: true, other: true },
 };
 
-type AddressSchedule = { collections: Collection[]; sourceStatus: string };
+type AddressSchedule = {
+  collections: Collection[];
+  sourceStatus: string;
+  lastVerifiedAt?: string;
+  lastError?: string;
+  completedDate?: string;
+  changeNotice?: string;
+};
+export type CollectionDataState = 'no-address' | 'ready' | 'refreshing' | 'cached' | 'empty' | 'error';
 type State = {
   addresses: SavedAddress[];
   activeAddressId: string;
@@ -47,6 +56,11 @@ type AppDataContextValue = {
   collections: Collection[];
   preferences: NotificationPreferences;
   sourceStatus: string;
+  collectionDataState: CollectionDataState;
+  lastVerifiedAt?: string;
+  lastError?: string;
+  completedDate?: string;
+  changeNotice?: string;
   ready: boolean;
   refreshing: boolean;
   setActiveAddress: (id: string) => void;
@@ -55,6 +69,7 @@ type AppDataContextValue = {
   updatePreferences: (next: Partial<NotificationPreferences>) => void;
   toggleWasteType: (type: WasteType) => void;
   refreshCollections: () => Promise<CollectionRefreshOutcome | undefined>;
+  markCollectionDateComplete: (date: string) => void;
 };
 
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
@@ -88,6 +103,18 @@ function isSavedAddress(value: unknown): value is SavedAddress {
 
 function validCollections(value: unknown): Collection[] {
   return sortCollections(verifiedCollectionsOnly(value));
+}
+
+function validDate(value: unknown) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : undefined;
+}
+
+function validTimestamp(value: unknown) {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value))
+    ? value
+    : undefined;
 }
 
 function normalisePreferences(value: unknown): NotificationPreferences {
@@ -156,6 +183,14 @@ function hydrateCurrent(value: unknown): State | undefined {
       sourceStatus: typeof rawSchedule?.sourceStatus === 'string'
         ? rawSchedule.sourceStatus.slice(0, 240)
         : emptyStatus,
+      lastVerifiedAt: validTimestamp(rawSchedule?.lastVerifiedAt),
+      lastError: typeof rawSchedule?.lastError === 'string'
+        ? rawSchedule.lastError.slice(0, 240)
+        : undefined,
+      completedDate: validDate(rawSchedule?.completedDate),
+      changeNotice: typeof rawSchedule?.changeNotice === 'string'
+        ? rawSchedule.changeNotice.slice(0, 240)
+        : undefined,
     };
     return result;
   }, {});
@@ -191,20 +226,59 @@ function verifiedSourceStatus(councilName: string, verifiedAt: string) {
   return `Verified by ${councilName} · checked ${checked}`;
 }
 
+function collectionChangeNotice(previous: Collection[], next: Collection[]) {
+  const today = new Date();
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-');
+  const futurePrevious = sortCollections(previous).filter((collection) => collection.date >= todayKey);
+  const futureNext = sortCollections(next).filter((collection) => collection.date >= todayKey);
+  const changed = (['general', 'recycling', 'garden', 'food', 'other'] as WasteType[]).flatMap((wasteType) => {
+    const oldDate = futurePrevious.find((collection) => collection.wasteType === wasteType)?.date;
+    const newDate = futureNext.find((collection) => collection.wasteType === wasteType)?.date;
+    if (!oldDate || !newDate || oldDate === newDate) return [];
+    const label = futureNext.find((collection) => collection.wasteType === wasteType)?.label?.trim()
+      || (wasteType === 'general'
+        ? 'General waste'
+        : wasteType === 'recycling'
+          ? 'Recycling'
+          : wasteType === 'garden'
+            ? 'Garden waste'
+            : wasteType === 'food'
+              ? 'Food waste'
+              : 'Council bin');
+    const date = new Intl.DateTimeFormat('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date(`${newDate}T12:00:00`));
+    return [`${label} is now ${date}`];
+  });
+  return changed.length ? `Collection date changed · ${changed.slice(0, 2).join(' · ')}` : undefined;
+}
+
 async function loadState() {
-  const entries = await AsyncStorage.multiGet([storageKey, previousStorageKey, legacyStorageKey]);
+  const entries = await AsyncStorage.multiGet([storageKey, previousStorageKey, olderStorageKey, legacyStorageKey]);
   const current = entries[0]?.[1];
   const previous = entries[1]?.[1];
-  const legacy = entries[2]?.[1];
+  const older = entries[2]?.[1];
+  const legacy = entries[3]?.[1];
   try {
     if (current) return hydrateCurrent(JSON.parse(current));
   } catch {
     // Ignore corrupt local state and try the previous format before using defaults.
   }
   try {
-    if (previous) return migrateUnverifiedState(JSON.parse(previous));
+    if (previous) return hydrateCurrent(JSON.parse(previous));
   } catch {
-    // Previous builds could contain generated dates, so only saved places are migrated.
+    // Ignore corrupt v3 state and try the older unverified formats.
+  }
+  try {
+    if (older) return migrateUnverifiedState(JSON.parse(older));
+  } catch {
+    // Older builds could contain generated dates, so only saved places are migrated.
   }
   try {
     if (legacy) return migrateUnverifiedState(JSON.parse(legacy));
@@ -234,6 +308,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const activeAddress = state.addresses.find((address) => address.id === state.activeAddressId);
   const activeSchedule = state.schedulesByAddressId[state.activeAddressId]
     ?? { collections: [], sourceStatus: activeAddress ? emptyStatus : startStatus };
+  const collectionDataState: CollectionDataState = !activeAddress
+    ? 'no-address'
+    : refreshing
+      ? 'refreshing'
+      : activeSchedule.collections.length > 0 && activeSchedule.lastError
+        ? 'cached'
+        : activeSchedule.collections.length > 0
+          ? 'ready'
+          : activeSchedule.lastError
+            ? 'error'
+            : 'empty';
   const notificationCollections = useMemo(
     () => state.addresses.flatMap((address) => (
       state.schedulesByAddressId[address.id]?.collections.map((collection) => ({
@@ -260,6 +345,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           [targetAddress.id]: {
             collections: [],
             sourceStatus: `${targetAddress.councilName} found · checking live collection dates…`,
+            lastError: undefined,
           },
         },
       }));
@@ -273,7 +359,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         ...current,
         schedulesByAddressId: {
           ...current.schedulesByAddressId,
-          [targetAddress.id]: { collections, sourceStatus },
+          [targetAddress.id]: {
+            ...current.schedulesByAddressId[targetAddress.id],
+            collections,
+            sourceStatus,
+            lastVerifiedAt: result.verifiedAt,
+            lastError: undefined,
+            changeNotice: collectionChangeNotice(
+              current.schedulesByAddressId[targetAddress.id]?.collections ?? [],
+              collections,
+            ),
+          },
         },
       }));
       return { verified: true, message: sourceStatus };
@@ -284,10 +380,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         schedulesByAddressId: {
           ...current.schedulesByAddressId,
           [targetAddress.id]: {
+            ...current.schedulesByAddressId[targetAddress.id],
             collections: clearExisting
               ? []
               : current.schedulesByAddressId[targetAddress.id]?.collections ?? [],
-            sourceStatus: message,
+            sourceStatus: clearExisting
+              ? message
+              : current.schedulesByAddressId[targetAddress.id]?.sourceStatus ?? message,
+            lastError: message,
           },
         },
       }));
@@ -359,6 +459,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           [resolvedTarget.id]: {
             collections: [],
             sourceStatus: `${resolvedTarget.councilName} found · checking live collection dates…`,
+            lastError: undefined,
           },
         },
       };
@@ -374,6 +475,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     collections: activeSchedule.collections,
     preferences: state.preferences,
     sourceStatus: activeSchedule.sourceStatus,
+    collectionDataState,
+    lastVerifiedAt: activeSchedule.lastVerifiedAt,
+    lastError: activeSchedule.lastError,
+    completedDate: activeSchedule.completedDate,
+    changeNotice: activeSchedule.changeNotice,
     ready,
     refreshing,
     setActiveAddress: (id) => setState((current) => (
@@ -401,7 +507,40 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (!activeAddress) return;
       return refreshAddress(activeAddress, false);
     },
-  }), [activeAddress, activeSchedule.collections, activeSchedule.sourceStatus, addAddress, ready, refreshAddress, refreshing, state.addresses, state.preferences]);
+    markCollectionDateComplete: (date) => {
+      if (!state.activeAddressId || !validDate(date)) return;
+      setState((current) => {
+        const schedule = current.schedulesByAddressId[current.activeAddressId];
+        if (!schedule) return current;
+        return {
+          ...current,
+          schedulesByAddressId: {
+            ...current.schedulesByAddressId,
+            [current.activeAddressId]: {
+              ...schedule,
+              completedDate: date,
+            },
+          },
+        };
+      });
+    },
+  }), [
+    activeAddress,
+    activeSchedule.collections,
+    activeSchedule.completedDate,
+    activeSchedule.changeNotice,
+    activeSchedule.lastError,
+    activeSchedule.lastVerifiedAt,
+    activeSchedule.sourceStatus,
+    addAddress,
+    collectionDataState,
+    ready,
+    refreshAddress,
+    refreshing,
+    state.activeAddressId,
+    state.addresses,
+    state.preferences,
+  ]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }
