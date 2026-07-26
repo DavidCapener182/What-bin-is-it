@@ -229,7 +229,10 @@ export default function ScheduleScreen() {
                 <>
                 <View style={styles.calendarOptions}>
                   <Text style={styles.calendarTitle}>Calendar bin types</Text>
-                  <View style={styles.calendarTypes}>
+                  <ScrollView
+                    contentContainerStyle={styles.calendarTypes}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}>
                     {wasteTypes
                       .filter((type) => upcoming.some((collection) => collection.wasteType === type))
                       .map((type) => {
@@ -248,7 +251,7 @@ export default function ScheduleScreen() {
                           </Pressable>
                         );
                       })}
-                  </View>
+                  </ScrollView>
                 </View>
                 <View style={styles.actionsCard}>
                   <Pressable
@@ -333,7 +336,7 @@ function createStyles(theme: AppTheme) {
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   calendarOptions: { gap: 9 },
   calendarTitle: { color: theme.secondaryText, fontSize: 13, fontWeight: '600', paddingHorizontal: 3 },
-  calendarTypes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  calendarTypes: { flexDirection: 'row', gap: 8, paddingRight: 3 },
   calendarType: { minHeight: 44, borderRadius: 12, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, backgroundColor: theme.surface },
   calendarTypeSelected: { borderColor: theme.accent, backgroundColor: theme.accentSoft },
   calendarTypeText: { color: theme.secondaryText, fontSize: 12.5, fontWeight: '600' },

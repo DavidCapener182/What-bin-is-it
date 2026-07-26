@@ -27,8 +27,11 @@ import { deriveCollectionLifecycle } from '@/lib/collection-lifecycle';
 import { evaluateMissedReportEligibility } from '@/lib/council-reporting';
 import {
   collectionDisplayMeta,
+  contrastTextForColour,
   dayDifference,
   formatCollectionDate,
+  hasSourceCollectionColour,
+  primaryCollectionForDate,
   sortCollections,
 } from '@/lib/data';
 import { appFonts } from '@/lib/design-system';
@@ -86,6 +89,22 @@ export default function HomeScreen() {
   const actionDate = actionCollections[0]?.date;
   const next = upcoming[0];
   const nextDayCollections = next ? upcoming.filter((collection) => collection.date === next.date) : [];
+  const primaryNextCollection = primaryCollectionForDate(nextDayCollections);
+  const primaryNextMeta = primaryNextCollection ? collectionDisplayMeta(primaryNextCollection) : undefined;
+  const usesCouncilBinColour = hasSourceCollectionColour(primaryNextCollection);
+  const nextCardForeground = usesCouncilBinColour && primaryNextMeta
+    ? contrastTextForColour(primaryNextMeta.colour)
+    : theme.text;
+  const nextCardSecondary = usesCouncilBinColour
+    ? nextCardForeground === '#FFFFFF'
+      ? 'rgba(255,255,255,0.80)'
+      : 'rgba(15,42,58,0.72)'
+    : theme.secondaryText;
+  const nextCardMark = usesCouncilBinColour
+    ? nextCardForeground === '#FFFFFF'
+      ? 'rgba(255,255,255,0.16)'
+      : 'rgba(15,42,58,0.10)'
+    : undefined;
   const soonest = upcoming.slice(0, 3);
   const daysAway = next ? dayDifference(next.date) : null;
   const exactAddressRequired = activeAddress
@@ -506,15 +525,36 @@ export default function HomeScreen() {
                 accessibilityLabel={`Open schedule for ${collectionDisplayMeta(next).label}`}
                 accessibilityRole="button"
                 onPress={() => router.push('/schedule')}
-                style={({ pressed }) => [styles.collectionCard, pressed && styles.pressed]}>
-                <View style={[styles.collectionColour, { backgroundColor: collectionDisplayMeta(next).colour }]} />
-                <BinGlyph colour={collectionDisplayMeta(next).colour} size={36} />
-                <View style={styles.cardCopy}>
-                  <Text style={styles.cardKicker}>Next collection</Text>
-                  <Text style={styles.cardTitle}>{nextDayCollections.map((collection) => collectionDisplayMeta(collection).label).join(' + ')}</Text>
-                  <Text style={styles.cardBody}>{formatCollectionDate(next.date, 'weekday')}</Text>
+                style={({ pressed }) => [
+                  styles.collectionCard,
+                  usesCouncilBinColour && primaryNextMeta && {
+                    backgroundColor: primaryNextMeta.colour,
+                    borderColor: primaryNextMeta.colour,
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <View
+                  style={[
+                    styles.collectionColour,
+                    {
+                      backgroundColor: usesCouncilBinColour
+                        ? nextCardForeground
+                        : primaryNextMeta?.colour ?? collectionDisplayMeta(next).colour,
+                    },
+                  ]}
+                />
+                <View style={[styles.collectionBinMark, nextCardMark ? { backgroundColor: nextCardMark } : null]}>
+                  <BinGlyph
+                    colour={usesCouncilBinColour ? nextCardForeground : primaryNextMeta?.colour ?? collectionDisplayMeta(next).colour}
+                    size={36}
+                  />
                 </View>
-                <Ionicons color={theme.tertiaryText} name="chevron-forward" size={20} />
+                <View style={styles.cardCopy}>
+                  <Text style={[styles.cardKicker, { color: nextCardSecondary }]}>Next collection</Text>
+                  <Text style={[styles.cardTitle, { color: nextCardForeground }]}>{nextDayCollections.map((collection) => collectionDisplayMeta(collection).label).join(' + ')}</Text>
+                  <Text style={[styles.cardBody, { color: nextCardSecondary }]}>{formatCollectionDate(next.date, 'weekday')}</Text>
+                </View>
+                <Ionicons color={usesCouncilBinColour ? nextCardForeground : theme.tertiaryText} name="chevron-forward" size={20} />
               </Pressable>
             ) : (
               <Pressable
@@ -727,6 +767,7 @@ function createStyles(theme: AppTheme) {
   blockedReason: { color: theme.secondaryText, fontSize: 12.5, lineHeight: 18, textAlign: 'center' },
   collectionCard: { overflow: 'hidden', minHeight: 94, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', paddingRight: 16, shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   collectionColour: { width: 7, alignSelf: 'stretch', marginRight: 13 },
+  collectionBinMark: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   cardCopy: { flex: 1, marginLeft: 12 },
   cardKicker: { color: theme.secondaryText, fontSize: 12, fontWeight: '700', letterSpacing: 0.35, marginBottom: 4 },
   cardTitle: { color: theme.text, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },

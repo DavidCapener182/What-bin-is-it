@@ -2,12 +2,16 @@ import { ErrorBoundaryProps, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 
+import { LaunchSplash } from '@/components/launch-splash';
 import { NotificationNavigation } from '@/components/notification-navigation';
 import { PwaRegistration } from '@/components/pwa-registration';
 import { ThemeSynchronizer } from '@/components/theme-synchronizer';
 import { AppDataProvider } from '@/lib/use-app-data';
 import { ProductStateProvider } from '@/lib/use-product-state';
+
+SplashScreen.setOptions({ duration: 400, fade: true });
 
 export default function RootLayout() {
   return (
@@ -39,6 +43,7 @@ export default function RootLayout() {
               <Stack.Screen name="offline" />
               <Stack.Screen name="+not-found" />
             </Stack>
+            <LaunchSplash />
           </ProductStateProvider>
         </AppDataProvider>
       </SafeAreaProvider>

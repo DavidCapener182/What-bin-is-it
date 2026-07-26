@@ -25,16 +25,15 @@
       }
     },
     "android": {
+      "icon": "./assets/images/android-store-icon.png",
       "package": "uk.whatbinistonight.app",
       "versionCode": 1,
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#F2F2F7",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FEFDFB",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -74,9 +73,20 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#1C1C1E",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#FAF7F2",
+          "image": "./assets/images/launch-splash.png",
+          "imageWidth": 853,
+          "resizeMode": "cover",
+          "enableFullScreenImage_legacy": true,
+          "dark": {
+            "backgroundColor": "#FAF7F2",
+            "image": "./assets/images/launch-splash.png"
+          },
+          "android": {
+            "backgroundColor": "#FAF7F2",
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 96
+          }
         }
       ],
       [

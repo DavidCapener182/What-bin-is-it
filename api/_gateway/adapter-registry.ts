@@ -130,20 +130,46 @@ export function parseKnowsleyAddresses(value: unknown): CouncilAddress[] {
   }, []);
 }
 
-export function parseKnowsleyCollections(value: unknown): { date: string; wasteType: WasteType }[] {
+export function parseKnowsleyCollections(
+  value: unknown,
+): { date: string; wasteType: WasteType; label?: string; colour?: string }[] {
   const payload = unwrapJson(value);
   const first = Array.isArray(payload) ? payload[0] : payload;
   if (!first || typeof first !== 'object') return [];
   const record = first as KnowsleyCollectionPayload;
-  const fields: { value: unknown; wasteType: WasteType }[] = [
-    { value: record.NextMaroon ?? record.Nextmaroon, wasteType: 'general' },
-    { value: record.NextGrey ?? record.Nextgrey, wasteType: 'recycling' },
-    { value: record.NextBlue ?? record.Nextblue, wasteType: 'garden' },
-    { value: record.NextFood, wasteType: 'food' },
+  const fields: {
+    value: unknown;
+    wasteType: WasteType;
+    label: string;
+    colour?: string;
+  }[] = [
+    {
+      value: record.NextMaroon ?? record.Nextmaroon,
+      wasteType: 'general',
+      label: 'Maroon general waste bin',
+      colour: '#7A263A',
+    },
+    {
+      value: record.NextGrey ?? record.Nextgrey,
+      wasteType: 'recycling',
+      label: 'Grey recycling bin',
+      colour: '#6F777D',
+    },
+    {
+      value: record.NextBlue ?? record.Nextblue,
+      wasteType: 'garden',
+      label: 'Blue garden waste bin',
+      colour: '#286A96',
+    },
+    {
+      value: record.NextFood,
+      wasteType: 'food',
+      label: 'Food waste caddy',
+    },
   ];
-  return fields.flatMap(({ value: dateValue, wasteType }) => {
+  return fields.flatMap(({ value: dateValue, wasteType, label, colour }) => {
     const date = parseCouncilDate(dateValue);
-    return date ? [{ date, wasteType }] : [];
+    return date ? [{ date, wasteType, label, ...(colour ? { colour } : {}) }] : [];
   });
 }
 

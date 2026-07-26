@@ -25,6 +25,37 @@ export function collectionDisplayMeta(collection: Pick<Collection, 'wasteType' |
   };
 }
 
+const primaryWastePriority: Record<WasteType, number> = {
+  general: 0,
+  recycling: 1,
+  garden: 2,
+  other: 3,
+  food: 4,
+};
+
+export function primaryCollectionForDate(collections: Collection[]) {
+  return [...collections].sort((a, b) => (
+    primaryWastePriority[a.wasteType] - primaryWastePriority[b.wasteType]
+  ))[0];
+}
+
+export function hasSourceCollectionColour(collection?: Pick<Collection, 'colour'>) {
+  return Boolean(collection?.colour && /^#[0-9A-F]{6}$/i.test(collection.colour));
+}
+
+export function contrastTextForColour(colour: string) {
+  const hex = colour.replace('#', '');
+  if (!/^[0-9A-F]{6}$/i.test(hex)) return '#FFFFFF';
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const linear = channels.map((channel) => (
+    channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4
+  ));
+  const luminance = (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+  return luminance > 0.43 ? '#0F2A3A' : '#FFFFFF';
+}
+
 function dateAtStartOfDay(value: string | Date) {
   const date = typeof value === 'string' ? new Date(`${value}T12:00:00`) : new Date(value);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());

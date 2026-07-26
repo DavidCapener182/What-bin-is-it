@@ -51,8 +51,18 @@ test('maps only dated official Knowsley collections', () => {
     Nextgrey: '04/08/2026',
     Nextblue: '',
   }])), [
-    { date: '2026-07-28', wasteType: 'general' },
-    { date: '2026-08-04', wasteType: 'recycling' },
+    {
+      date: '2026-07-28',
+      wasteType: 'general',
+      label: 'Maroon general waste bin',
+      colour: '#7A263A',
+    },
+    {
+      date: '2026-08-04',
+      wasteType: 'recycling',
+      label: 'Grey recycling bin',
+      colour: '#6F777D',
+    },
   ]);
 });
 
@@ -63,9 +73,28 @@ test('maps every dated collection from the current Knowsley Mendix response', ()
     NextBlue: { value: 'Friday 07/08/2026' },
     NextFood: { value: 'Friday 31/07/2026' },
   }), [
-    { date: '2026-07-31', wasteType: 'general' },
-    { date: '2026-08-07', wasteType: 'recycling' },
-    { date: '2026-08-07', wasteType: 'garden' },
-    { date: '2026-07-31', wasteType: 'food' },
+    {
+      date: '2026-07-31',
+      wasteType: 'general',
+      label: 'Maroon general waste bin',
+      colour: '#7A263A',
+    },
+    {
+      date: '2026-08-07',
+      wasteType: 'recycling',
+      label: 'Grey recycling bin',
+      colour: '#6F777D',
+    },
+    {
+      date: '2026-08-07',
+      wasteType: 'garden',
+      label: 'Blue garden waste bin',
+      colour: '#286A96',
+    },
+    {
+      date: '2026-07-31',
+      wasteType: 'food',
+      label: 'Food waste caddy',
+    },
   ]);
 });
