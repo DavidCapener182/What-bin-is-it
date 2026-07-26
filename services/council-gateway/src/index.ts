@@ -1,12 +1,16 @@
 import { getAdapter } from './adapter-registry';
 
 type CollectionRequest = { postcode?: unknown; addressId?: unknown; providerId?: unknown };
+const wasteTypes = new Set(['general', 'recycling', 'garden', 'food']);
+const serviceTypes = new Set(['recycling-centre', 'recycling-point', 'reuse', 'collection']);
 
 const headers = {
   'content-type': 'application/json; charset=utf-8',
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
   'access-control-allow-headers': 'content-type',
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
 };
 
 function json(body: unknown, status = 200) {
@@ -14,7 +18,60 @@ function json(body: unknown, status = 200) {
 }
 
 function isPostcode(value: unknown): value is string {
-  return typeof value === 'string' && /^([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$/i.test(value.trim());
+  if (typeof value !== 'string') return false;
+  const postcode = normalisePostcode(value);
+  return /^(GIR 0AA|(?:(?:[A-PR-UWYZ]\d[\dA-HJKSTUW]?|[A-PR-UWYZ][A-HK-Y]\d[\dABEHMNPRVWXY]?) \d[ABD-HJLNP-UW-Z]{2}))$/i.test(postcode);
+}
+
+function normalisePostcode(value: string) {
+  const compact = value.trim().toUpperCase().replace(/\s+/g, '');
+  return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
+}
+
+function validCoordinate(value: unknown, min: number, max: number) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function validCollectionResult(value: unknown) {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as {
+    councilName?: unknown;
+    providerId?: unknown;
+    verifiedAt?: unknown;
+    collections?: unknown;
+  };
+  return (
+    typeof result.councilName === 'string'
+    && typeof result.providerId === 'string'
+    && typeof result.verifiedAt === 'string'
+    && !Number.isNaN(Date.parse(result.verifiedAt))
+    && Array.isArray(result.collections)
+    && result.collections.every((collection) => {
+      if (!collection || typeof collection !== 'object') return false;
+      const item = collection as { date?: unknown; wasteType?: unknown };
+      return typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && wasteTypes.has(item.wasteType as string);
+    })
+  );
+}
+
+function validServiceResult(value: unknown) {
+  return Array.isArray(value) && value.every((service) => {
+    if (!service || typeof service !== 'object') return false;
+    const item = service as {
+      id?: unknown;
+      name?: unknown;
+      type?: unknown;
+      latitude?: unknown;
+      longitude?: unknown;
+    };
+    return (
+      typeof item.id === 'string'
+      && typeof item.name === 'string'
+      && serviceTypes.has(item.type as string)
+      && validCoordinate(item.latitude, -90, 90)
+      && validCoordinate(item.longitude, -180, 180)
+    );
+  });
 }
 
 export default {
@@ -30,7 +87,9 @@ export default {
       const adapter = getAdapter(providerId);
       if (!adapter?.getServices) return json({ error: 'This council provider has not connected local services yet.' }, 404);
       try {
-        return json({ services: await adapter.getServices({ postcode: postcode.trim().toUpperCase() }) });
+        const services = await adapter.getServices({ postcode: normalisePostcode(postcode) });
+        if (!validServiceResult(services)) return json({ error: 'The council service source returned an invalid response.' }, 502);
+        return json({ services });
       } catch (error) {
         console.error('Council service provider failed', providerId, error);
         return json({ error: 'The council service source is temporarily unavailable.' }, 502);
@@ -52,7 +111,10 @@ export default {
     if (!adapter) return json({ error: 'This council provider has not been connected yet.' }, 404);
 
     try {
-      const result = await adapter.getCollections({ postcode: body.postcode.trim().toUpperCase(), addressId: typeof body.addressId === 'string' ? body.addressId : undefined });
+      const result = await adapter.getCollections({ postcode: normalisePostcode(body.postcode), addressId: typeof body.addressId === 'string' ? body.addressId : undefined });
+      if (!validCollectionResult(result) || result.providerId !== adapter.id) {
+        return json({ error: 'The council source returned an invalid response.' }, 502);
+      }
       return json(result);
     } catch (error) {
       console.error('Council provider failed', body.providerId, error);

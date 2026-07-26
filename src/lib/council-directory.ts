@@ -1478,6 +1478,8 @@ export const councilDirectoryCounts = councilDirectory.reduce<Record<CouncilCoun
   { England: 0, 'Northern Ireland': 0, Scotland: 0, Wales: 0 }
 );
 
+const councilByCode = new Map(councilDirectory.map((council) => [council.code.toUpperCase(), council]));
+
 function comparable(value: string) {
   return value
     .toLowerCase()
@@ -1486,11 +1488,19 @@ function comparable(value: string) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+export function findCouncilByCode(code?: string) {
+  return code ? councilByCode.get(code.trim().toUpperCase()) : undefined;
+}
+
 export function findCouncilByName(name?: string) {
   if (!name) return undefined;
   const target = comparable(name);
+  if (!target) return undefined;
   return councilDirectory.find((council) => comparable(council.name) === target)
-    ?? councilDirectory.find((council) => comparable(council.name).includes(target) || target.includes(comparable(council.name)));
+    ?? councilDirectory.find((council) => {
+      const candidate = comparable(council.name);
+      return target.length >= 5 && candidate.length >= 5 && (candidate.includes(target) || target.includes(candidate));
+    });
 }
 
 export function searchCouncils(query: string) {

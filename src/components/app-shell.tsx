@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Href, router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -16,25 +17,29 @@ const tabs: { route: Route; label: string; icon: keyof typeof Ionicons.glyphMap;
 export function AppShell({ activeRoute, children }: { activeRoute: Route; children: ReactNode }) {
   return (
     <View style={styles.shell}>
-      <View style={styles.screen}>{children}</View>
-      <View style={styles.dock}>
-        <View style={styles.tabBar}>
-          {tabs.map((tab) => {
-            const active = tab.route === activeRoute;
-            return (
-              <Pressable
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                key={tab.route}
-                onPress={() => router.replace(tab.route as Href)}
-                style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}>
-                <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
-                  <Ionicons color={active ? '#E6FFF3' : '#6E858C'} name={active ? tab.activeIcon : tab.icon} size={21} />
-                </View>
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
-              </Pressable>
-            );
-          })}
+      <StatusBar style={activeRoute === '/' ? 'light' : 'dark'} />
+      <View style={styles.frame}>
+        <View style={styles.screen}>{children}</View>
+        <View style={styles.dock}>
+          <View accessibilityRole="tablist" style={styles.tabBar}>
+            {tabs.map((tab) => {
+              const active = tab.route === activeRoute;
+              return (
+                <Pressable
+                  accessibilityLabel={tab.label}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  key={tab.route}
+                  onPress={() => router.replace(tab.route as Href)}
+                  style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}>
+                  <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
+                    <Ionicons color={active ? '#E6FFF3' : '#6E858C'} name={active ? tab.activeIcon : tab.icon} size={21} />
+                  </View>
+                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </View>
     </View>
@@ -42,7 +47,17 @@ export function AppShell({ activeRoute, children }: { activeRoute: Route; childr
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1, backgroundColor: '#F4F4EE' },
+  shell: { flex: 1, alignItems: 'center', backgroundColor: Platform.OS === 'web' ? '#DDE7E2' : '#F4F4EE' },
+  frame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 560 : undefined,
+    backgroundColor: '#F4F4EE',
+    shadowColor: '#071A2B',
+    shadowOpacity: Platform.OS === 'web' ? 0.14 : 0,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 0 },
+  },
   screen: { flex: 1 },
   dock: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 15, paddingBottom: Platform.select({ ios: 23, android: 12, default: 12 }), paddingTop: 10, backgroundColor: 'rgba(244,244,238,0.88)' },
   tabBar: { height: 61, backgroundColor: '#08212D', borderRadius: 22, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 5, shadowColor: '#071A2B', shadowOpacity: 0.27, shadowRadius: 15, shadowOffset: { width: 0, height: 7 }, elevation: 12 },

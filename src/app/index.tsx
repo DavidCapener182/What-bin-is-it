@@ -7,14 +7,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppShell } from '@/components/app-shell';
 import { BinGlyph, WasteIcon } from '@/components/bin-glyph';
 import { CollectionBadge } from '@/components/collection-badge';
-import { collectionMeta, dayDifference, formatCollectionDate, getNextCollection, wasteTypes } from '@/lib/data';
+import { collectionMeta, dayDifference, formatCollectionDate, sortCollections, wasteTypes } from '@/lib/data';
 import { useAppData } from '@/lib/use-app-data';
 
 export default function HomeScreen() {
   const { activeAddress, collections, sourceStatus, refreshing, refreshCollections } = useAppData();
-  const next = getNextCollection(collections);
+  const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
+  const next = upcoming[0];
   const daysAway = next ? dayDifference(next.date) : null;
-  const soonest = collections.slice(0, 3);
+  const nextDayCollections = next ? upcoming.filter((collection) => collection.date === next.date) : [];
+  const soonest = upcoming.slice(0, 3);
 
   return (
     <AppShell activeRoute="/">
@@ -23,7 +25,7 @@ export default function HomeScreen() {
           <SafeAreaView edges={['top']}>
             <View style={styles.heroTop}>
               <View>
-                <Text style={styles.eyebrow}>GOOD MORNING</Text>
+                <Text style={styles.eyebrow}>WHAT BIN IS IT TONIGHT?</Text>
                 <Text style={styles.greeting}>Keep the kerb clear.</Text>
               </View>
               <Pressable
@@ -35,7 +37,7 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            <Pressable onPress={() => router.push('/places')} style={({ pressed }) => [styles.addressLine, pressed && styles.pressed]}>
+            <Pressable accessibilityLabel="Choose saved place" accessibilityRole="button" onPress={() => router.push('/places')} style={({ pressed }) => [styles.addressLine, pressed && styles.pressed]}>
               <Ionicons color="#8CE1BF" name="home-outline" size={15} />
               <Text numberOfLines={1} style={styles.addressText}>{activeAddress?.label ?? 'Add your address'}</Text>
               <Ionicons color="#8CE1BF" name="chevron-down" size={14} />
@@ -43,14 +45,13 @@ export default function HomeScreen() {
 
             <View style={styles.nextRow}>
               <View style={styles.nextCopy}>
-                <Text style={styles.nextKicker}>NEXT COLLECTION</Text>
+                <Text style={styles.nextKicker}>{next?.source === 'sample' ? 'NEXT SAMPLE DATE' : 'NEXT COLLECTION'}</Text>
                 <Text style={styles.nextDate}>{next ? formatCollectionDate(next.date, 'weekday') : 'No collection found'}</Text>
                 {next && (
                   <View style={styles.nextTypes}>
-                    <CollectionBadge wasteType={next.wasteType} />
-                    {collections[1] && dayDifference(collections[1].date) === daysAway ? (
-                      <CollectionBadge wasteType={collections[1].wasteType} />
-                    ) : null}
+                    {nextDayCollections.map((collection) => (
+                      <CollectionBadge key={collection.id} wasteType={collection.wasteType} />
+                    ))}
                   </View>
                 )}
               </View>
@@ -64,12 +65,18 @@ export default function HomeScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {next ? (
-            <Pressable onPress={() => router.push('/calendar')} style={({ pressed }) => [styles.collectionCard, pressed && styles.pressed]}>
+            <Pressable accessibilityLabel={`Open schedule for ${collectionMeta[next.wasteType].label}`} accessibilityRole="button" onPress={() => router.push('/calendar')} style={({ pressed }) => [styles.collectionCard, pressed && styles.pressed]}>
               <View style={[styles.collectionColour, { backgroundColor: collectionMeta[next.wasteType].colour }]} />
               <BinGlyph colour={collectionMeta[next.wasteType].colour} size={36} />
               <View style={styles.cardCopy}>
                 <Text style={styles.cardTitle}>{collectionMeta[next.wasteType].label} bin</Text>
-                <Text style={styles.cardBody}>{daysAway === 0 ? 'Put it out before 7am today.' : `Put it out by 7am · ${formatCollectionDate(next.date, 'short')}`}</Text>
+                <Text style={styles.cardBody}>
+                  {next.source === 'sample'
+                    ? `Example only · ${formatCollectionDate(next.date, 'short')}`
+                    : daysAway === 0
+                      ? 'Put it out before 7am today.'
+                      : `Put it out by 7am · ${formatCollectionDate(next.date, 'short')}`}
+                </Text>
               </View>
               <Ionicons color="#71909B" name="chevron-forward" size={20} />
             </Pressable>
@@ -80,34 +87,57 @@ export default function HomeScreen() {
               <Text style={styles.sectionKicker}>THE WEEK AHEAD</Text>
               <Text style={styles.sectionTitle}>What goes out?</Text>
             </View>
-            <Pressable onPress={() => router.push('/calendar')} style={styles.linkButton}>
+            <Pressable accessibilityLabel="Open collection calendar" accessibilityRole="button" onPress={() => router.push('/calendar')} style={styles.linkButton}>
               <Text style={styles.linkText}>Calendar</Text>
               <Ionicons color="#0C7568" name="arrow-forward" size={15} />
             </Pressable>
           </View>
 
-          <View style={styles.scheduleList}>
-            {soonest.map((collection) => {
-              const meta = collectionMeta[collection.wasteType];
-              const diff = dayDifference(collection.date);
-              return (
-                <View key={collection.id} style={styles.scheduleRow}>
-                  <View style={styles.dayBlock}>
-                    <Text style={styles.dayName}>{diff === 0 ? 'TODAY' : formatCollectionDate(collection.date, 'day')}</Text>
-                    <Text style={styles.dayNumber}>{formatCollectionDate(collection.date, 'dateNumber')}</Text>
+          {soonest.length ? (
+            <View style={styles.scheduleList}>
+              {soonest.map((collection) => {
+                const meta = collectionMeta[collection.wasteType];
+                const diff = dayDifference(collection.date);
+                return (
+                  <View key={collection.id} style={styles.scheduleRow}>
+                    <View style={styles.dayBlock}>
+                      <Text style={styles.dayName}>{diff === 0 ? 'TODAY' : formatCollectionDate(collection.date, 'day')}</Text>
+                      <Text style={styles.dayNumber}>{formatCollectionDate(collection.date, 'dateNumber')}</Text>
+                    </View>
+                    <View style={[styles.iconDisc, { backgroundColor: meta.tint }]}>
+                      <WasteIcon colour={meta.colour} type={collection.wasteType} />
+                    </View>
+                    <View style={styles.rowCopy}>
+                      <Text style={styles.rowTitle}>{meta.label}</Text>
+                      <Text style={styles.rowBody}>
+                        {collection.source === 'sample'
+                          ? 'Sample date · not council-verified'
+                          : diff === 0
+                            ? 'Set out before 7am'
+                            : diff === 1
+                              ? 'Tomorrow'
+                              : formatCollectionDate(collection.date, 'short')}
+                      </Text>
+                    </View>
+                    <View style={[styles.dot, { backgroundColor: meta.colour }]} />
                   </View>
-                  <View style={[styles.iconDisc, { backgroundColor: meta.tint }]}>
-                    <WasteIcon colour={meta.colour} type={collection.wasteType} />
-                  </View>
-                  <View style={styles.rowCopy}>
-                    <Text style={styles.rowTitle}>{meta.label}</Text>
-                    <Text style={styles.rowBody}>{diff === 0 ? 'Set out before 7am' : diff === 1 ? 'Tomorrow' : formatCollectionDate(collection.date, 'short')}</Text>
-                  </View>
-                  <View style={[styles.dot, { backgroundColor: meta.colour }]} />
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              disabled={refreshing}
+              onPress={refreshCollections}
+              style={({ pressed }) => [styles.emptySchedule, pressed && styles.pressed]}>
+              <Ionicons color="#0A746A" name="calendar-outline" size={25} />
+              <View style={styles.emptyScheduleCopy}>
+                <Text style={styles.emptyScheduleTitle}>No upcoming dates for this place</Text>
+                <Text style={styles.emptyScheduleBody}>Tap to check its council source.</Text>
+              </View>
+              <Ionicons color="#71909B" name="arrow-forward" size={18} />
+            </Pressable>
+          )}
 
           <View style={styles.sectionHeading}>
             <View>
@@ -128,7 +158,7 @@ export default function HomeScreen() {
             })}
           </View>
 
-          <Pressable onPress={() => router.push('/find' as Href)} style={({ pressed }) => [styles.findCard, pressed && styles.pressed]}>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/find' as Href)} style={({ pressed }) => [styles.findCard, pressed && styles.pressed]}>
             <View style={styles.findIcon}><Ionicons color="#EDFFF8" name="search" size={21} /></View>
             <View style={styles.findCopy}><Text style={styles.findTitle}>Not sure where it goes?</Text><Text style={styles.findBody}>Search the bin guide or find a nearby council tip.</Text></View>
             <Ionicons color="#9FDECB" name="arrow-forward" size={20} />
@@ -181,6 +211,10 @@ const styles = StyleSheet.create({
   linkButton: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 6 },
   linkText: { color: '#0C7568', fontSize: 13, fontWeight: '800' },
   scheduleList: { backgroundColor: '#FFFFFF', borderRadius: 20, overflow: 'hidden' },
+  emptySchedule: { minHeight: 78, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: '#BBD0C6', paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  emptyScheduleCopy: { flex: 1 },
+  emptyScheduleTitle: { color: '#1A4549', fontSize: 13.5, fontWeight: '900' },
+  emptyScheduleBody: { color: '#6C8587', fontSize: 11.5, marginTop: 3 },
   scheduleRow: { minHeight: 77, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E7ECE8', gap: 11 },
   dayBlock: { width: 42, alignItems: 'center' },
   dayName: { color: '#758D8D', fontSize: 8, fontWeight: '900', letterSpacing: 0.45 },

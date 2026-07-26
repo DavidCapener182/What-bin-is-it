@@ -1,14 +1,14 @@
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { NotificationNavigation } from '@/components/notification-navigation';
 import { AppDataProvider } from '@/lib/use-app-data';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AppDataProvider>
-        <StatusBar style="light" />
+        <NotificationNavigation />
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="calendar" />

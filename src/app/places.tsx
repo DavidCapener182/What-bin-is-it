@@ -23,7 +23,15 @@ export default function PlacesScreen() {
     try {
       const result = await lookupPostcode(postcode);
       const cleaned = normalisePostcode(postcode);
-      addAddress({ label: 'New place', line1: result.line1, postcode: cleaned, councilName: result.councilName ?? 'Local council', providerId: result.providerId ?? 'gateway', latitude: result.latitude, longitude: result.longitude });
+      addAddress({
+        label: result.councilName ?? 'New place',
+        line1: result.line1,
+        postcode: cleaned,
+        councilName: result.councilName ?? 'Council not matched',
+        providerId: result.providerId ?? 'unconnected',
+        latitude: result.latitude,
+        longitude: result.longitude,
+      });
       setPostcode('');
       setShowAdd(false);
       Alert.alert('Place added', 'Your place has been saved. Connect the national council gateway to verify live collection dates.');
@@ -51,7 +59,7 @@ export default function PlacesScreen() {
             {addresses.map((address, index) => {
               const active = address.id === activeAddress?.id;
               return (
-                <Pressable key={address.id} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
+                <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityRole="button" accessibilityState={{ selected: active }} key={address.id} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
                   <View style={[styles.homeIcon, active && styles.homeIconActive]}><Ionicons color={active ? '#E8FFF5' : '#0E756B'} name={active ? 'home' : 'home-outline'} size={20} /></View>
                   <View style={styles.placeCopy}>
                     <View style={styles.labelRow}><Text style={styles.placeLabel}>{address.label}</Text>{active && <View style={styles.activePill}><Text style={styles.activePillText}>ACTIVE</Text></View>}</View>
@@ -64,7 +72,7 @@ export default function PlacesScreen() {
             })}
           </View>
 
-          <Pressable onPress={refreshCollections} disabled={refreshing} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, refreshing && styles.disabled]}>
+          <Pressable accessibilityRole="button" accessibilityState={{ disabled: refreshing }} onPress={refreshCollections} disabled={refreshing} style={({ pressed }) => [styles.syncCard, pressed && styles.pressed, refreshing && styles.disabled]}>
             {refreshing ? <ActivityIndicator color="#0B7168" /> : <Ionicons color="#0B7168" name="cloud-download-outline" size={22} />}
             <View style={styles.syncCopy}><Text style={styles.syncTitle}>{refreshing ? 'Checking your source…' : 'Refresh collection dates'}</Text><Text style={styles.syncBody}>Uses the selected place and its council provider.</Text></View>
             <Ionicons color="#0B7168" name="arrow-forward" size={17} />
@@ -77,15 +85,15 @@ export default function PlacesScreen() {
 
           {showAdd ? (
             <View style={styles.addPanel}>
-              <View style={styles.addHeader}><View><Text style={styles.addTitle}>Add a new place</Text><Text style={styles.addDescription}>We use your postcode to find the local authority.</Text></View><Pressable onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable></View>
+              <View style={styles.addHeader}><View><Text style={styles.addTitle}>Add a new place</Text><Text style={styles.addDescription}>We use your postcode to find the local authority.</Text></View><Pressable accessibilityLabel="Close add place form" accessibilityRole="button" onPress={() => setShowAdd(false)} hitSlop={8}><Ionicons color="#5D777B" name="close" size={20} /></Pressable></View>
               <Text style={styles.fieldLabel}>UK POSTCODE</Text>
-              <TextInput autoCapitalize="characters" autoCorrect={false} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" value={postcode} onChangeText={setPostcode} style={styles.input} />
-              <Pressable disabled={lookingUp} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookingUp && styles.disabled]}>
+              <TextInput accessibilityLabel="UK postcode" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={addPlace} placeholder="e.g. M1 1AE" placeholderTextColor="#90A1A1" returnKeyType="search" value={postcode} onChangeText={setPostcode} style={styles.input} />
+              <Pressable accessibilityRole="button" accessibilityState={{ disabled: lookingUp }} disabled={lookingUp} onPress={addPlace} style={({ pressed }) => [styles.addButton, pressed && styles.pressed, lookingUp && styles.disabled]}>
                 {lookingUp ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.addButtonText}>Find this place</Text><Ionicons color="#FFFFFF" name="arrow-forward" size={18} /></>}
               </Pressable>
             </View>
           ) : (
-            <Pressable onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
+            <Pressable accessibilityRole="button" onPress={() => setShowAdd(true)} style={({ pressed }) => [styles.newPlace, pressed && styles.pressed]}>
               <View style={styles.plus}><Ionicons color="#0D756A" name="add" size={22} /></View>
               <View><Text style={styles.newPlaceTitle}>Add another place</Text><Text style={styles.newPlaceCopy}>Use a UK postcode</Text></View>
             </Pressable>

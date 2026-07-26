@@ -89,4 +89,6 @@ Vercel is configured to publish the Expo web build from `dist/` using [vercel.js
 ```bash
 npm run typecheck
 npm run lint
+npm test
+npx expo-doctor
 ```

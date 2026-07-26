@@ -2,11 +2,14 @@
   "expo": {
     "name": "What Bin Is It Tonight?",
     "slug": "what-bin-is-it-tonight",
+    "description": "UK bin collection reminders, local recycling guidance, and nearby waste services.",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "whatbinistonight",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#F4F4EE",
+    "primaryColor": "#0B7469",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "uk.whatbinistonight.app",
@@ -14,6 +17,9 @@
     },
     "android": {
       "package": "uk.whatbinistonight.app",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -24,7 +30,13 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "What Bin Is It Tonight?",
+      "shortName": "What Bin?",
+      "lang": "en-GB",
+      "themeColor": "#08212D",
+      "backgroundColor": "#F4F4EE",
+      "description": "UK bin collection reminders, local recycling guidance, and nearby waste services."
     },
     "plugins": [
       "expo-router",

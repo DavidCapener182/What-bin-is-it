@@ -1,18 +1,58 @@
 import { Collection, CouncilService, ProviderResult, SavedAddress, WasteType } from '@/lib/types';
-import { findCouncilByName } from '@/lib/council-directory';
+import { findCouncilByCode, findCouncilByName } from '@/lib/council-directory';
 
 type GatewayCollection = { date: string; wasteType: WasteType };
 type GatewayResponse = { councilName: string; providerId: string; collections: GatewayCollection[]; verifiedAt: string; notice?: string };
 type GatewayServicesResponse = { services: Omit<CouncilService, 'source'>[] };
 
 const apiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
+const validWasteTypes = new Set<WasteType>(['general', 'recycling', 'garden', 'food']);
+const validServiceTypes = new Set<CouncilService['type']>(['recycling-centre', 'recycling-point', 'reuse', 'collection']);
+
+async function fetchWithTimeout(input: string, init?: RequestInit, timeoutMs = 15_000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('The service took too long to respond. Please try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+}
+
+function isFiniteCoordinate(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+async function gatewayError(response: Response, fallback: string) {
+  try {
+    const payload = await response.json() as { error?: unknown };
+    if (typeof payload.error === 'string' && payload.error.length <= 180) return payload.error;
+  } catch {
+    // Some upstreams return an empty or non-JSON error response.
+  }
+  return fallback;
+}
 
 export function normalisePostcode(input: string) {
-  return input.trim().toUpperCase().replace(/\s+/g, ' ');
+  const compact = input.trim().toUpperCase().replace(/\s+/g, '');
+  return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
 }
 
 export function isUkPostcode(input: string) {
-  return /^([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$/i.test(input.trim());
+  const postcode = normalisePostcode(input);
+  return /^(GIR 0AA|(?:(?:[A-PR-UWYZ]\d[\dA-HJKSTUW]?|[A-PR-UWYZ][A-HK-Y]\d[\dABEHMNPRVWXY]?) \d[ABD-HJLNP-UW-Z]{2}))$/i.test(postcode);
 }
 
 /**
@@ -24,19 +64,31 @@ export async function fetchCollectionsForAddress(address: SavedAddress): Promise
     throw new Error('The national council gateway is not configured for this build.');
   }
 
-  const response = await fetch(`${apiBase}/v1/collections`, {
+  const response = await fetchWithTimeout(`${apiBase}/v1/collections`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ postcode: address.postcode, addressId: address.id, providerId: address.providerId }),
   });
 
-  if (!response.ok) throw new Error('The council source could not be reached just now.');
+  if (!response.ok) throw new Error(await gatewayError(response, 'The council source could not be reached just now.'));
   const payload = (await response.json()) as GatewayResponse;
+  if (
+    !payload
+    || typeof payload.councilName !== 'string'
+    || typeof payload.providerId !== 'string'
+    || typeof payload.verifiedAt !== 'string'
+    || Number.isNaN(Date.parse(payload.verifiedAt))
+    || !Array.isArray(payload.collections)
+    || (payload.notice !== undefined && typeof payload.notice !== 'string')
+    || payload.collections.some((collection) => !isIsoDate(collection?.date) || !validWasteTypes.has(collection?.wasteType))
+  ) {
+    throw new Error('The council source returned collection data in an unexpected format.');
+  }
   return {
     councilName: payload.councilName,
     providerId: payload.providerId,
     verifiedAt: payload.verifiedAt,
-    notice: payload.notice,
+    notice: payload.notice?.slice(0, 240),
     collections: payload.collections.map((collection, index): Collection => ({
       id: `${payload.providerId}-${collection.date}-${collection.wasteType}-${index}`,
       date: collection.date,
@@ -50,17 +102,28 @@ export async function lookupPostcode(postcodeInput: string): Promise<{ line1: st
   const postcode = normalisePostcode(postcodeInput);
   if (!isUkPostcode(postcode)) throw new Error('Enter a full UK postcode, for example M1 1AE.');
 
-  const response = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+  const response = await fetchWithTimeout(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
   if (!response.ok) throw new Error('We could not find that postcode. Check the spacing and try again.');
-  const payload = (await response.json()) as { result?: { admin_district?: string; parish?: string; region?: string; latitude?: number; longitude?: number } };
-  const matchedCouncil = findCouncilByName(payload.result?.admin_district);
+  const payload = (await response.json()) as {
+    result?: {
+      admin_district?: string;
+      parish?: string;
+      region?: string;
+      latitude?: number;
+      longitude?: number;
+      codes?: { admin_district?: string };
+    };
+  };
+  if (!payload.result) throw new Error('We could not find that postcode. Check the spacing and try again.');
+  const matchedCouncil = findCouncilByCode(payload.result.codes?.admin_district)
+    ?? findCouncilByName(payload.result.admin_district);
   return {
     line1: payload.result?.parish || payload.result?.admin_district || payload.result?.region || postcode,
     councilName: matchedCouncil?.name ?? payload.result?.admin_district,
     providerId: matchedCouncil?.providerId,
     councilCode: matchedCouncil?.code,
-    latitude: payload.result?.latitude,
-    longitude: payload.result?.longitude,
+    latitude: isFiniteCoordinate(payload.result.latitude, -90, 90) ? payload.result.latitude : undefined,
+    longitude: isFiniteCoordinate(payload.result.longitude, -180, 180) ? payload.result.longitude : undefined,
   };
 }
 
@@ -76,10 +139,26 @@ function distanceKm(from: SavedAddress, latitude: number, longitude: number) {
 
 export async function fetchNearbyServices(address: SavedAddress): Promise<CouncilService[]> {
   if (apiBase) {
-    const response = await fetch(`${apiBase}/v1/services?postcode=${encodeURIComponent(address.postcode)}&providerId=${encodeURIComponent(address.providerId)}`);
+    const response = await fetchWithTimeout(`${apiBase}/v1/services?postcode=${encodeURIComponent(address.postcode)}&providerId=${encodeURIComponent(address.providerId)}`);
     if (response.ok) {
       const payload = (await response.json()) as GatewayServicesResponse;
-      if (payload.services.length) return payload.services.map((service) => ({ ...service, source: 'council', distanceKm: distanceKm(address, service.latitude, service.longitude) }));
+      if (
+        payload
+        && Array.isArray(payload.services)
+        && payload.services.every((service) => (
+          service
+          && typeof service.id === 'string'
+          && typeof service.name === 'string'
+          && validServiceTypes.has(service.type)
+          && isFiniteCoordinate(service.latitude, -90, 90)
+          && isFiniteCoordinate(service.longitude, -180, 180)
+        ))
+        && payload.services.length
+      ) {
+        return payload.services
+          .map((service) => ({ ...service, source: 'council' as const, distanceKm: distanceKm(address, service.latitude, service.longitude) }))
+          .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      }
     }
   }
 
@@ -88,7 +167,11 @@ export async function fetchNearbyServices(address: SavedAddress): Promise<Counci
   }
 
   const query = `[out:json][timeout:20];(nwr["amenity"="recycling"](around:9000,${address.latitude},${address.longitude});nwr["amenity"="waste_transfer_station"](around:9000,${address.latitude},${address.longitude}););out center 20;`;
-  const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+  const response = await fetchWithTimeout('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: `data=${encodeURIComponent(query)}`,
+  }, 25_000);
   if (!response.ok) throw new Error('Nearby service search is unavailable just now. Try again shortly.');
   const payload = (await response.json()) as { elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[] };
   const services = (payload.elements ?? []).reduce<CouncilService[]>((found, element) => {
