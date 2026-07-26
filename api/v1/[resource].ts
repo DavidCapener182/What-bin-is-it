@@ -1,4 +1,4 @@
-import gateway from '../../services/council-gateway/src/index.ts';
+import gateway from '../_gateway/index.ts';
 
 export const config = { runtime: 'nodejs' };
 

@@ -19,7 +19,7 @@ Set the app’s `EXPO_PUBLIC_COUNCIL_API_BASE` to the tunnel/deployment URL. The
 ## Add a council
 
 1. Confirm the council’s authorised collection-calendar source and terms of use.
-2. Add an adapter in `src/adapter-registry.ts`; adapters receive a postcode and address ID, then return dates in `YYYY-MM-DD` plus one of `general`, `recycling`, `garden`, or `food`. Add its optional `getServices` method for household waste sites, recycling points, reuse and collection services.
+2. Add an adapter in the shared `api/_gateway/adapter-registry.ts`; `src/adapter-registry.ts` re-exports that registry for the Worker. Adapters receive a postcode and address ID, then return dates in `YYYY-MM-DD` plus one of `general`, `recycling`, `garden`, or `food`. Add its optional `getServices` method for household waste sites, recycling points, reuse and collection services.
 3. Test exceptions such as bank holidays, multi-stream dates, and address selection.
 4. Configure caching and source monitoring before marking the provider live.
 5. Keep the adapter ID server-side. Do not accept a client-provided source URL.

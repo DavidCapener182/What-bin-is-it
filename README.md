@@ -12,7 +12,7 @@ What Bin Is It Tonight? is a native-feeling Expo app for iPhone and Android. It 
 - A local-services finder for recycling points and household-waste sites. It uses a council adapter when one exists and otherwise offers clearly-labelled OpenStreetMap nearby-place results.
 - A normalised `CouncilProvider` client contract for collection dates; no screen code is coupled to a specific council website.
 - Local collection reminders with per-bin choices and configurable evening reminder time.
-- A companion, deployable Cloudflare Worker skeleton under `services/council-gateway`, designed to keep council-specific logic off users’ phones.
+- A server-side gateway under `api/_gateway`, with a companion Cloudflare Worker entry under `services/council-gateway`, designed to keep council-specific logic off users’ phones.
 - Apple and Android application identifiers, EAS build profiles, notification plugin configuration, and an environment template.
 - A UK council directory of all 361 local-authority districts in the ONS December 2024 boundary snapshot: 296 England, 32 Scotland, 22 Wales, and 11 Northern Ireland. A postcode is matched to this directory before its council adapter is selected.
 
