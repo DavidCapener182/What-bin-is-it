@@ -20,7 +20,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { BinGlyph, WasteIcon } from '@/components/bin-glyph';
-import { CollectionBadge } from '@/components/collection-badge';
 import { RouteHead } from '@/components/route-head';
 import { isUkPostcode } from '@/lib/council-provider';
 import { deriveCollectionLifecycle } from '@/lib/collection-lifecycle';
@@ -44,8 +43,9 @@ import { useOnlineStatus } from '@/lib/use-online-status';
 import { useProductState } from '@/lib/use-product-state';
 
 function collectionAnswer(collections: Collection[]) {
-  if (collections.length === 1) return `${collectionDisplayMeta(collections[0]).label} goes out tonight`;
-  return `${collections.length} bins go out tonight`;
+  const labels = collections.map((collection) => collectionDisplayMeta(collection).label);
+  if (labels.length <= 2) return labels.join(' + ');
+  return `${labels[0]} + ${labels.length - 1} more`;
 }
 
 export default function HomeScreen() {
@@ -357,7 +357,7 @@ export default function HomeScreen() {
               <View style={styles.heroTop}>
                 <View style={styles.heroBrand}>
                   <Text style={[styles.eyebrow, { color: heroAccent }]}>What Bin Is It Tonight?</Text>
-                  <Text style={[styles.greeting, { color: heroForeground }]}>Tonight</Text>
+                  <Text accessibilityLiveRegion="polite" style={[styles.greeting, { color: heroForeground }]}>{heroTitle}</Text>
                 </View>
                 <View style={styles.heroActions}>
                   <Pressable
@@ -389,16 +389,7 @@ export default function HomeScreen() {
 
               <View accessibilityLiveRegion="polite" style={styles.answerRow}>
                 <View style={styles.answerCopy}>
-                  <Text style={[styles.nextKicker, { color: heroAccent }]}>{exactAddressRequired ? 'Address setup' : 'Your answer'}</Text>
-                  <Text style={[styles.answerTitle, { color: heroForeground }]}>{heroTitle}</Text>
                   <Text style={[styles.answerSubtitle, { color: heroSecondary }]}>{heroSubtitle}</Text>
-                  {tonightCollections.length ? (
-                    <View style={styles.nextTypes}>
-                      {tonightCollections.map((collection) => (
-                        <CollectionBadge collection={collection} key={collection.id} />
-                      ))}
-                    </View>
-                  ) : null}
                 </View>
                 <View style={[styles.countdownOrb, { backgroundColor: heroOrb, borderColor: heroAccent }]}>
                   <Text style={[styles.countdownNumber, { color: heroForeground }]}>
@@ -754,10 +745,7 @@ function createStyles(theme: AppTheme) {
   addressText: { color: theme.heroSecondary, fontSize: 15, fontWeight: '600', flexShrink: 1 },
   answerRow: { marginTop: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 15 },
   answerCopy: { flex: 1 },
-  nextKicker: { color: '#8CC8FF', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.45, fontWeight: '700' },
-  answerTitle: { color: '#FFFFFF', fontFamily: appFonts.display, fontSize: 27, lineHeight: 31, fontWeight: '700', letterSpacing: -0.7, marginTop: 6 },
-  answerSubtitle: { color: theme.heroSecondary, fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 7, maxWidth: 300 },
-  nextTypes: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
+  answerSubtitle: { color: theme.heroSecondary, fontSize: 15, lineHeight: 21, fontWeight: '500', maxWidth: 300 },
   countdownOrb: { height: 92, width: 92, borderRadius: 46, borderWidth: 1, borderColor: 'rgba(100,181,255,0.52)', backgroundColor: 'rgba(2,13,23,0.22)', alignItems: 'center', justifyContent: 'center' },
   countdownNumber: { color: '#D7ECFF', fontFamily: appFonts.rounded, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.4, textAlign: 'center' },
   countdownCaption: { color: '#8CC8FF', fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginTop: 2 },

@@ -50,6 +50,8 @@ test('uses the main source-backed bin colour for the Today hero and collection c
   assert.match(today, /const heroColour = usesCouncilBinColour/);
   assert.match(today, /colors=\{\[heroColour, heroColour\]\}/);
   assert.match(today, /contrastTextForColour\(heroColour\)/);
+  assert.match(today, /style=\{\[styles\.greeting, \{ color: heroForeground \}\]\}>\{heroTitle\}/);
+  assert.doesNotMatch(today, /style=\{\[styles\.greeting, \{ color: heroForeground \}\]\}>Tonight/);
 });
 
 test('anchors the web navigation dock to the full visual viewport', () => {
@@ -57,6 +59,8 @@ test('anchors the web navigation dock to the full visual viewport', () => {
   const shell = read('src/components/app-shell.tsx');
   assert.match(html, /height: 100dvh/);
   assert.match(shell, /Platform\.OS === 'web' \? 0/);
+  assert.match(shell, /nativeID="app-bottom-safe-area-fill"/);
+  assert.match(shell, /top: '100%'.*height: 96/);
 });
 
 test('all main routes provide route-specific metadata', () => {

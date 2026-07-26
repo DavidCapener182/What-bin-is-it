@@ -25,13 +25,18 @@ export default function Root({ children }: PropsWithChildren) {
             width: 100%;
             height: 100%;
             min-height: 100%;
-            background: #F2F2F7;
           }
+          html, body { background: #F9F9FB; }
+          #root { background: #F2F2F7; }
           @supports (height: 100dvh) {
             html, body, #root {
               height: 100dvh;
               min-height: 100dvh;
             }
+          }
+          @media (prefers-color-scheme: dark) {
+            html, body { background: #1C1C1E; }
+            #root { background: #000000; }
           }
           html { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
           body {

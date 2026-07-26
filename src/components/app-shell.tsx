@@ -61,7 +61,7 @@ export function AppShell({
           <View nativeID={`panel-${activeRoute.replace('/', '')}`} style={styles.screen}>{children}</View>
         )}
         {!hideNavigation ? (
-          <View style={[styles.dock, { paddingBottom: dockBottomPadding }]}>
+          <View nativeID="app-dock" style={[styles.dock, { paddingBottom: dockBottomPadding }]}>
             <View nativeID="app-material" style={[styles.material, { backgroundColor: theme.material, borderColor: theme.separator }]}>
             <BlurView
               blurMethod="dimezisBlurViewSdk31Plus"
@@ -107,6 +107,13 @@ export function AppShell({
               })}
             </View>
           </View>
+            {Platform.OS === 'web' ? (
+              <View
+                nativeID="app-bottom-safe-area-fill"
+                pointerEvents="none"
+                style={[styles.bottomSafeAreaFill, { backgroundColor: theme.material }]}
+              />
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -128,6 +135,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   hiddenPanel: { display: 'none' },
   dock: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 10, paddingTop: 6 },
+  bottomSafeAreaFill: { position: 'absolute', top: '100%', left: -10, right: -10, height: 96 },
   blur: { pointerEvents: 'none' },
   material: {
     height: 62,
