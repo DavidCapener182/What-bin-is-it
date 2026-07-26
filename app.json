@@ -5,13 +5,13 @@
     "description": "UK bin collection reminders, local recycling guidance, and nearby waste services.",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-icon.png",
     "scheme": "whatbinistonight",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F4F4EE",
     "primaryColor": "#0B7469",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/app-icon.png",
       "bundleIdentifier": "uk.whatbinistonight.app",
       "supportsTablet": true
     },
@@ -34,6 +34,11 @@
       "name": "What Bin Is It Tonight?",
       "shortName": "What Bin?",
       "lang": "en-GB",
+      "display": "standalone",
+      "startUrl": "/",
+      "scope": "/",
+      "orientation": "portrait",
+      "barStyle": "black-translucent",
       "themeColor": "#08212D",
       "backgroundColor": "#F4F4EE",
       "description": "UK bin collection reminders, local recycling guidance, and nearby waste services."

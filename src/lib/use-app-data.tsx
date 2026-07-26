@@ -234,11 +234,21 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const activeAddress = state.addresses.find((address) => address.id === state.activeAddressId);
   const activeSchedule = state.schedulesByAddressId[state.activeAddressId]
     ?? { collections: [], sourceStatus: activeAddress ? emptyStatus : startStatus };
+  const notificationCollections = useMemo(
+    () => state.addresses.flatMap((address) => (
+      state.schedulesByAddressId[address.id]?.collections.map((collection) => ({
+        ...collection,
+        id: `${address.id}:${collection.id}`,
+        placeLabel: address.label || address.line1,
+      })) ?? []
+    )),
+    [state.addresses, state.schedulesByAddressId]
+  );
 
   useEffect(() => {
     if (!ready) return;
-    void rescheduleCollectionReminders(activeSchedule.collections, state.preferences).catch(() => undefined);
-  }, [activeSchedule.collections, ready, state.activeAddressId, state.preferences]);
+    void rescheduleCollectionReminders(notificationCollections, state.preferences).catch(() => undefined);
+  }, [notificationCollections, ready, state.preferences]);
 
   const refreshAddress = useCallback(async (targetAddress: SavedAddress, clearExisting: boolean): Promise<CollectionRefreshOutcome> => {
     setRefreshing(true);

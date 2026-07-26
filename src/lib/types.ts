@@ -7,6 +7,7 @@ export type Collection = {
   source: 'council';
   label?: string;
   colour?: string;
+  placeLabel?: string;
 };
 
 export type SavedAddress = {

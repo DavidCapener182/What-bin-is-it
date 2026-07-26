@@ -4,6 +4,7 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { PwaSettingsCard } from '@/components/pwa-settings-card';
 import { councilGatewayConfigured } from '@/lib/council-provider';
 import { collectionMeta, wasteTypes } from '@/lib/data';
 import { requestNotificationPermission } from '@/lib/notifications';
@@ -13,7 +14,7 @@ import { useAppData } from '@/lib/use-app-data';
 const times = [{ hour: 18, label: '6pm' }, { hour: 19, label: '7pm' }, { hour: 20, label: '8pm' }];
 
 export default function SettingsScreen() {
-  const { preferences, collections, updatePreferences, toggleWasteType } = useAppData();
+  const { preferences, addresses, updatePreferences, toggleWasteType } = useAppData();
   const [busy, setBusy] = useState(false);
   const gatewayConfigured = councilGatewayConfigured;
 
@@ -51,9 +52,10 @@ export default function SettingsScreen() {
           <Text style={styles.title}>Settings</Text>
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <PwaSettingsCard />
           <View style={styles.reminderHero}>
             <View style={styles.bell}><Ionicons color="#ECFFF5" name="notifications" size={24} /></View>
-            <View style={styles.heroCopy}><Text style={styles.heroTitle}>Never miss bin day</Text><Text style={styles.heroText}>{collections.length ? 'We’ll remind you the evening before each verified collection.' : 'Reminders begin when this place has verified council dates.'}</Text></View>
+            <View style={styles.heroCopy}><Text style={styles.heroTitle}>Never miss bin day</Text><Text style={styles.heroText}>{addresses.length ? 'We’ll remind you before verified collections across every saved address.' : 'Add an address and verified council dates to start reminders.'}</Text></View>
             <Switch disabled={busy} value={preferences.enabled} onValueChange={changeNotifications} thumbColor="#FFFFFF" trackColor={{ false: '#839C9E', true: '#2DCC91' }} />
           </View>
 
@@ -87,7 +89,7 @@ export default function SettingsScreen() {
             <Text style={styles.sectionLabel}>ABOUT</Text>
             <View style={styles.settingCard}>
               <View style={styles.aboutRow}><Text style={styles.aboutLabel}>App</Text><Text style={styles.aboutValue}>What Bin Is It Tonight? · 1.0.0</Text></View>
-              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>Platform</Text><Text style={styles.aboutValue}>{Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android' : 'Web preview'}</Text></View>
+              <View style={styles.aboutRow}><Text style={styles.aboutLabel}>Platform</Text><Text style={styles.aboutValue}>{Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android' : 'Web app'}</Text></View>
             </View>
           </View>
           <Text style={styles.footer}>Built to make collection day simple.</Text>

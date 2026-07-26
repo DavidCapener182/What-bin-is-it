@@ -7,10 +7,16 @@ node_modules/
 .expo/
 dist/
 web-build/
+.output/
+.nitro/
+.swc/
+.workflow-data/
 expo-env.d.ts
 .vercel/
 .playwright-cli/
+.playwright-mcp/
 output/playwright/
+output/screenshots/
 
 # Native
 .kotlin/

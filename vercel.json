@@ -1,14 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build:api && npx expo export --platform web",
-  "outputDirectory": "dist",
+  "buildCommand": "npm run build",
   "cleanUrls": true,
-  "functions": {
-    "api/v1/[resource].js": {
-      "maxDuration": 30
-    }
-  },
   "redirects": [
     {
       "source": "/(.*)",

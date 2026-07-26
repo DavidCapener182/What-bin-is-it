@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { collectionDisplayMeta, sortCollections } from '@/lib/data';
+import { planCollectionReminders } from '@/lib/reminder-plan';
 import { Collection, NotificationPreferences } from '@/lib/types';
 
 Notifications.setNotificationHandler({
@@ -59,26 +59,19 @@ async function cancelCollectionReminders() {
 async function reconcileCollectionReminders(collections: Collection[], preferences: NotificationPreferences) {
   await ensureAndroidChannel();
   await cancelCollectionReminders();
-  if (!preferences.enabled) return;
-
-  const now = new Date();
-  const eligible = sortCollections(collections)
-    .filter((collection) => preferences.wasteTypes[collection.wasteType])
-    .slice(0, 48);
+  const reminders = planCollectionReminders(collections, preferences);
   await Promise.all(
-    eligible.map(async (collection) => {
-      const trigger = new Date(`${collection.date}T12:00:00`);
-      trigger.setDate(trigger.getDate() - preferences.reminderDayOffset);
-      trigger.setHours(preferences.reminderHour, 0, 0, 0);
-      if (trigger <= now) return;
+    reminders.map(async (reminder) => {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Bin reminder',
-          body: `${collectionDisplayMeta(collection).label} collection is ${preferences.reminderDayOffset === 0 ? 'today' : 'tomorrow'}. Put it out before 7am.`,
-          data: { kind: reminderKind, url: '/calendar', collectionId: collection.id },
+          title: reminder.title,
+          body: reminder.body,
+          data: { kind: reminderKind, url: reminder.url, collectionId: reminder.collectionId },
           sound: 'default',
         },
-        trigger: Platform.OS === 'android' ? { type: Notifications.SchedulableTriggerInputTypes.DATE, date: trigger, channelId } : { type: Notifications.SchedulableTriggerInputTypes.DATE, date: trigger },
+        trigger: Platform.OS === 'android'
+          ? { type: Notifications.SchedulableTriggerInputTypes.DATE, date: reminder.triggerAt, channelId }
+          : { type: Notifications.SchedulableTriggerInputTypes.DATE, date: reminder.triggerAt },
       });
     })
   );
