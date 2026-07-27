@@ -4,6 +4,7 @@ import { councilDatabase } from "./database";
 import type {
   AuditEvent,
   CouncilAnnouncement,
+  CouncilBroadcastSummary,
   CouncilDisruption,
   CouncilGuidanceItem,
   CouncilPartner,
@@ -29,6 +30,9 @@ type GatewayRow = {
   checks: number;
   successes: number;
   average_duration_ms: number | null;
+};
+type PushReachRow = {
+  installations: number;
 };
 
 async function appendAudit(
@@ -56,6 +60,67 @@ async function appendAudit(
       ${sql.json(summary)}
     )
   `;
+}
+
+async function queueCouncilBroadcast(
+  sql: postgres.TransactionSql,
+  session: CouncilStaffSession,
+  target: { announcementId: string } | { disruptionId: string },
+) {
+  const rows = await sql<{ id: string }[]>`
+    INSERT INTO bin_council_broadcast_jobs (
+      organisation_id,
+      announcement_id,
+      disruption_id,
+      channels,
+      requested_by
+    ) VALUES (
+      ${session.organisation.id}::uuid,
+      ${"announcementId" in target ? target.announcementId : null}::uuid,
+      ${"disruptionId" in target ? target.disruptionId : null}::uuid,
+      ${["web-push", "native-push"]},
+      ${session.userId}::uuid
+    )
+    RETURNING id
+  `;
+  const id = rows[0]?.id;
+  if (!id) throw new Error("The resident push broadcast could not be queued.");
+  return id;
+}
+
+export async function listCouncilBroadcasts(session: CouncilStaffSession) {
+  const sql = councilDatabase();
+  const rows = await sql<{
+    id: string;
+    content_id: string;
+    status: string;
+    delivered_count: number;
+    failed_count: number;
+    requested_at: Date;
+    completed_at: Date | null;
+  }[]>`
+    SELECT
+      id,
+      coalesce(announcement_id, disruption_id) AS content_id,
+      status,
+      delivered_count,
+      failed_count,
+      requested_at,
+      completed_at
+    FROM bin_council_broadcast_jobs
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    ORDER BY requested_at DESC
+    LIMIT 200
+  `;
+  return rows.map((row): CouncilBroadcastSummary => ({
+    id: row.id,
+    contentId: row.content_id,
+    status: row.status,
+    acceptedCount: row.delivered_count,
+    failedCount: row.failed_count,
+    requestedAt: row.requested_at.toISOString(),
+    completedAt: row.completed_at?.toISOString(),
+  }));
 }
 
 function percentage(numerator: number, denominator: number) {
@@ -121,6 +186,13 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
       AND (starts_at IS NULL OR starts_at <= now())
       AND (ends_at IS NULL OR ends_at > now())
   `;
+  const pushReachRows = await sql<PushReachRow[]>`
+    SELECT count(DISTINCT installation_id)::int AS installations
+    FROM bin_council_push_registrations
+    WHERE council_id = ${providerId}
+      AND enabled
+      AND last_seen_at >= now() - interval '180 days'
+  `;
   const analytics = analyticsRows[0] ?? {
     participants: 0,
     reminders: 0,
@@ -134,6 +206,7 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
     all_time_residents: 0,
   };
   const gateway = gatewayRows[0] ?? { checks: 0, successes: 0, average_duration_ms: null };
+  const pushReach = pushReachRows[0]?.installations ?? 0;
   const reminderRate = percentage(analytics.reminders, analytics.participants);
   const guideSuccess = percentage(analytics.guide_matches, analytics.guide_searches);
   const gatewayAvailability = percentage(gateway.successes, gateway.checks);
@@ -189,6 +262,13 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
         detail: "Currently published home, schedule or guide messages",
         state: "available",
         tone: "blue",
+      },
+      {
+        label: "Push alert reach",
+        value: pushReach.toLocaleString("en-GB"),
+        detail: "Current opted-in installations linked to this council; no resident addresses are exposed",
+        state: "available",
+        tone: "teal",
       },
       {
         label: "Collections tomorrow",
@@ -254,7 +334,10 @@ export async function listAnnouncements(session: CouncilStaffSession) {
 
 export async function createAnnouncement(
   session: CouncilStaffSession,
-  input: Omit<CouncilAnnouncement, "id" | "status" | "updatedAt"> & { status: "draft" | "published" },
+  input: Omit<CouncilAnnouncement, "id" | "status" | "updatedAt"> & {
+    status: "draft" | "published";
+    sendPush: boolean;
+  },
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
@@ -296,8 +379,12 @@ export async function createAnnouncement(
       title: input.title,
       severity: input.severity,
       placements: input.placements.join(","),
+      pushRequested: input.sendPush,
     });
-    return id;
+    const broadcastJobId = input.status === "published" && input.sendPush
+      ? await queueCouncilBroadcast(transaction, session, { announcementId: id })
+      : undefined;
+    return { id, broadcastJobId };
   });
 }
 
@@ -305,10 +392,11 @@ export async function setAnnouncementStatus(
   session: CouncilStaffSession,
   id: string,
   status: "published" | "archived",
+  sendPush = false,
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
-    const rows = await transaction<{ title: string }[]>`
+    const rows = await transaction<{ title: string; starts_at: Date | null }[]>`
       UPDATE bin_council_announcements
       SET
         status = ${status},
@@ -317,13 +405,20 @@ export async function setAnnouncementStatus(
         updated_at = now()
       WHERE id = ${id}::uuid
         AND organisation_id = ${session.organisation.id}::uuid
-      RETURNING title
+      RETURNING title, starts_at
     `;
     if (!rows[0]) throw new Error("The announcement was not found.");
+    if (status === "published" && sendPush && rows[0].starts_at && rows[0].starts_at > new Date()) {
+      throw new Error("A push alert must start now. Remove its future start time or publish without push.");
+    }
     await appendAudit(transaction, session, `announcement.${status}`, "announcement", id, {
       title: rows[0].title,
       status,
+      pushRequested: sendPush,
     });
+    return status === "published" && sendPush
+      ? await queueCouncilBroadcast(transaction, session, { announcementId: id })
+      : undefined;
   });
 }
 
@@ -384,7 +479,10 @@ export async function listDisruptions(session: CouncilStaffSession) {
 
 export async function createDisruption(
   session: CouncilStaffSession,
-  input: Omit<CouncilDisruption, "id" | "status" | "updatedAt"> & { status: "draft" | "published" },
+  input: Omit<CouncilDisruption, "id" | "status" | "updatedAt"> & {
+    status: "draft" | "published";
+    sendPush: boolean;
+  },
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
@@ -431,8 +529,12 @@ export async function createDisruption(
       cause: input.cause,
       collectionTypes: input.collectionTypes.join(","),
       affectedAreaCount: input.areaLabels.length,
+      pushRequested: input.sendPush,
     });
-    return id;
+    const broadcastJobId = input.status === "published" && input.sendPush
+      ? await queueCouncilBroadcast(transaction, session, { disruptionId: id })
+      : undefined;
+    return { id, broadcastJobId };
   });
 }
 
@@ -440,10 +542,11 @@ export async function setDisruptionStatus(
   session: CouncilStaffSession,
   id: string,
   status: "published" | "resolved" | "archived",
+  sendPush = false,
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
-    const rows = await transaction<{ title: string }[]>`
+    const rows = await transaction<{ title: string; starts_at: Date }[]>`
       UPDATE bin_council_disruptions
       SET
         status = ${status},
@@ -453,13 +556,20 @@ export async function setDisruptionStatus(
         updated_at = now()
       WHERE id = ${id}::uuid
         AND organisation_id = ${session.organisation.id}::uuid
-      RETURNING title
+      RETURNING title, starts_at
     `;
     if (!rows[0]) throw new Error("The disruption was not found.");
+    if (status === "published" && sendPush && rows[0].starts_at > new Date()) {
+      throw new Error("A push alert must start now. Change its start time or publish without push.");
+    }
     await appendAudit(transaction, session, `disruption.${status}`, "disruption", id, {
       title: rows[0].title,
       status,
+      pushRequested: sendPush,
     });
+    return status === "published" && sendPush
+      ? await queueCouncilBroadcast(transaction, session, { disruptionId: id })
+      : undefined;
   });
 }
 

@@ -170,7 +170,8 @@ fieldset { display: grid; gap: 9px; margin: 0; padding: 0; border: 0; }
 .secondary-button { color: var(--ink); border: 1px solid var(--line); background: #fff; }
 .danger-button { color: #fff; background: var(--red); }
 .button-small { min-height: 34px; padding: 7px 11px; font-size: .78rem; }
-.inline-form { display: inline-flex; gap: 8px; }
+.inline-form { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.form-help { margin: -4px 0 0; color: var(--muted); font-size: .88rem; line-height: 1.45; }
 .help-text { margin: -6px 0 0; color: var(--ink-soft); font-size: .74rem; line-height: 1.45; }
 
 .data-list { display: grid; gap: 12px; }

@@ -5,7 +5,10 @@ import { useEffect } from 'react';
 export function NotificationNavigation() {
   useEffect(() => {
     const openNotification = (notification: Notifications.Notification) => {
-      if (notification.request.content.data?.url === '/schedule') router.push('/schedule');
+      const url = notification.request.content.data?.url;
+      if (url === '/schedule') router.push('/schedule');
+      else if (url === '/reports') router.push('/reports');
+      else if (url === '/') router.push('/');
     };
     const initialResponse = Notifications.getLastNotificationResponse();
     if (initialResponse?.notification) openNotification(initialResponse.notification);

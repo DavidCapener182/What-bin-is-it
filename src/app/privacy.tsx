@@ -32,7 +32,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Notifications',
-          body: 'If enabled, the installed app stores a device or browser notification subscription and schedules messages from verified dates. The notification service receives the reminder text and delivery time, not your full street address.',
+          body: 'If enabled, the installed app stores a random installation identifier and device or browser notification subscription. It schedules reminders from verified dates and can receive service alerts published by councils represented by your saved places. The server stores only those council identifiers with the private delivery credential; it does not store your postcode, street address, property reference, account or email for push delivery. The platform notification service receives the message needed for delivery.',
         },
         {
           title: 'Reports and support',
@@ -48,7 +48,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Retention and deletion',
-          body: 'Remove an individual saved place from Manage places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Account can export your What Bin plan record or remove the app-owned plan and purchase-grant records, then sign out the device. Because authentication is currently shared with other products in the same Supabase project, that action does not delete the underlying Supabase sign-in identity. Payment providers retain transaction records where required by law. Browser notification subscriptions are removed when notifications are disabled or expire.',
+          body: 'Remove an individual saved place from Manage places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Turning reminders or service alerts off disables their notification registration; disabled registrations are removed after 30 days and registrations not refreshed for 180 days are removed. Expired provider tokens are disabled when detected. Account can export your What Bin plan record or remove the app-owned plan and purchase-grant records, then sign out the device. Because authentication is currently shared with other products in the same Supabase project, that action does not delete the underlying Supabase sign-in identity. Payment providers retain transaction records where required by law.',
         },
         {
           title: 'Your choices and rights',

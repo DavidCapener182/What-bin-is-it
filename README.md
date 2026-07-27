@@ -12,7 +12,7 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - A searchable, plain-English guide for common household items, with local-rule caveats built in rather than misleading universal answers.
 - A local-services finder for recycling points and household-waste sites. It uses a council adapter when one exists and otherwise offers clearly-labelled OpenStreetMap nearby-place results.
 - A normalised `CouncilProvider` client contract for collection dates; no screen code is coupled to a specific council website.
-- Collection reminders for every saved address, with per-bin choices and a configurable evening reminder time. Native builds use Expo local notifications; the PWA uses standards-based Web Push.
+- Collection reminders for every saved address, with per-bin choices and a configurable evening reminder time. Native builds use Expo local notifications; the PWA uses standards-based Web Push. Councils can also publish tenant-scoped in-app service alerts and optionally push them to residents who enabled alerts for that authority.
 - A server-side council gateway packaged with Nitro, with a companion Cloudflare Worker entry under `services/council-gateway`, designed to keep council-specific logic off users’ phones.
 - A generated web manifest, branded icons, offline service worker, install controls, notification status, and a push test action in Settings.
 - Durable reminder scheduling on Vercel Workflow. A workflow sleeps until each verified reminder time and then delivers a push notification to that app installation.
@@ -27,7 +27,7 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - A generated 361-council outreach pipeline, pilot offer, integration contract, assurance pack, success measures and property pilot.
 - App Store and Google Play listing copy, privacy declarations, review notes, screenshot plan and automated repository-readiness checks.
 - A free-first commercial stage with stable future Plus product IDs and tested guardrails that keep essential council services outside a paywall.
-- A separately deployed private council console with tenant-scoped staff roles, announcements, disruption alerts, local guidance, missed-collection policy, partner approvals, aggregate evidence exports and an immutable audit trail.
+- A separately deployed private council console with tenant-scoped staff roles, announcements, disruption alerts, consented council-scoped push broadcasts, local guidance, missed-collection policy, partner approvals, aggregate evidence exports and an immutable audit trail.
 - A published-content bridge through the council gateway. The resident app never connects to the back-office database and the back-office has no resident route or navigation entry.
 
 ## Run the app
@@ -102,16 +102,17 @@ The PWA keeps its last loaded shell available offline. Live council-date refresh
 
 ## Notifications
 
-Native iOS and Android builds schedule local reminders through `expo-notifications`. The installed PWA uses Web Push plus Vercel Workflow so future reminders still arrive after the browser has closed.
+Native iOS and Android builds schedule local reminders through `expo-notifications`. The installed PWA uses Web Push plus Vercel Workflow so future reminders still arrive after the browser has closed. Published council announcements and disruptions appear in-app without notification permission. When a resident has enabled reminders and service alerts, the app privately registers only an opaque installation ID, its saved council provider IDs and the provider delivery token. A council broadcast can target only registrations for the signed-in council.
 
 Create one VAPID key pair for the production app and set both values as Vercel environment variables:
 
 ```text
 VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY
+COUNCIL_BROADCAST_SECRET
 ```
 
-The private key is a server-only secret. The public key is returned by `/api/push/config` so the browser can create a push subscription. `/api/health` reports whether push is configured without exposing either key.
+The VAPID private key and council broadcast secret are server-only. Use the same broadcast secret in the separately deployed council console. The VAPID public key is returned by `/api/push/config` so the browser can create a push subscription. `/api/health` reports whether web push is configured without exposing either key.
 
 ## Build for the stores
 

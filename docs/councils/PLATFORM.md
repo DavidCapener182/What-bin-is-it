@@ -82,12 +82,9 @@ An editor can submit a partner, but only an owner or admin can activate it.
 
 ## Honest channel readiness
 
-Home, Schedule and Guide publishing is connected. Remote push and widget broadcast tables exist as an aggregate job boundary, but the console does not claim those channels are live until:
+Home, Schedule and Guide publishing is connected. The console can also queue a tenant-scoped web/native push broadcast for the same published announcement or disruption. The resident service selects only current, consented registrations whose council provider ID matches the signed-in council. Provider acceptance and failure counts are recorded; the console does not claim that acceptance proves a handset displayed the message.
 
-- resident consent registrations have a reviewed retention policy;
-- Apple, Google and web-push credentials are approved;
-- physical-device delivery and revocation are tested; and
-- the council agrees content governance and emergency escalation.
+Web delivery is operational when production VAPID credentials and the shared server-only broadcast secret are configured. Native delivery uses Expo push tickets and still requires Apple/Google notification credentials plus physical-device delivery, revocation and receipt testing before a store-release claim. Widget broadcasts are not yet live. Each council must agree content governance, emergency escalation and who is authorised to publish.
 
 ## Expansion path
 

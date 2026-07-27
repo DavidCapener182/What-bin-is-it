@@ -22,6 +22,7 @@ Council staff can:
 - review privacy-safe operational metrics;
 - publish resident announcements to Home, Schedule and Guide;
 - publish disruption advice that residents see before reporting a miss;
+- optionally send the same verified announcement or disruption by push to opted-in registrations belonging only to that council;
 - localise recycling guidance without an app release;
 - configure missed-collection eligibility and official council handoff;
 - submit and independently approve task-relevant partner services;
@@ -29,7 +30,7 @@ Council staff can:
 - review an immutable audit trail; and
 - manage resident-facing authority identity.
 
-The console does **not** store resident addresses, postcodes, free-text missed-bin reports, IP addresses, user agents or push tokens.
+The console does **not** display or query resident addresses, postcodes, free-text missed-bin reports, IP addresses, user agents or push credentials. Private delivery credentials stay behind the resident app server boundary; the console sees only aggregate provider-acceptance and failure counts for its own broadcast jobs.
 
 ## Relationship CRM and resident inbox
 

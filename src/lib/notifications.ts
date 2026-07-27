@@ -4,5 +4,6 @@ export {
   rescheduleCollectionReminders,
   reschedulePlannedReminders,
   sendTestWebNotification,
+  syncCouncilAlertRegistration,
   subscribeWebNotificationStatus,
 } from '@/lib/notifications.web';

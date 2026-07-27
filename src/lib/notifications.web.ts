@@ -18,6 +18,7 @@ export type WebNotificationStatus = {
 };
 
 const scheduleStorageKey = '@what-bin-is-it-tonight/web-push-run-v1';
+const alertInstallationStorageKey = '@what-bin-is-it-tonight/alert-installation-v1';
 const statusListeners = new Set<() => void>();
 const serverNotificationStatus: WebNotificationStatus = {
   state: 'unsupported',
@@ -110,6 +111,12 @@ async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+function notificationApiPath(path: string) {
+  const configured = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
+  if (!configured || !path.startsWith('/api/')) return path;
+  return `${configured}${path.slice('/api'.length)}`;
+}
+
 function applicationServerKey(value: string) {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
   const decoded = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
@@ -136,6 +143,39 @@ async function pushSubscription() {
     userVisibleOnly: true,
     applicationServerKey: applicationServerKey(config.publicKey),
   });
+}
+
+function alertInstallationId() {
+  if (!browserAvailable()) return undefined;
+  const existing = localStorage.getItem(alertInstallationStorageKey);
+  if (existing) return existing;
+  const id = globalThis.crypto?.randomUUID?.();
+  if (!id) return undefined;
+  localStorage.setItem(alertInstallationStorageKey, id);
+  return id;
+}
+
+export async function syncCouncilAlertRegistration(councilIds: string[], enabled: boolean) {
+  if (!browserAvailable()) return;
+  const installationId = alertInstallationId();
+  if (!installationId) return;
+  const canDeliver = enabled
+    && councilIds.length > 0
+    && notificationPermission() === 'granted';
+  const delivery = canDeliver ? (await pushSubscription()).toJSON() : undefined;
+  await jsonRequest<{ councilCount: number; enabled: boolean }>(
+    notificationApiPath('/api/push/registrations'),
+    {
+    method: 'POST',
+    body: JSON.stringify({
+      installationId,
+      councilIds,
+      channel: 'web-push',
+      delivery,
+      enabled: canDeliver,
+    }),
+    },
+  );
 }
 
 function readPreviousRun(): PushRunReference | undefined {

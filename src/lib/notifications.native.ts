@@ -1,3 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -10,13 +13,14 @@ Notifications.setNotificationHandler({
 
 const channelId = 'bin-reminders';
 const reminderKind = 'collection-reminder';
+const alertInstallationStorageKey = '@what-bin-is-it-tonight/alert-installation-v1';
 let reminderQueue = Promise.resolve();
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(channelId, {
-    name: 'Bin reminders',
-    description: 'A gentle reminder before your collection day',
+    name: 'Bin reminders and service alerts',
+    description: 'Collection reminders and verified council service changes',
     importance: Notifications.AndroidImportance.HIGH,
     lightColor: '#007AFF',
     sound: 'default',
@@ -44,6 +48,57 @@ export async function requestNotificationPermission() {
     granted,
     reason: granted ? undefined : 'Permission was not granted. You can enable it in your phone settings.',
   };
+}
+
+async function alertInstallationId() {
+  const existing = await AsyncStorage.getItem(alertInstallationStorageKey);
+  if (existing) return existing;
+  const id = Crypto.randomUUID();
+  await AsyncStorage.setItem(alertInstallationStorageKey, id);
+  return id;
+}
+
+function alertRegistrationUrl() {
+  const apiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '')
+    || 'https://what-bin-is-it-tonight.vercel.app/api';
+  return `${apiBase}/push/registrations`;
+}
+
+export async function syncCouncilAlertRegistration(councilIds: string[], enabled: boolean) {
+  await ensureAndroidChannel();
+  const installationId = await alertInstallationId();
+  const permission = await Notifications.getPermissionsAsync();
+  const canDeliver = enabled && councilIds.length > 0 && hasNotificationPermission(permission);
+  let delivery: { token: string } | undefined;
+  if (canDeliver) {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId
+      ?? Constants.easConfig?.projectId;
+    if (!projectId) throw new Error('The native notification project is not configured.');
+    const token = await Notifications.getExpoPushTokenAsync({ projectId });
+    delivery = { token: token.data };
+  }
+  const response = await fetch(alertRegistrationUrl(), {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      installationId,
+      councilIds,
+      channel: 'expo-push',
+      delivery,
+      enabled: canDeliver,
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined) as { error?: unknown } | undefined;
+    throw new Error(
+      typeof payload?.error === 'string'
+        ? payload.error
+        : `The council alert registration failed with ${response.status}.`,
+    );
+  }
 }
 
 async function cancelCollectionReminders() {

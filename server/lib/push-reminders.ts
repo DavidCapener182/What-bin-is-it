@@ -211,6 +211,7 @@ export async function deliverWebPush(
       TTL: 86_400,
       urgency: 'high',
     });
+    return 'accepted' as const;
   } catch (error) {
     const statusCode = (
       error
@@ -218,7 +219,7 @@ export async function deliverWebPush(
       && 'statusCode' in error
       && typeof error.statusCode === 'number'
     ) ? error.statusCode : undefined;
-    if (statusCode === 404 || statusCode === 410) return;
+    if (statusCode === 404 || statusCode === 410) return 'expired' as const;
     throw error;
   }
 }

@@ -77,6 +77,16 @@ export type CouncilDisruption = {
   updatedAt: string;
 };
 
+export type CouncilBroadcastSummary = {
+  id: string;
+  contentId: string;
+  status: string;
+  acceptedCount: number;
+  failedCount: number;
+  requestedAt: string;
+  completedAt?: string;
+};
+
 export type CouncilGuidanceItem = {
   id: string;
   itemKey: string;

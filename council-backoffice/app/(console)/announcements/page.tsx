@@ -5,7 +5,7 @@ import { FeedbackBanner } from "@/components/feedback-banner";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { requireCouncilSession } from "@/lib/auth";
-import { listAnnouncements } from "@/lib/data";
+import { listAnnouncements, listCouncilBroadcasts } from "@/lib/data";
 import { formatDateTime, humanise } from "@/lib/format";
 import { councilRoleCan } from "@/lib/permissions";
 
@@ -17,13 +17,23 @@ export default async function AnnouncementsPage({
   const session = await requireCouncilSession("dashboard:view");
   const canWrite = councilRoleCan(session.role, "content:write");
   const canPublish = councilRoleCan(session.role, "content:publish");
-  const [items, params] = await Promise.all([listAnnouncements(session), searchParams]);
+  const [items, broadcasts, params] = await Promise.all([
+    listAnnouncements(session),
+    listCouncilBroadcasts(session),
+    searchParams,
+  ]);
+  const broadcastsByContentId = new Map<string, (typeof broadcasts)[number]>();
+  broadcasts.forEach((broadcast) => {
+    if (!broadcastsByContentId.has(broadcast.contentId)) {
+      broadcastsByContentId.set(broadcast.contentId, broadcast);
+    }
+  });
   return (
     <>
       <PageHeader
         eyebrow="Resident communications"
         title="Announcements"
-        description="Publish concise, verified information to the resident app. Push and widget broadcasts remain unavailable until those consented channels are connected."
+        description="Publish concise, verified information in the resident app and optionally alert this council’s opted-in residents by push."
       />
       <FeedbackBanner {...params} />
       <div className={canWrite ? "split-layout" : ""}>
@@ -42,6 +52,8 @@ export default async function AnnouncementsPage({
                 <div className="field"><label htmlFor="endsAt">Ends</label><input id="endsAt" name="endsAt" type="datetime-local" /></div>
                 <div className="field field-span"><label htmlFor="sourceUrl">Official source URL</label><input id="sourceUrl" name="sourceUrl" placeholder="https://…" type="url" /></div>
               </div>
+              {canPublish ? <label className="check-option"><input name="sendPush" type="checkbox" value="yes" />Also send a push alert to this council&apos;s opted-in residents</label> : null}
+              {canPublish ? <p className="form-help">In-app publishing works for everyone with this council saved. Push reaches only residents who enabled service alerts, and sends immediately.</p> : null}
               <div className="form-actions">
                 <button className="secondary-button" name="status" type="submit" value="draft">Save draft</button>
                 {canPublish ? <button className="primary-button" name="status" type="submit" value="published">Publish to app</button> : null}
@@ -56,7 +68,8 @@ export default async function AnnouncementsPage({
               <p>{item.body}</p>
               <div className="tag-list">{item.placements.map((placement) => <span className="tag" key={placement}>{humanise(placement)}</span>)}</div>
               <div className="data-meta space-top-sm"><span>Starts {formatDateTime(item.startsAt)}</span><span>Ends {formatDateTime(item.endsAt)}</span></div>
-              {canPublish && item.status !== "archived" ? <div className="data-card-actions"><form action={changeAnnouncementStatusAction} className="inline-form"><input name="id" type="hidden" value={item.id} />{item.status !== "published" ? <button className="primary-button button-small" name="status" type="submit" value="published">Publish</button> : null}<button className="secondary-button button-small" name="status" type="submit" value="archived">Archive</button></form></div> : null}
+              {broadcastsByContentId.get(item.id) ? <div className="data-meta space-top-sm"><span>Push {humanise(broadcastsByContentId.get(item.id)!.status)}</span><span>{broadcastsByContentId.get(item.id)!.acceptedCount} accepted by notification providers</span>{broadcastsByContentId.get(item.id)!.failedCount ? <span>{broadcastsByContentId.get(item.id)!.failedCount} failed or expired</span> : null}</div> : null}
+              {canPublish && item.status !== "archived" ? <div className="data-card-actions"><form action={changeAnnouncementStatusAction} className="inline-form"><input name="id" type="hidden" value={item.id} />{item.status !== "published" ? <label className="check-option"><input name="sendPush" type="checkbox" value="yes" />Push alert</label> : null}{item.status !== "published" ? <button className="primary-button button-small" name="status" type="submit" value="published">Publish</button> : null}<button className="secondary-button button-small" name="status" type="submit" value="archived">Archive</button></form></div> : null}
             </article>
           )) : <div className="empty-state"><MessageSquarePlus aria-hidden="true" size={32} /><h2>No announcements yet</h2><p>Create the first verified resident message. Nothing will appear in the app until it is explicitly published.</p></div>}
         </section>

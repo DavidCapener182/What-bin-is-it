@@ -12,6 +12,10 @@ import { PageHeader } from "./page-header";
 
 export async function CouncilOverview({ session }: { session: CouncilStaffSession }) {
   const overview = await dashboardMetrics(session);
+  const pushConfigured = Boolean(
+    process.env.COUNCIL_BROADCAST_SECRET?.trim()
+    && process.env.RESIDENT_APP_BASE_URL?.trim(),
+  );
   return (
     <>
       <PageHeader
@@ -48,8 +52,10 @@ export async function CouncilOverview({ session }: { session: CouncilStaffSessio
                 : <strong>{overview.gatewayAvailability}%</strong>}
             </div>
             <div className="connection-row">
-              <div><strong>Remote push broadcasts</strong><br /><span>Requires approved notification credentials and resident consent registrations</span></div>
-              <BellRing aria-label="Not connected" color="#FF9500" size={21} />
+              <div><strong>Remote push broadcasts</strong><br /><span>{pushConfigured ? "Processor connected; delivery remains limited to consented council registrations" : "Requires the private resident-app delivery connection"}</span></div>
+              {pushConfigured
+                ? <CheckCircle2 aria-label="Connected" color="#34C759" size={21} />
+                : <BellRing aria-label="Not connected" color="#FF9500" size={21} />}
             </div>
             <div className="connection-row">
               <div><strong>Data boundary</strong><br /><span>No resident addresses, postcodes or report narratives are stored here</span></div>

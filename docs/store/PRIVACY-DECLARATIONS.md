@@ -11,7 +11,7 @@ These answers describe the current `proof` phase. Reassess them before every sub
 - A user-initiated lookup transmits postcode, council provider ID and an opaque property reference to the gateway and relevant source.
 - Foreground location is requested only after the user taps the location action; it is converted to a postcode and is not continuously tracked.
 - Native reminders are scheduled on the device.
-- The installed web app can store a browser push subscription and reminder delivery plan on the server.
+- With notification consent, the installed web or native app stores an opaque installation identifier, council provider identifiers and a private browser/Expo push credential so verified council service alerts can be delivered. No postcode, address, property reference, account or email is stored in that registration.
 - The native store app does not sell or share address/location data.
 - Account export and removal of What Bin-owned plan/grant records are available in Account.
 - Support opens an external GitHub issue only after the user chooses it.
@@ -33,7 +33,7 @@ If gateway request values are immediately used for the lookup and not retained i
 If any request value or derived value is retained, declare at least:
 
 - **Coarse Location** — postcode/council area; not linked to identity; App Functionality.
-- **Device ID** — only if a native push token or installation identifier is introduced; App Functionality.
+- **Device ID** — opaque installation identifier and native push token; not linked to identity; App Functionality.
 - **Other User Content** — only if in-app support text is transmitted to and retained by the operator.
 
 For a Plus-enabled build, also declare conservatively:
@@ -55,7 +55,7 @@ Review:
 
 - whether Vercel or a council connector retains request IP addresses, postcodes or property references;
 - whether any SDK collects diagnostics by default;
-- whether the future native push implementation stores a token server-side;
+- the current server-side native/browser push registration and its 30-day disabled / 180-day stale retention limits;
 - encryption in transit: HTTPS;
 - deletion: local data can be removed by deleting an address or using Clear all app data;
 - optional account identifiers and plan access;

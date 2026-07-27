@@ -24,6 +24,7 @@ import {
   updateCrmTaskStatus,
 } from "@/lib/crm";
 import { councilDatabase } from "@/lib/database";
+import { requestCouncilBroadcast } from "@/lib/broadcasts";
 import {
   createAnnouncement,
   createDisruption,
@@ -83,6 +84,20 @@ function allowedValue<T extends string>(
     throw new Error(`${label} is invalid.`);
   }
   return value as T;
+}
+
+function checked(formData: FormData, name: string) {
+  return formData.get(name) === "yes";
+}
+
+async function broadcastMessage(jobId: string | undefined, fallback: string) {
+  if (!jobId) return fallback;
+  try {
+    const result = await requestCouncilBroadcast(jobId);
+    return `${fallback} Push accepted for ${result.accepted} opted-in device${result.accepted === 1 ? "" : "s"}${result.failed ? `; ${result.failed} failed or expired` : ""}.`;
+  } catch {
+    return `${fallback} The in-app alert is live; push remains queued for delivery.`;
+  }
 }
 
 async function signInOrigin() {
@@ -259,8 +274,10 @@ export async function switchCouncil(formData: FormData) {
 
 export async function saveAnnouncementAction(formData: FormData) {
   const path = "/announcements";
+  let savedMessage = "Announcement saved.";
   try {
     const status = allowedValue(formData.get("status"), ["draft", "published"] as const, "Status");
+    const sendPush = status === "published" && checked(formData, "sendPush");
     const session = await requireCouncilAction("content:write");
     if (status === "published") assertCouncilPermission(session.role, "content:publish");
     const placements = selectedValues(formData, "placements");
@@ -270,45 +287,56 @@ export async function saveAnnouncementAction(formData: FormData) {
     if (!supportedPlacements.length || supportedPlacements.length !== placements.length) {
       throw new Error("Choose at least one currently supported resident surface.");
     }
-    await createAnnouncement(session, {
+    const startsAt = isoDateTime(formData.get("startsAt"));
+    if (sendPush && startsAt && new Date(startsAt) > new Date()) {
+      throw new Error("A push alert must start now. Remove its future start time or save a draft.");
+    }
+    const result = await createAnnouncement(session, {
       kind: allowedValue(formData.get("kind"), ["service", "education", "emergency", "seasonal"] as const, "Message type"),
       severity: allowedValue(formData.get("severity"), ["information", "advice", "warning", "critical"] as const, "Severity"),
       title: requiredText(formData.get("title"), "Title", 120),
       body: requiredText(formData.get("body"), "Message", 600),
-      placements: supportedPlacements,
-      startsAt: isoDateTime(formData.get("startsAt")),
+      placements: sendPush ? [...supportedPlacements, "push"] : supportedPlacements,
+      startsAt,
       endsAt: isoDateTime(formData.get("endsAt")),
       sourceUrl: safeHttpsUrl(formData.get("sourceUrl")),
       status,
+      sendPush,
     });
+    savedMessage = await broadcastMessage(result.broadcastJobId, "Announcement saved.");
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
   }
-  redirect(successPath(path, "Announcement saved."));
+  redirect(successPath(path, savedMessage));
 }
 
 export async function changeAnnouncementStatusAction(formData: FormData) {
   const path = "/announcements";
+  let savedMessage = "Announcement status updated.";
   try {
     const status = allowedValue(formData.get("status"), ["published", "archived"] as const, "Status");
     const session = await requireCouncilAction("content:publish");
-    await setAnnouncementStatus(
+    const jobId = await setAnnouncementStatus(
       session,
       assertUuid(requiredText(formData.get("id"), "Announcement", 36)),
       status,
+      status === "published" && checked(formData, "sendPush"),
     );
+    savedMessage = await broadcastMessage(jobId, "Announcement status updated.");
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
   }
-  redirect(successPath(path, "Announcement status updated."));
+  redirect(successPath(path, savedMessage));
 }
 
 export async function saveDisruptionAction(formData: FormData) {
   const path = "/disruptions";
+  let savedMessage = "Service disruption saved.";
   try {
     const status = allowedValue(formData.get("status"), ["draft", "published"] as const, "Status");
+    const sendPush = status === "published" && checked(formData, "sendPush");
     const session = await requireCouncilAction("content:write");
     if (status === "published") assertCouncilPermission(session.role, "content:publish");
     const collectionTypes = selectedValues(formData, "collectionTypes");
@@ -320,7 +348,11 @@ export async function saveDisruptionAction(formData: FormData) {
     ) {
       throw new Error("Select at least one supported collection type.");
     }
-    await createDisruption(session, {
+    const startsAt = isoDateTime(formData.get("startsAt"), true)!;
+    if (sendPush && new Date(startsAt) > new Date()) {
+      throw new Error("A push alert must start now. Change its start time or save a draft.");
+    }
+    const result = await createDisruption(session, {
       title: requiredText(formData.get("title"), "Title", 120),
       detail: requiredText(formData.get("detail"), "Details", 600),
       collectionTypes,
@@ -331,34 +363,39 @@ export async function saveDisruptionAction(formData: FormData) {
         "Cause",
       ),
       residentInstruction: requiredText(formData.get("residentInstruction"), "Resident instruction", 400),
-      startsAt: isoDateTime(formData.get("startsAt"), true)!,
+      startsAt,
       expectedResumeAt: isoDateTime(formData.get("expectedResumeAt")),
       endsAt: isoDateTime(formData.get("endsAt")),
       sourceUrl: safeHttpsUrl(formData.get("sourceUrl")),
       status,
+      sendPush,
     });
+    savedMessage = await broadcastMessage(result.broadcastJobId, "Service disruption saved.");
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
   }
-  redirect(successPath(path, "Service disruption saved."));
+  redirect(successPath(path, savedMessage));
 }
 
 export async function changeDisruptionStatusAction(formData: FormData) {
   const path = "/disruptions";
+  let savedMessage = "Disruption status updated.";
   try {
     const status = allowedValue(formData.get("status"), ["published", "resolved", "archived"] as const, "Status");
     const session = await requireCouncilAction("content:publish");
-    await setDisruptionStatus(
+    const jobId = await setDisruptionStatus(
       session,
       assertUuid(requiredText(formData.get("id"), "Disruption", 36)),
       status,
+      status === "published" && checked(formData, "sendPush"),
     );
+    savedMessage = await broadcastMessage(jobId, "Disruption status updated.");
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
   }
-  redirect(successPath(path, "Disruption status updated."));
+  redirect(successPath(path, savedMessage));
 }
 
 export async function saveGuidanceAction(formData: FormData) {

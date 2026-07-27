@@ -48,6 +48,30 @@ test("multi-value fields remove duplicates and empty input", () => {
   assert.deepEqual(selectedValues(form, "placements"), ["home", "schedule"]);
 });
 
+test("published resident alerts enqueue only council-scoped consented broadcasts", async () => {
+  const [actions, data, migration] = await Promise.all([
+    readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/data.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../../supabase/migrations/20260727205102_council_alert_push_delivery.sql", import.meta.url),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(actions, /sendPush/);
+  assert.match(actions, /requestCouncilBroadcast/);
+  assert.match(data, /bin_council_broadcast_jobs/);
+  assert.match(data, /session\.organisation\.id/);
+  assert.match(migration, /create table if not exists public\.bin_council_push_registrations/);
+  assert.match(migration, /create table if not exists public\.bin_council_broadcast_receipts/);
+  assert.match(migration, /alter table public\.bin_council_push_registrations enable row level security/);
+  assert.match(migration, /revoke all on table public\.bin_council_push_registrations from anon, authenticated/);
+  assert.doesNotMatch(
+    migration,
+    /\b(postcode|street_address|uprn|resident_email)\b\s+(?:varchar|text)/i,
+  );
+});
+
 test("platform administration is explicit and never inferred from email metadata", async () => {
   const [authSource, bootstrapSource] = await Promise.all([
     readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),

@@ -9,7 +9,10 @@ import {
   useState,
 } from 'react';
 
-import { reschedulePlannedReminders } from '@/lib/notifications';
+import {
+  reschedulePlannedReminders,
+  syncCouncilAlertRegistration,
+} from '@/lib/notifications';
 import { planPlaceCollectionReminders, PlannedReminder } from '@/lib/reminder-plan';
 import { missedReportPolicy } from '@/lib/council-reporting';
 import {
@@ -350,6 +353,23 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
     state.outcomes,
     state.reports,
     state.disruptions,
+    state.reminderPreferencesByAddressId,
+  ]);
+
+  useEffect(() => {
+    if (!ready || !appDataReady) return;
+    const councilIds = [...new Set(addresses
+      .filter((address) => {
+        const preferences = state.reminderPreferencesByAddressId[address.id] ?? defaultPlaceReminders;
+        return Boolean(address.providerId && preferences.enabled && preferences.disruptionAlerts);
+      })
+      .map((address) => address.providerId)
+      .filter((providerId): providerId is string => Boolean(providerId)))];
+    void syncCouncilAlertRegistration(councilIds, councilIds.length > 0).catch(() => undefined);
+  }, [
+    addresses,
+    appDataReady,
+    ready,
     state.reminderPreferencesByAddressId,
   ]);
 

@@ -29,7 +29,7 @@ This is a truthful pilot-stage statement, not a certification. Update it wheneve
 4. The app sends postcode, provider ID and opaque property reference to the gateway.
 5. The gateway calls the approved council or nationwide source.
 6. The app stores returned dates and preferences on the device.
-7. Native reminders are scheduled locally. The installed web app stores a browser push subscription and server-side reminder delivery plan when the user enables web notifications.
+7. Native reminders are scheduled locally. When the resident enables notifications and council service alerts, the resident service stores only an opaque installation ID, council provider IDs and the private browser/Expo delivery credential. It stores no postcode, address, property reference, account or email in that registration.
 
 The gateway code does not persist full addresses. Infrastructure access logs and processor behavior must be covered by the production retention schedule and DPA.
 
@@ -64,7 +64,7 @@ Agree exact periods in the DPIA and contract:
 - council-supplied test-address set: delete at acceptance or pilot close;
 - enquiry and procurement contacts: retain while the opportunity is active, then review;
 - resident device data: resident controls it through address removal or **Clear all app data**;
-- web push subscription: remove when notifications are disabled or the subscription expires;
+- web/native push registration: disable when notifications or service alerts are turned off, remove disabled registrations after 30 days, remove registrations not refreshed for 180 days, and disable expired provider tokens when detected;
 - direct report records: not in scope until council CRM integration is contracted.
 
 ## Security controls in the current code
