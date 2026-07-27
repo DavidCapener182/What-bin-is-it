@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { verifiedCollectionsOnly } from '@/lib/collection-safety';
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
 import { sortCollections } from '@/lib/data';
 import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
+import { councilIdsForResidentUse } from '@/lib/resident-adoption';
 import { Collection, DisruptionAlert, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { syncHomeScreenWidget } from '@/widgets/home-screen-widget-sync';
@@ -349,12 +351,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .catch(() => undefined);
   }, [ready, state]);
 
-  useEffect(() => {
+  const syncSavedCouncilLinks = useCallback(async () => {
     if (!ready || !analyticsReady || !analyticsEnabled) return;
-    const councilIds = [...new Set(state.addresses.map((address) => address.providerId))];
-    void syncCouncilLinks(councilIds).catch(() => {
-      // A fresh sync is attempted on the next launch or saved-place change.
-    });
+    await syncCouncilLinks(councilIdsForResidentUse(
+      state.addresses.map((address) => address.providerId),
+    ));
   }, [
     analyticsEnabled,
     analyticsReady,
@@ -362,6 +363,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     state.addresses,
     syncCouncilLinks,
   ]);
+
+  useEffect(() => {
+    void syncSavedCouncilLinks().catch(() => {
+      // Reopening the installed app, relaunching or changing a saved place retries the sync.
+    });
+    const subscription = AppState.addEventListener('change', (status) => {
+      if (status === 'active') {
+        void syncSavedCouncilLinks().catch(() => {
+          // Keep the local resident experience independent from optional evidence collection.
+        });
+      }
+    });
+    return () => subscription.remove();
+  }, [syncSavedCouncilLinks]);
 
   const activeAddress = state.addresses.find((address) => address.id === state.activeAddressId);
   const activeSchedule = state.schedulesByAddressId[state.activeAddressId]

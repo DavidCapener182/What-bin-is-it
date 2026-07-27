@@ -123,6 +123,19 @@ test('postcode and location success paths sync their resolved council immediatel
   );
 });
 
+test('returning to an installed app retries every saved council link', async () => {
+  const appData = await readFile(
+    new URL('../src/lib/use-app-data.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(appData, /AppState\.addEventListener\(\s*['"]change['"]/);
+  assert.match(appData, /status === ['"]active['"]/);
+  assert.match(
+    appData,
+    /state\.addresses\.map\(\(address\) => address\.providerId\)/,
+  );
+});
+
 test('database array writes use Postgres JSON values rather than encoded strings', async () => {
   const analytics = await readFile(
     new URL('../server/lib/pilot-analytics.ts', import.meta.url),
