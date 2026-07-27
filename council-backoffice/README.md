@@ -59,7 +59,9 @@ npm run verify
 npm run dev
 ```
 
-Use `http://localhost:3010`. A staff user must already exist in Supabase Auth and must be explicitly assigned to an active council tenant.
+Use `http://localhost:3010`. When the resident app workspace already has an approved root `.env.local`, the development launcher reuses `BIN_DATABASE_URL` and maps its `EXPO_PUBLIC_SUPABASE_*` variables into the console process without copying secrets into another file. Console-specific development sign-in variables remain in `council-backoffice/.env.local`.
+
+A staff user must already exist in Supabase Auth and must be explicitly assigned to an active council tenant.
 
 ## Provision staff safely
 

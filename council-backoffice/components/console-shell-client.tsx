@@ -1,7 +1,8 @@
 "use client";
 
-import { Building2, RadioTower, ShieldCheck } from "lucide-react";
+import { Building2, Menu, RadioTower, ShieldCheck } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { signOutCouncil, switchCouncil } from "@/app/actions";
 import { councilRoleCan } from "@/lib/permissions";
@@ -40,10 +41,17 @@ export function ConsoleShellClient({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const mobileMenuRef = useRef<HTMLDetailsElement>(null);
   const platformSurface = session.platformAdmin && (
     pathname === "/" || pathname.startsWith("/crm")
   );
   const councilSurface = !platformSurface;
+
+  useEffect(() => {
+    if (mobileMenuRef.current) {
+      mobileMenuRef.current.open = false;
+    }
+  }, [pathname]);
 
   return (
     <div className="console-frame">
@@ -139,7 +147,64 @@ export function ConsoleShellClient({
             <span className="brand-mark"><RadioTower aria-hidden="true" size={18} /></span>
             <span>{platformSurface ? "What Bin Platform" : "What Bin Council Console"}</span>
           </div>
-          <span className="mobile-authority">{platformSurface ? "All councils" : session.organisation.name}</span>
+          <div className="mobile-bar-actions">
+            <span className="mobile-authority">{platformSurface ? "All councils" : session.organisation.name}</span>
+            <details className="mobile-menu" ref={mobileMenuRef}>
+              <summary>
+                <Menu aria-hidden="true" size={17} />
+                Menu
+              </summary>
+              <div className="mobile-menu-panel">
+                <div className="mobile-menu-heading">
+                  <span>{platformSurface ? "Platform navigation" : session.organisation.name}</span>
+                  <small>{platformSurface ? "All councils" : `${session.organisation.planTier} · ${session.organisation.status}`}</small>
+                </div>
+                {councilSurface && memberships.length > 1 ? (
+                  <form action={switchCouncil} className="mobile-council-switcher">
+                    <label htmlFor="mobileOrganisationId">Active council</label>
+                    <select
+                      defaultValue={session.organisation.id}
+                      id="mobileOrganisationId"
+                      name="organisationId"
+                    >
+                      {memberships.map((membership) => (
+                        <option key={membership.organisationId} value={membership.organisationId}>
+                          {membership.organisationName}
+                        </option>
+                      ))}
+                    </select>
+                    {session.platformAdmin ? <input name="returnTo" type="hidden" value="/council" /> : null}
+                    <button className="secondary-button button-small" type="submit">Switch council</button>
+                  </form>
+                ) : null}
+                <nav aria-label="Complete mobile navigation" className="mobile-menu-links">
+                  {session.platformAdmin ? platformNavigation.map((item) => <NavLink key={item.href} {...item} />) : null}
+                  {councilSurface ? (
+                    <>
+                      <span className="nav-section-label nav-section-spaced">Council operations</span>
+                      {primaryNavigation
+                        .filter((item) => (
+                          (item.href !== "/analytics" || councilRoleCan(session.role, "analytics:view"))
+                          && (item.href !== "/crm/messages" || councilRoleCan(session.role, "support:view"))
+                        ))
+                        .map((item) => (
+                          <NavLink
+                            href={session.platformAdmin && item.href === "/" ? "/council" : item.href}
+                            icon={item.icon}
+                            key={item.href}
+                            label={session.platformAdmin && item.href === "/" ? "Council overview" : item.label}
+                          />
+                        ))}
+                      <span className="nav-section-label nav-section-spaced">Governance</span>
+                      {governanceNavigation
+                        .filter((item) => item.href !== "/audit" || councilRoleCan(session.role, "audit:view"))
+                        .map((item) => <NavLink key={item.href} {...item} />)}
+                    </>
+                  ) : null}
+                </nav>
+              </div>
+            </details>
+          </div>
         </header>
         <main className="console-content">{children}</main>
       </div>

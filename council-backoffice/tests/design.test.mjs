@@ -17,3 +17,29 @@ test("uses the resident app Apple system palette and typography", async () => {
   assert.doesNotMatch(layout, /IBM_Plex|next\/font/);
   assert.doesNotMatch(consoleStyles.toLowerCase(), /#061f2a|#0d8b7d|#f5f2eb|radial-gradient/);
 });
+
+test("narrow layouts retain complete back-office navigation and bounded form controls", async () => {
+  const [consoleStyles, shell] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../components/console-shell-client.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(consoleStyles, /\.field\s*\{[^}]*min-width:\s*0/);
+  assert.match(consoleStyles, /input,\s*textarea,\s*select\s*\{[^}]*min-width:\s*0/);
+  assert.match(shell, /Complete mobile navigation/);
+  assert.match(shell, /primaryNavigation[\s\S]*governanceNavigation/);
+  assert.match(shell, /mobile-council-switcher/);
+  assert.match(shell, /mobileMenuRef\.current\.open = false/);
+});
+
+test("the development launcher safely maps the resident workspace environment", async () => {
+  const [packageJson, launcher] = await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/dev.mjs", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(packageJson, /"dev":\s*"node scripts\/dev\.mjs"/);
+  assert.match(launcher, /EXPO_PUBLIC_SUPABASE_URL/);
+  assert.match(launcher, /EXPO_PUBLIC_SUPABASE_ANON_KEY/);
+  assert.doesNotMatch(launcher, /eyJ|postgres(?:ql)?:\/\//);
+});
