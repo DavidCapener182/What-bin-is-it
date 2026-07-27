@@ -314,6 +314,27 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
             }
           }
         });
+      if (preferences.recollectionAlerts) {
+        state.reports
+          .filter((report) => (
+            report.addressId === address.id
+            && report.expectedRecollectionDate
+            && !['resolved', 'rejected', 'cancelled', 'closed'].includes(report.status)
+          ))
+          .forEach((report) => {
+            const triggerAt = new Date(`${report.expectedRecollectionDate}T${String(preferences.reminderHour).padStart(2, '0')}:${String(preferences.reminderMinute).padStart(2, '0')}:00`);
+            triggerAt.setDate(triggerAt.getDate() - 1);
+            if (triggerAt <= now) return;
+            alerts.push({
+              id: `${address.id}:report-recollection:${report.id}:${report.expectedRecollectionDate}`,
+              collectionId: `${address.id}:report-recollection`,
+              triggerAt,
+              title: 'Recollection due tomorrow',
+              body: `${address.label}: leave the ${report.binLabel.toLowerCase()} out for the council.`,
+              url: '/reports',
+            });
+          });
+      }
       return alerts;
     });
     const reminders = [...planPlaceCollectionReminders(plans, now), ...lifecycleAlerts]
@@ -327,6 +348,7 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
     ready,
     schedulesByAddressId,
     state.outcomes,
+    state.reports,
     state.disruptions,
     state.reminderPreferencesByAddressId,
   ]);

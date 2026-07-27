@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -107,6 +108,43 @@ export default function AccountScreen() {
                 style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}>
                 <Text style={[styles.signOutText, { color: theme.danger }]}>Sign out</Text>
               </Pressable>
+              <View style={[styles.group, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={account.busy}
+                  onPress={() => void account.exportAccountData()}
+                  style={({ pressed }) => [styles.accountAction, { borderBottomColor: theme.separator }, pressed && styles.pressed]}>
+                  <Ionicons color={theme.accent} name="download-outline" size={21} />
+                  <View style={styles.rowCopy}>
+                    <Text style={[styles.rowValue, { color: theme.text }]}>Export account data</Text>
+                    <Text style={[styles.rowLabel, { color: theme.secondaryText }]}>Copies the account and plan record as JSON</Text>
+                  </View>
+                  <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={account.busy}
+                  onPress={() => Alert.alert(
+                    'Remove What Bin account data?',
+                    'This removes your What Bin plan record and signs you out. Saved addresses stay on this device. Cancel any active subscription with its payment provider first.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Remove account data',
+                        style: 'destructive',
+                        onPress: () => void account.removeAccountData(),
+                      },
+                    ],
+                  )}
+                  style={({ pressed }) => [styles.accountAction, pressed && styles.pressed]}>
+                  <Ionicons color={theme.danger} name="trash-outline" size={21} />
+                  <View style={styles.rowCopy}>
+                    <Text style={[styles.rowValue, { color: theme.danger }]}>Remove What Bin account data</Text>
+                    <Text style={[styles.rowLabel, { color: theme.secondaryText }]}>Does not delete your on-device places</Text>
+                  </View>
+                  <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
+                </Pressable>
+              </View>
             </>
           ) : (
             <View style={[styles.form, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
@@ -191,6 +229,7 @@ const styles = StyleSheet.create({
   rowCopy: { flex: 1 },
   rowLabel: { fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
   rowValue: { fontSize: 15, lineHeight: 20, fontWeight: '700', marginTop: 2 },
+  accountAction: { minHeight: 70, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   form: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 17, padding: 16 },
   formTitle: { fontSize: 19, lineHeight: 24, fontWeight: '700' },
   formBody: { fontSize: 14, lineHeight: 20, marginTop: 6 },

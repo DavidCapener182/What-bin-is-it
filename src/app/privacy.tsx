@@ -44,11 +44,11 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Retention and deletion',
-          body: 'Remove an individual saved place from Places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Signing out removes the account session from that device but leaves the account and purchase record available for restoration. To request deletion of the account and associated plan record, use Help and support. Payment providers retain transaction records where required by law. Browser notification subscriptions are removed when notifications are disabled or expire.',
+          body: 'Remove an individual saved place from Manage places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Account can export your What Bin plan record or remove the app-owned plan and purchase-grant records, then sign out the device. Because authentication is currently shared with other products in the same Supabase project, that action does not delete the underlying Supabase sign-in identity. Payment providers retain transaction records where required by law. Browser notification subscriptions are removed when notifications are disabled or expire.',
         },
         {
           title: 'Your choices and rights',
-          body: 'You can use manual postcode entry instead of location, decline notifications, remove addresses and clear local data. For a question, correction, objection or deletion request about information held by the publisher, use Help and support. Council records remain subject to the council’s own privacy process.',
+          body: 'You can use manual postcode entry instead of location, decline notifications, remove addresses, clear local data, export account data and remove What Bin account records. For a question, correction, objection or deletion request about other information held by the publisher, use Help and support. Council records remain subject to the council’s own privacy process.',
         },
         {
           title: 'Children',

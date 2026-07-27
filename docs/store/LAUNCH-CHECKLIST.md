@@ -18,6 +18,8 @@ The first store release is a free accuracy-proving release. Do not turn on Plus 
 - automated `npm run store:check`;
 - production gateway and PWA.
 - native StoreKit/Google Play entitlement, paywall, restore and management code via RevenueCat.
+- Stripe web billing and reconciled server-side Apple/Google/Stripe entitlement records.
+- account export and removal of app-owned account data.
 
 ## Account steps that cannot be completed in source control
 
@@ -105,12 +107,18 @@ The Android submit profile uses the internal track first. Promote only after phy
 - [ ] Unsupported or unavailable sources do not create dates.
 - [ ] Notification permission is requested only after user action.
 - [ ] A bin-night reminder fires on physical iOS and Android devices.
-- [ ] Android exact-alarm behavior is tested with permission allowed and denied.
+- [ ] Android normal-schedule reminder timing is tested under battery saver and background restriction; any delay is explained honestly.
+- [ ] Confirm exact-alarm permissions remain absent from the final manifest.
 - [ ] Address slide-to-remove and Clear all app data work.
 - [ ] Privacy, terms, support and data sources open without login.
 - [ ] Cached and offline states are clearly labelled.
 - [ ] Dark mode, large text, VoiceOver and TalkBack are checked.
 - [ ] If Plus is enabled, purchase, restore, management and entitlement expiry work with sandbox accounts.
+- [ ] Password-free sign-in returns safely on web, iPhone and Android.
+- [ ] Auth rate limits, production redirect allowlist and CAPTCHA escalation are configured.
+- [ ] Account export and app-owned account removal work.
+- [ ] iOS and Android widgets refresh from verified dates on physical devices.
+- [ ] A missed report stores a council reference only after council confirmation and can track a recollection.
 
 ## Store listing
 
@@ -125,8 +133,9 @@ The Android submit profile uses the internal track first. Promote only after phy
 ## Review and staged release
 
 - [ ] Put the exact test postcode/property and source instructions in review notes.
-- [ ] Explain that no login is required.
-- [ ] Explain why foreground location and exact alarms support core reminders.
+- [ ] Explain that login is optional and saved household addresses remain device-local.
+- [ ] Explain why foreground location and notifications support core reminders.
+- [ ] State that the first iOS release is iPhone-only.
 - [ ] Use TestFlight and Play internal testing first.
 - [ ] Start with manual release or a small staged rollout.
 - [ ] Monitor failed lookups, crashes, notification support and source availability.

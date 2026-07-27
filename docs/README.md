@@ -8,8 +8,12 @@ This folder contains the material needed to move **What Bin Is It Tonight?** fro
 - [Council outreach playbook](councils/OUTREACH.md)
 - [Pilot success measures](councils/SUCCESS-MEASURES.md)
 - [Council data integration guide](councils/INTEGRATION.md)
+- [Published council coverage model](councils/COVERAGE.md)
 - [Data protection, security and procurement answers](councils/ASSURANCE.md)
 - [Commercial product model](commercial/PRODUCT-MODEL.md)
+- [Technical architecture](architecture/OVERVIEW.md)
+- [Authentication and billing controls](security/AUTH-BILLING.md)
+- [Known limitations](KNOWN-LIMITATIONS.md)
 - [Property and housing pilot](property/PROPERTY-PILOT.md)
 - [App Store and Google Play launch checklist](store/LAUNCH-CHECKLIST.md)
 - [Store privacy declarations](store/PRIVACY-DECLARATIONS.md)
@@ -20,4 +24,4 @@ The live targeting sheet is [operations/councils/pipeline.csv](../operations/cou
 
 The 361-council directory proves postcode-to-authority routing coverage, not live collection-date coverage. A council is described as connected only after an exact property lookup returns non-estimated dates from a verified source.
 
-The first store release remains free while collection accuracy is proven. Plus product identifiers and commercial guardrails are reserved in code, but resident payment prompts stay off during the `proof` launch phase.
+The first store release remains free while collection accuracy is proven. Plus product identifiers, Stripe/RevenueCat adapters and server-side entitlement reconciliation are present, but resident payment prompts stay off during the `proof` launch phase.

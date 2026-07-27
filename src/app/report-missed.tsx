@@ -42,6 +42,7 @@ export default function ReportMissedScreen() {
   const [contentsAccepted, setContentsAccepted] = useState(false);
   const [lidClosed, setLidClosed] = useState(false);
   const [notOverweight, setNotOverweight] = useState(false);
+  const [knownServiceIssueChecked, setKnownServiceIssueChecked] = useState(false);
   const [neighboursCollected, setNeighboursCollected] = useState<'yes' | 'no' | 'unknown'>('unknown');
   const [notes, setNotes] = useState('');
   const eligibilityRecorded = useRef<string | undefined>(undefined);
@@ -112,6 +113,7 @@ export default function ReportMissedScreen() {
     && (!eligibility.policy.requiresContentCheck || contentsAccepted)
     && (!eligibility.policy.requiresLidClosed || lidClosed)
     && (!eligibility.policy.requiresWeightCheck || notOverweight)
+    && (!eligibility.policy.requiresKnownIssuesCheck || knownServiceIssueChecked)
   );
 
   async function continueToCouncil() {
@@ -125,6 +127,9 @@ export default function ReportMissedScreen() {
       lidClosed: eligibility.policy.requiresLidClosed ? lidClosed : undefined,
       notOverweight: eligibility.policy.requiresWeightCheck ? notOverweight : undefined,
       neighboursCollected,
+      knownServiceIssueChecked: eligibility.policy.requiresKnownIssuesCheck
+        ? knownServiceIssueChecked
+        : undefined,
       notes: notes.trim() || undefined,
     });
     report.status = 'opened-council-service';
@@ -144,6 +149,7 @@ export default function ReportMissedScreen() {
       eligibility.policy.requiresContentCheck ? `Contents accepted: ${contentsAccepted ? 'Yes' : 'No'}` : '',
       eligibility.policy.requiresLidClosed ? `Lid closed: ${lidClosed ? 'Yes' : 'No'}` : '',
       eligibility.policy.requiresWeightCheck ? `Not overweight: ${notOverweight ? 'Yes' : 'No'}` : '',
+      eligibility.policy.requiresKnownIssuesCheck ? 'Checked known service issues: Yes' : '',
       `Neighbours collected: ${neighboursCollected === 'unknown' ? 'Not sure' : neighboursCollected === 'yes' ? 'Yes' : 'No'}`,
       notes.trim() ? `Note: ${notes.trim()}` : '',
       `Local tracking ID: ${report.localTrackingId}`,
@@ -170,6 +176,9 @@ export default function ReportMissedScreen() {
       : []),
     ...(eligibility.policy.requiresWeightCheck
       ? [['The bin was not overloaded or too heavy', notOverweight, setNotOverweight] as const]
+      : []),
+    ...(eligibility.policy.requiresKnownIssuesCheck
+      ? [['I checked the live missed-streets or service-issues list', knownServiceIssueChecked, setKnownServiceIssueChecked] as const]
       : []),
   ] as const;
 
@@ -222,6 +231,25 @@ export default function ReportMissedScreen() {
           </View>
 
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Before you continue</Text>
+          {eligibility.policy.knownIssuesUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void Linking.openURL(eligibility.policy.knownIssuesUrl!)}
+              style={({ pressed }) => [
+                styles.knownIssuesButton,
+                { backgroundColor: theme.accentSoft, borderColor: theme.separator },
+                pressed && styles.pressed,
+              ]}>
+              <Ionicons color={theme.accent} name="megaphone-outline" size={20} />
+              <View style={styles.knownIssuesCopy}>
+                <Text style={[styles.knownIssuesTitle, { color: theme.text }]}>Check known missed streets first</Text>
+                <Text style={[styles.knownIssuesDetail, { color: theme.secondaryText }]}>
+                  If your street is listed, leave the bin out and do not send another report.
+                </Text>
+              </View>
+              <Ionicons color={theme.accent} name="open-outline" size={18} />
+            </Pressable>
+          ) : null}
           <View style={[styles.formCard, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
             {checks.map(([label, value, setter], index) => (
               <Pressable
@@ -314,6 +342,10 @@ const styles = StyleSheet.create({
   eligibilityText: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   policyLink: { minHeight: 44, paddingTop: 9, fontSize: 13, fontWeight: '700' },
   sectionTitle: { fontSize: 20, lineHeight: 25, fontWeight: '700', letterSpacing: -0.4, marginTop: 4 },
+  knownIssuesButton: { minHeight: 68, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  knownIssuesCopy: { flex: 1 },
+  knownIssuesTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  knownIssuesDetail: { fontSize: 12.5, lineHeight: 17, marginTop: 2 },
   formCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, overflow: 'hidden' },
   toggleRow: { minHeight: 58, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   toggleLabel: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: '600' },

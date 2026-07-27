@@ -1,4 +1,6 @@
 import type { Session, User } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import {
   ReactNode,
@@ -32,6 +34,8 @@ type AccountContextValue = {
   sendSignInLink: (email: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   refreshEntitlement: () => Promise<void>;
+  exportAccountData: () => Promise<void>;
+  removeAccountData: () => Promise<boolean>;
 };
 
 type EntitlementResponse = {
@@ -47,6 +51,8 @@ type EntitlementResponse = {
 };
 
 const AccountContext = createContext<AccountContextValue | undefined>(undefined);
+const signInCooldownKey = 'what-bin:account:last-sign-in-request';
+const signInCooldownMs = 60_000;
 
 function messageFor(error: unknown) {
   return error instanceof Error ? error.message : 'The account service could not be reached.';
@@ -180,6 +186,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setError(undefined);
     setMessage(undefined);
     try {
+      const previousRequest = Number(await AsyncStorage.getItem(signInCooldownKey));
+      const remaining = signInCooldownMs - (Date.now() - previousRequest);
+      if (Number.isFinite(previousRequest) && previousRequest > 0 && remaining > 0) {
+        throw new Error(`Please wait ${Math.ceil(remaining / 1000)} seconds before requesting another link.`);
+      }
       const emailRedirectTo = Platform.OS === 'web'
         ? `${globalThis.location?.origin ?? 'https://what-bin-is-it-tonight.vercel.app'}/account`
         : Linking.createURL('/account');
@@ -188,6 +199,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         options: { emailRedirectTo, shouldCreateUser: true },
       });
       if (signInError) throw signInError;
+      await AsyncStorage.setItem(signInCooldownKey, String(Date.now()));
       setMessage('Check your email and tap the secure sign-in link. It expires after one hour.');
       return true;
     } catch (caught) {
@@ -227,6 +239,63 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
   }, [loadEntitlement, session]);
 
+  const exportAccountData = useCallback(async () => {
+    if (!session) {
+      setError('Sign in before exporting your account data.');
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`${apiBase}/account/export`, {
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await response.json() as Record<string, unknown> & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? 'Your account export could not be created.');
+      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
+      setMessage('Your What Bin account export was copied to the clipboard.');
+    } catch (caught) {
+      setError(messageFor(caught));
+    } finally {
+      setBusy(false);
+    }
+  }, [session]);
+
+  const removeAccountData = useCallback(async () => {
+    if (!session || !supabase) {
+      setError('Sign in before removing your account data.');
+      return false;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`${apiBase}/account/delete`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${session.access_token}`,
+          'x-bin-confirm-delete': 'remove-what-bin-account',
+        },
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? 'Your What Bin account data could not be removed.');
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+      setSession(null);
+      setEntitlement(freeEntitlement);
+      setMessage('Your What Bin account and plan record were removed. Local addresses remain on this device.');
+      return true;
+    } catch (caught) {
+      setError(messageFor(caught));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [session]);
+
   const value = useMemo<AccountContextValue>(() => ({
     configured: accountServiceConfigured,
     ready,
@@ -239,6 +308,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     sendSignInLink,
     signOut,
     refreshEntitlement,
+    exportAccountData,
+    removeAccountData,
   }), [
     busy,
     entitlement,
@@ -246,6 +317,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     message,
     ready,
     refreshEntitlement,
+    exportAccountData,
+    removeAccountData,
     sendSignInLink,
     session,
     signOut,

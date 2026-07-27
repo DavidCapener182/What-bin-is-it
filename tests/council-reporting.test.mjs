@@ -53,6 +53,10 @@ test('uses different official reporting windows for different councils', () => {
   );
 
   const knowsley = address('lad-e08000011');
+  assert.equal(missedReportPolicy(knowsley).requiresKnownIssuesCheck, true);
+  assert.equal(missedReportPolicy(knowsley).requiresContentCheck, true);
+  assert.equal(missedReportPolicy(knowsley).requiresLidClosed, true);
+  assert.equal(missedReportPolicy(knowsley).requiresWeightCheck, true);
   assert.equal(
     evaluateMissedReportEligibility(knowsley, collection, new Date('2026-07-27T15:00:00+01:00')).eligible,
     true,
@@ -107,4 +111,29 @@ test('builds a normalized local tracking record without claiming council submiss
   assert.equal(report.councilReference, undefined);
   assert.equal(report.details.stillOutside, true);
   assert.match(report.officialServiceUrl, /^https:\/\/www\.oxford\.gov\.uk\//);
+});
+
+test('routes Knowsley reports to the official transaction service after local eligibility checks', () => {
+  const report = buildMissedReport(
+    address('lad-e08000011'),
+    collection,
+    'Maroon general waste bin',
+    {
+      putOutOnTime: true,
+      accessibleToCrew: true,
+      attachedNotice: false,
+      stillOutside: true,
+      contentsAccepted: true,
+      lidClosed: true,
+      notOverweight: true,
+      knownServiceIssueChecked: true,
+      neighboursCollected: 'unknown',
+    },
+    new Date('2026-07-27T15:15:00+01:00'),
+  );
+
+  assert.equal(report.submissionMethod, 'council-website');
+  assert.match(report.officialServiceUrl, /^https:\/\/knowsleytransaction\.mendixcloud\.com\//);
+  assert.equal(report.details.knownServiceIssueChecked, true);
+  assert.equal(report.statusSource, 'resident');
 });

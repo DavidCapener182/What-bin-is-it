@@ -37,6 +37,7 @@ export default function ReportsScreen() {
   const { reports, updateReport } = useProductState();
   const [referenceById, setReferenceById] = useState<Record<string, string>>({});
   const [updateById, setUpdateById] = useState<Record<string, string>>({});
+  const [recollectionById, setRecollectionById] = useState<Record<string, string>>({});
   const visibleReports = useMemo(
     () => reports.filter((report) => !activeAddress || report.addressId === activeAddress.id),
     [activeAddress, reports],
@@ -45,9 +46,28 @@ export default function ReportsScreen() {
   function setStatus(report: MissedCollectionReport, status: MissedCollectionReport['status']) {
     updateReport(report.id, {
       status,
+      statusSource: 'resident',
       reportedAt: status === 'reported' || status === 'awaiting-response' ? new Date().toISOString() : report.reportedAt,
       resolvedAt: status === 'resolved' ? new Date().toISOString() : report.resolvedAt,
     });
+  }
+
+  function saveRecollection(report: MissedCollectionReport) {
+    const value = (recollectionById[report.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(new Date(`${value}T12:00:00`).getTime())) {
+      Alert.alert('Check the date', 'Enter the council recollection date as YYYY-MM-DD.');
+      return;
+    }
+    if (value < new Date().toISOString().slice(0, 10)) {
+      Alert.alert('Check the date', 'The recollection date cannot be in the past.');
+      return;
+    }
+    updateReport(report.id, {
+      expectedRecollectionDate: value,
+      status: 'recollection-scheduled',
+      statusSource: 'resident',
+    });
+    setRecollectionById((current) => ({ ...current, [report.id]: '' }));
   }
 
   function reportSummary(report: MissedCollectionReport) {
@@ -58,6 +78,9 @@ export default function ReportsScreen() {
       `Council: ${report.councilName}`,
       `Status: ${statusLabels[report.status]}`,
       `Council reference: ${report.councilReference || 'Not supplied'}`,
+      report.expectedRecollectionDate
+        ? `Expected recollection: ${formatCollectionDate(report.expectedRecollectionDate, 'weekday')}`
+        : '',
       `Local tracking ID: ${report.localTrackingId}`,
       report.userUpdate ? `Update: ${report.userUpdate}` : '',
     ].filter(Boolean).join('\n');
@@ -139,6 +162,14 @@ export default function ReportsScreen() {
                   <Text style={[styles.detailLabel, { color: theme.secondaryText }]}>Council reference</Text>
                   <Text style={[styles.detailValue, { color: theme.text }]}>{report.councilReference || 'Not added'}</Text>
                 </View>
+                {report.expectedRecollectionDate ? (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: theme.secondaryText }]}>Expected recollection</Text>
+                    <Text style={[styles.detailValue, { color: theme.text }]}>
+                      {formatCollectionDate(report.expectedRecollectionDate, 'weekday')}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               {!report.councilReference ? (
@@ -157,7 +188,8 @@ export default function ReportsScreen() {
                     disabled={!(referenceById[report.id] ?? '').trim()}
                     onPress={() => updateReport(report.id, {
                       councilReference: referenceById[report.id].trim().slice(0, 80),
-                      status: 'awaiting-response',
+                      status: 'acknowledged',
+                      statusSource: 'resident',
                       reportedAt: new Date().toISOString(),
                     })}
                     style={({ pressed }) => [styles.smallButton, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
@@ -187,6 +219,35 @@ export default function ReportsScreen() {
                   <Text style={styles.smallButtonText}>Add</Text>
                 </Pressable>
               </View>
+
+              {report.status !== 'resolved' && report.status !== 'cancelled' && report.status !== 'rejected' ? (
+                <View style={styles.recollectionGroup}>
+                  <Text style={[styles.recollectionLabel, { color: theme.secondaryText }]}>
+                    Did the council give you a recollection date?
+                  </Text>
+                  <View style={styles.referenceRow}>
+                    <TextInput
+                      accessibilityLabel={`Expected recollection date for ${report.binLabel}`}
+                      autoCapitalize="none"
+                      inputMode="numeric"
+                      maxLength={10}
+                      onChangeText={(value) => setRecollectionById((current) => ({ ...current, [report.id]: value }))}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={theme.tertiaryText}
+                      style={[styles.referenceInput, { color: theme.text, backgroundColor: theme.groupedBackground, borderColor: theme.separator }]}
+                      value={recollectionById[report.id] ?? ''}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: !(recollectionById[report.id] ?? '').trim() }}
+                      disabled={!(recollectionById[report.id] ?? '').trim()}
+                      onPress={() => saveRecollection(report)}
+                      style={({ pressed }) => [styles.smallButton, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
+                      <Text style={styles.smallButtonText}>Save</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
 
               <View style={styles.actions}>
                 <Pressable
@@ -218,12 +279,14 @@ export default function ReportsScreen() {
                     onPress={() => setStatus(
                       report,
                       report.status === 'awaiting-response' || report.status === 'reported'
+                        || report.status === 'acknowledged' || report.status === 'recollection-scheduled'
                         ? 'resolved'
-                        : 'awaiting-response',
+                        : 'reported',
                     )}
                     style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
                     <Text style={styles.primaryButtonText}>
                       {report.status === 'awaiting-response' || report.status === 'reported'
+                        || report.status === 'acknowledged' || report.status === 'recollection-scheduled'
                         ? 'Mark resolved'
                         : 'I submitted this to the council'}
                     </Text>
@@ -297,6 +360,8 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: 13 },
   detailValue: { flexShrink: 1, fontSize: 13, fontWeight: '600', textAlign: 'right' },
   referenceRow: { flexDirection: 'row', gap: 8 },
+  recollectionGroup: { gap: 7 },
+  recollectionLabel: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
   referenceInput: { flex: 1, height: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 11, fontSize: 14 },
   smallButton: { minWidth: 68, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   smallButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },

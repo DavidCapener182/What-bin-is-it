@@ -18,6 +18,9 @@ export type MissedReportPolicy = {
   presentationTime?: string;
   expectedResponse?: string;
   sourceUrl?: string;
+  serviceUrl?: string;
+  knownIssuesUrl?: string;
+  requiresKnownIssuesCheck?: boolean;
   requiresContentCheck?: boolean;
   requiresLidClosed?: boolean;
   requiresWeightCheck?: boolean;
@@ -31,6 +34,12 @@ const councilPolicies: Record<string, MissedReportPolicy> = {
     presentationTime: '7:00 am',
     expectedResponse: 'Knowsley says known missed streets are normally revisited within 48 hours, although disruption can extend this.',
     sourceUrl: 'https://www.knowsley.gov.uk/bins-waste-and-recycling/your-household-bins/report-missed-bin-collection',
+    serviceUrl: 'https://knowsleytransaction.mendixcloud.com/link/youarebeingredirected?target=missedbinsanonymous',
+    knownIssuesUrl: 'https://www.knowsley.gov.uk/bins-waste-and-recycling/your-household-bins/report-missed-bin-collection',
+    requiresKnownIssuesCheck: true,
+    requiresContentCheck: true,
+    requiresLidClosed: true,
+    requiresWeightCheck: true,
     note: 'Knowsley accepts reports after 3:00 pm and within 48 hours. Check its live missed-streets list first; listed streets do not need another report.',
   },
   'lad-e08000014': {
@@ -223,7 +232,7 @@ export function reportingCapability(address: SavedAddress): CouncilReportingCapa
   return {
     level: 2,
     method: 'council-website',
-    serviceUrl: policy.sourceUrl ?? missedCollectionServiceUrl,
+    serviceUrl: policy.serviceUrl ?? policy.sourceUrl ?? missedCollectionServiceUrl,
     description: policy.sourceUrl
       ? 'The app opens this council’s official missed-collection service.'
       : 'The official GOV.UK service routes your postcode to the correct council reporting page.',
@@ -262,6 +271,7 @@ export function buildMissedReport(
     reportType: 'missed_collection',
     status: eligibility.eligible ? 'ready' : 'not-yet-eligible',
     submissionMethod: capability.method,
+    statusSource: 'resident',
     officialServiceUrl: capability.serviceUrl,
     eligibilityCheckedAt: now.toISOString(),
     eligibleAfter: eligibility.eligibleAfter.toISOString(),

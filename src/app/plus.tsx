@@ -9,6 +9,7 @@ import { WebSupporterOffer } from '@/components/web-supporter-offer';
 import { commercialLaunchPhase, residentPaymentsEnabled } from '@/lib/commercial-offer';
 import { appFonts } from '@/lib/design-system';
 import { useAppTheme } from '@/lib/theme';
+import { useAccount } from '@/lib/use-account';
 import { useSubscription } from '@/lib/use-subscription';
 
 const benefits = [
@@ -20,6 +21,7 @@ const benefits = [
 
 export default function PlusScreen() {
   const theme = useAppTheme();
+  const account = useAccount();
   const subscription = useSubscription();
   const paymentsEnabled = residentPaymentsEnabled();
   const nativeStore = Platform.OS === 'ios' || Platform.OS === 'android';
@@ -100,7 +102,13 @@ export default function PlusScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: subscription.busy || !canOpenStore }}
                 disabled={subscription.busy || !canOpenStore}
-                onPress={() => void (subscription.isPlus ? subscription.manage() : subscription.showPaywall())}
+                onPress={() => {
+                  if (!account.user) {
+                    router.push('/account');
+                    return;
+                  }
+                  void (subscription.isPlus ? subscription.manage() : subscription.showPaywall());
+                }}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   { backgroundColor: theme.accent },
@@ -111,7 +119,9 @@ export default function PlusScreen() {
                   ? <ActivityIndicator color="#FFFFFF" />
                   : (
                     <>
-                      <Text style={styles.primaryButtonText}>{subscription.isPlus ? 'Manage subscription' : 'View App Store plans'}</Text>
+                      <Text style={styles.primaryButtonText}>
+                        {subscription.isPlus ? 'Manage subscription' : account.user ? 'View App Store plans' : 'Sign in to view plans'}
+                      </Text>
                       <Ionicons color="#FFFFFF" name="arrow-forward" size={19} />
                     </>
                   )}
@@ -123,7 +133,9 @@ export default function PlusScreen() {
               ) : (
                 <Text style={[styles.storeMessage, { color: theme.secondaryText }]}>
                   {nativeStore
-                    ? subscription.message ?? 'The store connection is being prepared for this build.'
+                    ? !account.user
+                      ? 'Sign in first so a purchase can be restored safely on another device.'
+                      : subscription.message ?? 'The store connection is being prepared for this build.'
                     : 'Purchases are offered only through the installed iPhone and Android apps.'}
                 </Text>
               )}

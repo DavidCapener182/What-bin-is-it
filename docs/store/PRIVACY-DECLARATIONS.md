@@ -1,18 +1,19 @@
 # Store privacy and permission declarations
 
-These answers describe version 1.1.0 in the `proof` phase. Reassess them before every submission, especially after analytics, accounts, direct council reporting, payments or a property dashboard are added.
+These answers describe the current `proof` phase. Reassess them before every submission, especially after analytics, direct council reporting, payments or a property dashboard changes.
 
 ## Product facts
 
 - No advertising SDK.
 - No tracking SDK or cross-app tracking.
-- No resident account.
+- Optional password-free resident account. Supabase stores email identity and the minimum Free/Plus plan record; saved household addresses remain device-local.
 - Saved addresses, dates, outcomes, reports and preferences are device-local.
 - A user-initiated lookup transmits postcode, council provider ID and an opaque property reference to the gateway and relevant source.
 - Foreground location is requested only after the user taps the location action; it is converted to a postcode and is not continuously tracked.
 - Native reminders are scheduled on the device.
 - The installed web app can store a browser push subscription and reminder delivery plan on the server.
 - The native store app does not sell or share address/location data.
+- Account export and removal of What Bin-owned plan/grant records are available in Account.
 - Support opens an external GitHub issue only after the user chooses it.
 - Native Plus builds use RevenueCat to read Apple/Google purchase status. RevenueCat receives an anonymous app user ID, product/transaction and entitlement status, and basic platform/app information. The app disables automatic device-identifier collection and does not send a postcode, street address or location to RevenueCat.
 
@@ -44,7 +45,7 @@ Do not declare precise location if the production design immediately converts it
 
 Privacy policy: `https://what-bin-is-it-tonight.vercel.app/privacy`
 
-Privacy choices: the same route explains local data removal; a separate account-deletion route is not required while the app has no accounts.
+Privacy choices: the app explains local-data removal separately from Account export and removal of What Bin account data. The shared Supabase authentication identity is retained so this app cannot delete another product’s access.
 
 ## Google Play Data safety
 
@@ -57,7 +58,7 @@ Review:
 - whether the future native push implementation stores a token server-side;
 - encryption in transit: HTTPS;
 - deletion: local data can be removed by deleting an address or using Clear all app data;
-- no accounts in the first release;
+- optional account identifiers and plan access;
 - no data sale;
 - no advertising.
 
@@ -81,7 +82,7 @@ Behavior:
 
 Play Console may require a location declaration. Describe the one-time postcode lookup and attach a video showing the user tapping the location button, the system prompt and the resulting postcode.
 
-## Notifications and exact alarms
+## Notifications
 
 Purpose:
 
@@ -89,7 +90,7 @@ Purpose:
 - optional collection-morning and follow-up reminders;
 - verified date-change and service-disruption notices.
 
-The Android app declares `SCHEDULE_EXACT_ALARM`, not the more restricted auto-granted `USE_EXACT_ALARM`. Access can be denied by the user. Explain that scheduled collection reminders are the core app function and verify degraded behavior when exact access is unavailable.
+The Android app blocks both exact-alarm permissions. Collection reminders use normal operating-system scheduling; disclose that battery and background restrictions can affect exact delivery time.
 
 ## Encryption
 

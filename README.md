@@ -6,7 +6,7 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 
 ## What is already built
 
-- iOS, Android, and installable web application with five polished product surfaces: Today, Schedule, Find, Places, and Settings.
+- iPhone, Android, and installable web application with four persistent destinations: Today, Schedule, Guide, and Reports. Address management, account, reminders, privacy, and app controls live in Settings.
 - A local-first saved-place store, with UK postcode validation and a postcode lookup through the public Postcodes.io service.
 - A searchable, plain-English guide for common household items, with local-rule caveats built in rather than misleading universal answers.
 - A local-services finder for recycling points and household-waste sites. It uses a council adapter when one exists and otherwise offers clearly-labelled OpenStreetMap nearby-place results.
@@ -18,6 +18,11 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - Apple and Android application identifiers, EAS build profiles, notification plugin configuration, and an environment template.
 - A UK council directory of all 361 local-authority districts in the ONS December 2024 boundary snapshot: 296 England, 32 Scotland, 22 Wales, and 11 Northern Ireland. A postcode is matched to this directory before its council adapter is selected.
 - A council partner connector registry that can switch an authority to an approved HTTPS feed without exposing credentials to the app or waiting for a new mobile release.
+- A server-driven council profile registry for coverage status, capability labels, local links, bin names, colours, accepted items, rejected items, and preparation guidance.
+- A complete resident collection lifecycle: “I’ve put it out”, “Was it collected?”, council eligibility and delay checks, official missed-bin handoff, report references, local history, expected recollection dates, and recollection reminders.
+- Optional password-free resident accounts that store only identity and plan access. Saved household addresses remain on the resident’s device.
+- Native Apple/Google subscription foundations through RevenueCat and web billing foundations through Stripe. Provider events reconcile into one server-authoritative entitlement; proof builds keep payment prompts disabled.
+- Native iOS and Android Home Screen widgets driven by the selected address and verified collection dates.
 - A generated 361-council outreach pipeline, pilot offer, integration contract, assurance pack, success measures and property pilot.
 - App Store and Google Play listing copy, privacy declarations, review notes, screenshot plan and automated repository-readiness checks.
 - A free-first commercial stage with stable future Plus product IDs and tested guardrails that keep essential council services outside a paywall.
@@ -69,13 +74,17 @@ and expects this stable response:
 
 The gateway is where each local authority gets its curated API, data-feed, or approved extraction adapter. This is the honest route to UK-wide coverage: council collection data is not published through one consistent national API, and it must not be fabricated. Add a tested adapter per source, cache results in the gateway, and return the normalised contract above.
 
-The council directory is not a claim that every collection schedule is live. It establishes complete address-to-authority coverage; each authority still requires its own verified source adapter before the app can show its real collection dates.
+The council directory is not a claim that every collection schedule is live. It establishes complete address-to-authority routing; each authority still requires its own verified source adapter before the app can show real collection dates. Published status uses six explicit levels: `live-direct`, `partner-connected`, `public-feed`, `experimental-adapter`, `council-link-only`, and `unsupported`. See [the coverage register](docs/councils/COVERAGE.md).
 
 ### Connect an approved council feed
 
 Council partners can implement the normalized address, collection and services contract in [docs/councils/INTEGRATION.md](docs/councils/INTEGRATION.md). Add connector metadata to the server-only `COUNCIL_PARTNER_REGISTRY_JSON` variable and keep its credential in the separately named secret referenced by that entry.
 
 The gateway validates connector identity, HTTPS configuration, timeouts and response shape. An invalid registry makes the health check fail rather than silently presenting a council as connected.
+
+Council-owned guidance and capability metadata can be changed without a mobile release through `COUNCIL_PROFILE_REGISTRY_JSON`. The app reads it from `GET /v1/profile?providerId=...`.
+
+Knowsley is the complete reference integration: exact address discovery, live dated collections and local bin guidance are connected; missed-bin checking and submission use the council’s official route and are recorded only after the resident confirms the council’s response. Other directory authorities remain explicitly experimental until their source and end-to-end journey are verified.
 
 ## Install the web app
 
@@ -110,7 +119,7 @@ npx eas-cli build --platform ios --profile preview
 npx eas-cli build --platform android --profile preview
 ```
 
-Before App Store / Play submission, register the configured bundle IDs in the relevant developer accounts, deploy the gateway, complete notification credentials, and run store builds on those accounts.
+Before App Store / Play submission, register the configured bundle IDs in the relevant developer accounts, deploy the gateway, complete notification credentials, and run store builds on those accounts. The first Apple release is intentionally iPhone-only; iPad support remains disabled until its adaptive layouts have passed device testing.
 
 The complete account, privacy, review and physical-device sequence is in [docs/store/LAUNCH-CHECKLIST.md](docs/store/LAUNCH-CHECKLIST.md). The first release stays in `proof` mode and does not show resident payment prompts.
 
@@ -143,6 +152,9 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run audit:production
 npx expo-doctor
 npm run store:check
 ```
+
+Architecture, current limitations, security controls, coverage truth, and release evidence are indexed in [docs/README.md](docs/README.md).

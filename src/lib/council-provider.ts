@@ -23,6 +23,44 @@ type GatewayResponse = {
 };
 type GatewayAddressesResponse = { addresses: CouncilAddressOption[] };
 type GatewayServicesResponse = { services: CouncilService[] };
+export type CouncilCoverageStatus =
+  | 'live-direct'
+  | 'partner-connected'
+  | 'public-feed'
+  | 'experimental-adapter'
+  | 'council-link-only'
+  | 'unsupported';
+export type CouncilCapabilityStatus =
+  | 'verified-live'
+  | 'partner-feed'
+  | 'council-configured'
+  | 'official-handoff'
+  | 'map-fallback'
+  | 'experimental'
+  | 'not-connected';
+export type CouncilProfile = {
+  providerId: string;
+  councilName?: string;
+  coverageStatus: CouncilCoverageStatus;
+  summary: string;
+  reviewedAt: string;
+  capabilities: {
+    addresses: CouncilCapabilityStatus;
+    collections: CouncilCapabilityStatus;
+    guidance: CouncilCapabilityStatus;
+    services: CouncilCapabilityStatus;
+    serviceAlerts: CouncilCapabilityStatus;
+    missedReports: CouncilCapabilityStatus;
+  };
+  guidanceSourceUrl?: string;
+  guidance?: Record<string, {
+    destination: 'general' | 'recycling' | 'garden' | 'food' | 'other' | 'service' | 'check';
+    heading: string;
+    detail: string;
+  }>;
+  links?: Record<string, string>;
+};
+type GatewayProfileResponse = { profile?: CouncilProfile };
 type PostcodesIoResult = {
   postcode?: string;
   admin_district?: string;
@@ -50,6 +88,23 @@ const apiBase = configuredApiBase
 export const councilGatewayConfigured = Boolean(apiBase);
 const validWasteTypes = new Set<WasteType>(['general', 'recycling', 'garden', 'food', 'other']);
 const validServiceTypes = new Set<CouncilService['type']>(['recycling-centre', 'recycling-point', 'reuse', 'collection']);
+const coverageStatuses = new Set<CouncilCoverageStatus>([
+  'live-direct',
+  'partner-connected',
+  'public-feed',
+  'experimental-adapter',
+  'council-link-only',
+  'unsupported',
+]);
+const capabilityStatuses = new Set<CouncilCapabilityStatus>([
+  'verified-live',
+  'partner-feed',
+  'council-configured',
+  'official-handoff',
+  'map-fallback',
+  'experimental',
+  'not-connected',
+]);
 
 async function fetchWithTimeout(input: string, init?: RequestInit, timeoutMs = 15_000) {
   const controller = new AbortController();
@@ -200,6 +255,58 @@ export async function fetchCouncilAddresses(postcode: string, providerId: string
     line1: address.line1.slice(0, 240),
     postcode: normalisePostcode(address.postcode),
   }));
+}
+
+export async function fetchCouncilProfile(providerId: string): Promise<CouncilProfile> {
+  const response = await fetchWithTimeout(
+    `${apiBase}/v1/profile?providerId=${encodeURIComponent(providerId)}`,
+  );
+  if (!response.ok) throw new Error(await gatewayError(response, 'The council coverage profile is unavailable.'));
+  const payload = await response.json() as GatewayProfileResponse;
+  const profile = payload.profile;
+  const capabilityKeys = [
+    'addresses',
+    'collections',
+    'guidance',
+    'services',
+    'serviceAlerts',
+    'missedReports',
+  ] as const;
+  if (
+    !profile
+    || profile.providerId !== providerId
+    || !coverageStatuses.has(profile.coverageStatus)
+    || typeof profile.summary !== 'string'
+    || profile.summary.length > 240
+    || !/^\d{4}-\d{2}-\d{2}$/.test(profile.reviewedAt)
+    || !profile.capabilities
+    || capabilityKeys.some((key) => !capabilityStatuses.has(profile.capabilities[key]))
+    || (
+      profile.guidanceSourceUrl !== undefined
+      && (
+        typeof profile.guidanceSourceUrl !== 'string'
+        || !profile.guidanceSourceUrl.startsWith('https://')
+      )
+    )
+    || (
+      profile.guidance !== undefined
+      && (
+        typeof profile.guidance !== 'object'
+        || Object.entries(profile.guidance).some(([id, rule]) => (
+          !/^[a-z0-9-]{1,80}$/.test(id)
+          || !rule
+          || !validWasteTypes.has(rule.destination as WasteType)
+            && rule.destination !== 'service'
+            && rule.destination !== 'check'
+          || typeof rule.heading !== 'string'
+          || typeof rule.detail !== 'string'
+        ))
+      )
+    )
+  ) {
+    throw new Error('The council coverage profile returned an unexpected format.');
+  }
+  return profile;
 }
 
 function resolvePostcodeResult(result: PostcodesIoResult, fallbackPostcode?: string): ResolvedPlace {

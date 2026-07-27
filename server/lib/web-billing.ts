@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 
 import type { BinAccountUser } from './bin-auth';
 import { binDatabase, binDatabaseConfigured } from './bin-database';
+import { saveProviderGrant } from './entitlement-reconciliation';
 
 export const webSupporterPlans = {
   'plus-monthly': {
@@ -158,6 +159,7 @@ function safeEntitlementStatus(status: string) {
     status === 'active'
     || status === 'trialing'
     || status === 'past_due'
+    || status === 'grace'
     || status === 'cancelled'
     || status === 'canceled'
     || status === 'expired'
@@ -174,50 +176,52 @@ async function saveStripeEntitlement({
   customer,
   subscription,
   currentPeriodEnd,
+  externalKey,
+  providerEventAt,
+  providerEventId,
 }: {
   userId: string;
   planId: WebSupporterPlanId;
   status: string;
   customer: string;
   subscription?: string;
-  currentPeriodEnd?: string | null;
+  currentPeriodEnd?: string | Date | null;
+  externalKey: string;
+  providerEventAt: string;
+  providerEventId?: string;
 }) {
-  const sql = binDatabase();
-  await sql`
-    INSERT INTO bin_user_entitlements (
-      user_id,
-      plan_id,
-      source,
-      status,
-      product_id,
-      stripe_customer_id,
-      stripe_subscription_id,
-      current_period_end,
-      updated_at
-    ) VALUES (
-      ${userId},
-      ${planId},
-      'stripe',
-      ${safeEntitlementStatus(status)},
-      ${planId},
-      ${customer},
-      ${subscription ?? null},
-      ${currentPeriodEnd ?? null},
-      now()
-    )
-    ON CONFLICT (user_id) DO UPDATE SET
-      plan_id = excluded.plan_id,
-      source = 'stripe',
-      status = excluded.status,
-      product_id = excluded.product_id,
-      stripe_customer_id = excluded.stripe_customer_id,
-      stripe_subscription_id = excluded.stripe_subscription_id,
-      current_period_end = excluded.current_period_end,
-      updated_at = now()
-  `;
+  await saveProviderGrant({
+    userId,
+    planId,
+    source: 'stripe',
+    status: safeEntitlementStatus(status),
+    productId: planId,
+    stripeCustomerId: customer,
+    stripeSubscriptionId: subscription,
+    currentPeriodEnd,
+    externalKey,
+    providerEventAt,
+    providerEventId,
+  });
 }
 
-async function saveCompletedCheckout(session: Stripe.Checkout.Session, expectedUserId?: string) {
+type ProviderEventContext = {
+  occurredAt: string;
+  eventId?: string;
+};
+
+function checkoutContext(session: Stripe.Checkout.Session): ProviderEventContext {
+  return {
+    occurredAt: new Date(session.created * 1000).toISOString(),
+    eventId: `checkout:${session.id}`,
+  };
+}
+
+async function saveCompletedCheckout(
+  session: Stripe.Checkout.Session,
+  expectedUserId?: string,
+  context = checkoutContext(session),
+) {
   const planId = planFromMetadata(session.metadata);
   const customer = customerId(session.customer);
   const userId = binUserIdFromMetadata(session.metadata) ?? session.client_reference_id ?? undefined;
@@ -278,18 +282,24 @@ async function saveCompletedCheckout(session: Stripe.Checkout.Session, expectedU
     status,
     customer,
     subscription,
+    externalKey: subscription ? `subscription:${subscription}` : `checkout:${session.id}`,
+    providerEventAt: context.occurredAt,
+    providerEventId: context.eventId,
   });
 }
 
-async function saveSubscription(subscription: Stripe.Subscription) {
+async function saveSubscription(
+  subscription: Stripe.Subscription,
+  context: ProviderEventContext,
+) {
   const customer = customerId(subscription.customer);
   if (!customer) throw new Error('The subscription is missing its customer.');
   const metadataPlan = planFromMetadata(subscription.metadata);
   let userId = binUserIdFromMetadata(subscription.metadata);
   const sql = binDatabase();
   if (!userId) {
-    const existing = await sql<{ user_id: string | null }[]>`
-      SELECT user_id
+    const existing = await sql<{ user_id: string | null; plan_id: WebSupporterPlanId }[]>`
+      SELECT user_id, plan_id
       FROM bin_supporters
       WHERE stripe_customer_id = ${customer}
       LIMIT 1
@@ -344,6 +354,9 @@ async function saveSubscription(subscription: Stripe.Subscription) {
       customer,
       subscription: subscription.id,
       currentPeriodEnd: subscriptionPeriodEnd(subscription),
+      externalKey: `subscription:${subscription.id}`,
+      providerEventAt: context.occurredAt,
+      providerEventId: context.eventId,
     });
     return;
   }
@@ -357,15 +370,30 @@ async function saveSubscription(subscription: Stripe.Subscription) {
     WHERE stripe_customer_id = ${customer}
   `;
   if (userId) {
-    await sql`
-      UPDATE bin_user_entitlements SET
-        status = ${safeEntitlementStatus(subscription.status)},
-        stripe_subscription_id = ${subscription.id},
-        current_period_end = ${subscriptionPeriodEnd(subscription)},
-        updated_at = now()
+    const supporters = await sql<{
+      plan_id: WebSupporterPlanId;
+      stripe_customer_id: string;
+    }[]>`
+      SELECT plan_id, stripe_customer_id
+      FROM bin_supporters
       WHERE user_id = ${userId}
-        AND source = 'stripe'
+        AND stripe_subscription_id = ${subscription.id}
+      LIMIT 1
     `;
+    const supporter = supporters[0];
+    if (supporter && isWebSupporterPlanId(supporter.plan_id)) {
+      await saveStripeEntitlement({
+        userId,
+        planId: supporter.plan_id,
+        status: subscription.status,
+        customer: supporter.stripe_customer_id,
+        subscription: subscription.id,
+        currentPeriodEnd: subscriptionPeriodEnd(subscription),
+        externalKey: `subscription:${subscription.id}`,
+        providerEventAt: context.occurredAt,
+        providerEventId: context.eventId,
+      });
+    }
   }
 }
 
@@ -373,6 +401,7 @@ async function markSupporterStatus(
   customer: string | undefined,
   subscription: string | undefined,
   status: string,
+  context: ProviderEventContext,
 ) {
   if (!customer && !subscription) return;
   const sql = binDatabase();
@@ -381,17 +410,41 @@ async function markSupporterStatus(
     WHERE (${customer ?? null}::text IS NOT NULL AND stripe_customer_id = ${customer ?? null})
        OR (${subscription ?? null}::text IS NOT NULL AND stripe_subscription_id = ${subscription ?? null})
   `;
-  await sql`
-    UPDATE bin_user_entitlements AS entitlement SET
-      status = ${safeEntitlementStatus(status)},
-      updated_at = now()
-    FROM bin_supporters AS supporter
-    WHERE supporter.user_id = entitlement.user_id
-      AND (
-        (${customer ?? null}::text IS NOT NULL AND supporter.stripe_customer_id = ${customer ?? null})
-        OR (${subscription ?? null}::text IS NOT NULL AND supporter.stripe_subscription_id = ${subscription ?? null})
-      )
+  const supporters = await sql<{
+    user_id: string | null;
+    plan_id: WebSupporterPlanId;
+    stripe_customer_id: string;
+    stripe_subscription_id: string | null;
+    current_period_end: string | Date | null;
+  }[]>`
+    SELECT
+      user_id,
+      plan_id,
+      stripe_customer_id,
+      stripe_subscription_id,
+      current_period_end
+    FROM bin_supporters
+    WHERE (${customer ?? null}::text IS NOT NULL AND stripe_customer_id = ${customer ?? null})
+       OR (${subscription ?? null}::text IS NOT NULL AND stripe_subscription_id = ${subscription ?? null})
+    LIMIT 1
   `;
+  const supporter = supporters[0];
+  if (supporter?.user_id && isWebSupporterPlanId(supporter.plan_id)) {
+    const externalKey = supporter.stripe_subscription_id
+      ? `subscription:${supporter.stripe_subscription_id}`
+      : `legacy-customer:${supporter.stripe_customer_id}`;
+    await saveStripeEntitlement({
+      userId: supporter.user_id,
+      planId: supporter.plan_id,
+      status,
+      customer: supporter.stripe_customer_id,
+      subscription: supporter.stripe_subscription_id ?? undefined,
+      currentPeriodEnd: supporter.current_period_end,
+      externalKey,
+      providerEventAt: context.occurredAt,
+      providerEventId: context.eventId,
+    });
+  }
 }
 
 export function constructStripeEvent(body: string, signature: string | null) {
@@ -424,6 +477,10 @@ export async function processStripeEvent(event: Stripe.Event) {
   let customer: string | undefined;
   let subscription: string | undefined;
   let planId: WebSupporterPlanId | undefined;
+  const context = {
+    occurredAt: new Date(event.created * 1000).toISOString(),
+    eventId: event.id,
+  };
   try {
     if (
       event.type === 'checkout.session.completed'
@@ -433,7 +490,7 @@ export async function processStripeEvent(event: Stripe.Event) {
       customer = customerId(session.customer);
       subscription = subscriptionId(session.subscription);
       planId = planFromMetadata(session.metadata);
-      await saveCompletedCheckout(session);
+      await saveCompletedCheckout(session, undefined, context);
     } else if (
       event.type === 'customer.subscription.created'
       || event.type === 'customer.subscription.updated'
@@ -443,20 +500,20 @@ export async function processStripeEvent(event: Stripe.Event) {
       customer = customerId(record.customer);
       subscription = record.id;
       planId = planFromMetadata(record.metadata);
-      await saveSubscription(record);
+      await saveSubscription(record, context);
     } else if (event.type === 'checkout.session.async_payment_failed') {
       const session = event.data.object;
       customer = customerId(session.customer);
       subscription = subscriptionId(session.subscription);
       planId = planFromMetadata(session.metadata);
-      await markSupporterStatus(customer, subscription, 'payment_failed');
+      await markSupporterStatus(customer, subscription, 'payment_failed', context);
     } else if (event.type === 'invoice.payment_failed') {
       const invoice = event.data.object;
       customer = customerId(invoice.customer);
       subscription = typeof invoice.parent?.subscription_details?.subscription === 'string'
         ? invoice.parent.subscription_details.subscription
         : invoice.parent?.subscription_details?.subscription?.id;
-      await markSupporterStatus(customer, subscription, 'past_due');
+      await markSupporterStatus(customer, subscription, 'past_due', context);
     }
     await sql`
       UPDATE bin_payment_events SET

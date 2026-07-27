@@ -6,6 +6,18 @@ A council partner can replace the general nationwide lookup with an approved HTT
 
 The mobile app never receives a council credential.
 
+Council content and coverage are configured separately through the server-only
+`COUNCIL_PROFILE_REGISTRY_JSON`. A profile can publish:
+
+- one of the six coverage states in [COVERAGE.md](COVERAGE.md);
+- independent capability states for addresses, collections, guidance, services, alerts and missed reporting;
+- council-owned help, service and missed-bin links;
+- local bin names and colours;
+- item-level accepted/rejected/preparation guidance.
+
+The client obtains this from `GET /v1/profile?providerId=...`, so guidance can
+change without an App Store or Play Store release.
+
 ## Identity
 
 Each connector is keyed by the ONS local-authority district provider ID already used by the app:
@@ -140,6 +152,21 @@ Alerts can be included in a collection response:
 - verification time.
 
 The council remains the content owner. The app displays the source and will not generate an expected recollection date.
+
+## Missed collection reporting
+
+A connector may expose eligibility, known delays and report submission as
+separate capabilities. Direct submission is permitted only where the response
+can confirm acceptance and return a council reference or explicit council
+status. Otherwise the app opens the official council form and asks the resident
+to confirm the returned reference/status.
+
+The app must never:
+
+- describe a local tracking ID as a council reference;
+- offer reporting before the council collection window has ended;
+- submit during a known service delay when the council says to wait;
+- invent an expected recollection date.
 
 ## Onboarding checklist
 

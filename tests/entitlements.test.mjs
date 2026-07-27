@@ -33,6 +33,22 @@ test('recognises active access and rejects failed or expired access', () => {
   assert.equal(entitlementIsPlus({ planId: 'plus-yearly', status: 'expired' }), false);
 });
 
+test('keeps access through a valid billing grace period', () => {
+  const now = new Date('2026-07-27T12:00:00.000Z');
+  assert.equal(entitlementIsPlus({
+    planId: 'plus-monthly',
+    status: 'grace',
+    currentPeriodEnd: '2026-07-28T12:00:00.000Z',
+    now,
+  }), true);
+  assert.equal(entitlementIsPlus({
+    planId: 'plus-monthly',
+    status: 'past_due',
+    currentPeriodEnd: '2026-07-26T12:00:00.000Z',
+    now,
+  }), false);
+});
+
 test('keeps cancelled access only until its paid period ends', () => {
   const now = new Date('2026-07-27T12:00:00.000Z');
   assert.equal(entitlementIsPlus({

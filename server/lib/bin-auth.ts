@@ -67,7 +67,15 @@ function periodEndIso(value: string | Date | null) {
 
 export function serverEntitlementIsPlus(row: BinEntitlementRow) {
   if (row.plan_id === 'free') return false;
-  if (row.status === 'active' || row.status === 'trialing') return true;
+  if (
+    row.status === 'active'
+    || row.status === 'trialing'
+    || row.status === 'past_due'
+    || row.status === 'grace'
+  ) {
+    const periodEnd = periodEndIso(row.current_period_end);
+    return !periodEnd || new Date(periodEnd) > new Date();
+  }
   if (row.status !== 'cancelled' && row.status !== 'canceled') return false;
   const periodEnd = periodEndIso(row.current_period_end);
   return Boolean(periodEnd && new Date(periodEnd) > new Date());

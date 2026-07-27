@@ -2,19 +2,20 @@
 
 What Bin Is It Tonight? is an independent UK household utility. It is not a council service and does not generate collection schedules.
 
-No account or payment is required in this release.
+No account or payment is required for free collection information. Optional password-free sign-in stores identity and plan access only; saved household addresses remain on the device.
 
 The repository also contains a disabled Plus purchase path. The submitted `proof` build does not configure RevenueCat or show a resident payment prompt.
 
 ## Review path
 
-1. Open **Places** from onboarding or Settings.
+1. Open **Settings → Manage places** from onboarding or Settings.
 2. Enter the supplied review postcode.
 3. Choose the exact property from the returned council address list.
 4. Refresh collection dates.
 5. Open **Today** and **Schedule** to see the source name and last verification time.
 6. Open **Settings** and enable reminders.
 7. Open **Guide** to search household items and nearby services.
+8. After a due collection window, use **Today → No, it was missed** to review eligibility, official council handoff and report tracking.
 
 Before submission, replace this section with a verified, publication-safe review address:
 
@@ -29,11 +30,13 @@ Do not submit until those values have been checked on the same production build.
 
 - **Location:** requested only when the reviewer taps “Use my current location”; it finds a postcode and council. Manual entry is always available. There is no background location.
 - **Notifications:** requested only after the reviewer enables a reminder. Native reminders are scheduled from verified collection dates.
-- **Android exact alarm:** supports the core scheduled reminder at the selected time. The app uses `SCHEDULE_EXACT_ALARM` and remains usable if access is not granted.
+- **Android alarms:** exact-alarm permissions are blocked. Reminders use normal operating-system scheduling and may be delivered approximately when battery or background restrictions apply.
 
 ## Data
 
-Saved addresses, schedules, preferences, local report history and collection outcomes are stored on the device. Postcode, council provider ID and selected opaque property reference are sent only for a requested live lookup. There is no advertising or tracking SDK.
+Saved addresses, schedules, preferences, local report history and collection outcomes are stored on the device. Postcode, council provider ID and selected opaque property reference are sent only for a requested live lookup. Optional accounts keep email identity and plan/grant records in Supabase. Account export and What Bin account-data removal are available from Account. There is no advertising or tracking SDK.
+
+The first Apple release is iPhone-only. `supportsTablet` remains disabled until adaptive iPad layouts pass testing.
 
 ## Missed collections
 

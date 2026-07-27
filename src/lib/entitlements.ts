@@ -48,7 +48,16 @@ export function entitlementIsPlus({
   now?: Date;
 }) {
   if (planId === 'free') return false;
-  if (status === 'active' || status === 'trialing') return true;
+  if (
+    status === 'active'
+    || status === 'trialing'
+    || status === 'past_due'
+    || status === 'grace'
+  ) {
+    if (!currentPeriodEnd) return true;
+    const periodEnd = new Date(currentPeriodEnd);
+    return Number.isFinite(periodEnd.getTime()) && periodEnd > now;
+  }
   if (status !== 'cancelled' && status !== 'canceled') return false;
   if (!currentPeriodEnd) return false;
   const periodEnd = new Date(currentPeriodEnd);

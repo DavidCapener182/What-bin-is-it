@@ -29,15 +29,18 @@
       "package": "uk.whatbinistonight.app",
       "versionCode": 1,
       "permissions": [
-        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
+      "blockedPermissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#FEFDFB",
+        "backgroundColor": "#F2F2F7",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "output": "static",
@@ -75,19 +78,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FAF7F2",
-          "image": "./assets/images/launch-splash.png",
-          "imageWidth": 853,
-          "resizeMode": "cover",
-          "enableFullScreenImage_legacy": true,
+          "backgroundColor": "#F2F2F7",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
           "dark": {
-            "backgroundColor": "#FAF7F2",
-            "image": "./assets/images/launch-splash.png"
-          },
-          "android": {
-            "backgroundColor": "#FAF7F2",
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 96
+            "backgroundColor": "#1C1C1E",
+            "image": "./assets/images/splash-icon-dark.png"
           }
         }
       ],

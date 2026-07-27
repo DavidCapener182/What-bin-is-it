@@ -1,13 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta } from '@/lib/data';
-import { fetchNearbyServices } from '@/lib/council-provider';
+import {
+  CouncilProfile,
+  fetchCouncilProfile,
+  fetchNearbyServices,
+} from '@/lib/council-provider';
 import { bulkyWasteServiceUrl } from '@/lib/council-reporting';
 import { appFonts } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
@@ -153,9 +157,33 @@ export default function GuideScreen() {
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>('all');
   const [serviceItem, setServiceItem] = useState<GuideItem | undefined>();
   const [recent, setRecent] = useState<string[]>([]);
+  const [councilProfile, setCouncilProfile] = useState<CouncilProfile>();
   const modeRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
 
-  const results = searchGuide(query);
+  useEffect(() => {
+    let active = true;
+    if (!activeAddress?.providerId) {
+      return () => { active = false; };
+    }
+    void fetchCouncilProfile(activeAddress.providerId)
+      .then((profile) => {
+        if (active) setCouncilProfile(profile);
+      })
+      .catch(() => {
+        if (active) setCouncilProfile(undefined);
+      });
+    return () => { active = false; };
+  }, [activeAddress?.providerId]);
+
+  const activeCouncilProfile = councilProfile?.providerId === activeAddress?.providerId
+    ? councilProfile
+    : undefined;
+  const results = searchGuide(query).map((item) => {
+    const localRule = activeCouncilProfile?.guidance?.[item.id];
+    return localRule ? { ...item, ...localRule } : item;
+  });
+  const councilGuidanceConnected = activeCouncilProfile?.capabilities.guidance === 'council-configured'
+    || activeCouncilProfile?.capabilities.guidance === 'partner-feed';
   const filteredServices = services?.filter((service) => {
     if (serviceFilter === 'all') return true;
     if (serviceFilter === 'nearest') return true;
@@ -284,6 +312,35 @@ export default function GuideScreen() {
             <>
             <View nativeID="guide-panel" style={styles.panel}>
               <View style={styles.searchBox}><Ionicons color={theme.secondaryText} name="search" size={19} /><TextInput accessibilityLabel="Search household items" autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" onChangeText={(value) => { setQuery(value); setSelected(undefined); }} onSubmitEditing={recordGuideSearch} placeholder={`Search ${guideItemCount}+ household items…`} placeholderTextColor={theme.tertiaryText} returnKeyType="search" style={styles.input} value={query} /></View>
+              <View style={[styles.guidanceSource, { backgroundColor: councilGuidanceConnected ? theme.accentSoft : theme.surface }]}>
+                <Ionicons
+                  color={councilGuidanceConnected ? theme.accent : theme.warning}
+                  name={councilGuidanceConnected ? 'checkmark-circle-outline' : 'information-circle-outline'}
+                  size={19}
+                />
+                <View style={styles.guidanceSourceCopy}>
+                  <Text style={styles.guidanceSourceTitle}>
+                    {councilGuidanceConnected
+                      ? `${activeAddress?.councilName ?? activeCouncilProfile?.councilName} guidance connected`
+                      : activeAddress
+                        ? `UK guidance · ${activeAddress.councilName} rules not connected`
+                        : 'UK guidance · add a place for council rules'}
+                  </Text>
+                  <Text style={styles.guidanceSourceDetail}>
+                    {councilGuidanceConnected
+                      ? `Rules were checked ${activeCouncilProfile?.reviewedAt}. Container names come from this council profile.`
+                      : 'Use “Check locally” where collection rules differ between authorities.'}
+                  </Text>
+                </View>
+                {activeCouncilProfile?.guidanceSourceUrl ? (
+                  <Pressable
+                    accessibilityLabel="Open official council recycling guidance"
+                    accessibilityRole="link"
+                    onPress={() => void Linking.openURL(activeCouncilProfile.guidanceSourceUrl!)}>
+                    <Ionicons color={theme.accent} name="open-outline" size={18} />
+                  </Pressable>
+                ) : null}
+              </View>
               {!query && <View style={styles.chips}><Text style={styles.chipsLabel}>Popular</Text>{['Batteries', 'Pizza box', 'Vapes', 'Mattress'].map((chip) => <Pressable accessibilityLabel={`Search for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></Pressable>)}</View>}
               {!query && recent.length ? <View style={styles.chips}><Text style={styles.chipsLabel}>Recent</Text>{recent.map((chip) => <Pressable accessibilityLabel={`Search again for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.recentChip}><Text style={styles.recentChipText}>{chip}</Text></Pressable>)}</View> : null}
               <View accessibilityLiveRegion="polite" style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : `${guideItemCount} items`}</Text><Text style={styles.sectionTitle}>{query ? 'Best route' : 'Common household items'}</Text></View><View style={styles.checkPill}><Ionicons color={theme.warning} name="alert-circle-outline" size={14} /><Text style={styles.checkText}>Check locally</Text></View></View>
@@ -339,6 +396,10 @@ function createStyles(theme: AppTheme) {
   modeText: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, fontWeight: '600' },
   modeTextActive: { color: theme.accent, fontWeight: '700' },
   searchBox: { height: 51, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, paddingHorizontal: 14, alignItems: 'center', flexDirection: 'row', gap: 9 },
+  guidanceSource: { minHeight: 68, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
+  guidanceSourceCopy: { flex: 1 },
+  guidanceSourceTitle: { color: theme.text, fontSize: 12.5, lineHeight: 17, fontWeight: '700' },
+  guidanceSourceDetail: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, marginTop: 2 },
   input: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1, height: '100%' },
   chips: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: -5 },
   chipsLabel: { color: theme.secondaryText, fontSize: 12, letterSpacing: 0.25, fontWeight: '700', marginRight: 2 },

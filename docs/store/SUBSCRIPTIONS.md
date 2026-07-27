@@ -1,6 +1,6 @@
 # What Bin? Plus store setup
 
-The app uses RevenueCat as a thin entitlement layer over Apple StoreKit and Google Play Billing. Apple and Google remain the payment processors. The web/PWA does not sell digital access.
+The app uses RevenueCat over Apple StoreKit and Google Play Billing for native purchases, and Stripe Checkout for optional web support. Provider events reconcile into one server-authoritative entitlement.
 
 Do not change the `production` EAS profile from `proof` until every sandbox check below passes. Use `subscription-development` for device development and `plus-beta` for TestFlight or Play internal testing.
 
@@ -55,7 +55,8 @@ Start without a free trial. Store-localised prices and renewal terms must come f
 4. Create offering `default` with monthly, annual and lifetime packages; make annual the visually recommended package.
 5. Build and publish a paywall with a visible close control, product duration, local price, auto-renewal wording, Terms and Privacy links.
 6. Configure Customer Center with subscription management, cancellation guidance, refund guidance and restore.
-7. Because the app has no resident login, set restore behaviour to **Transfer to new App User ID**.
+7. Require password-free sign-in before purchase so the RevenueCat App User ID is the Supabase user UUID. Do not allow an anonymous SDK state to unlock Plus.
+8. Configure the authenticated RevenueCat webhook at `/api/billing/revenuecat-webhook` and keep its authorization token server-only.
 8. Copy only the public Apple and Google SDK keys into EAS. Never put a RevenueCat secret key in an `EXPO_PUBLIC_` variable.
 
 ```bash
@@ -66,6 +67,22 @@ npx eas-cli env:create --environment preview --name EXPO_PUBLIC_REVENUECAT_GOOGL
 ```
 
 After production approval, create the same variables in the EAS `production` environment and change the production launch phase only in the release commit.
+
+## Stripe web billing
+
+Configure Stripe Checkout, Customer Portal and the signed webhook at
+`/api/billing/webhook`. Stripe customer metadata must carry the signed-in
+Supabase user UUID. Never grant access from a success redirect: the webhook
+provider grant is reconciled on the server.
+
+## Reconciliation rules
+
+- Apple, Google, Stripe and administrative grants are stored independently.
+- Stable provider event and transaction identifiers make delivery idempotent.
+- Provider timestamps prevent older events from overwriting newer state.
+- Active lifetime, subscription and grace-period grants are selected in a transaction.
+- Cancellation, refund and expiry remove access only when no other active grant remains.
+- The client reads `bin_user_entitlements`; RevenueCat/Stripe client state alone is not authority.
 
 ## Build and sandbox sequence
 
@@ -91,6 +108,8 @@ Test every case on physical devices:
 - an expired or refunded sandbox subscription removes Plus access;
 - one Apple purchase and one Google purchase are tested independently;
 - no postcode, street address or location is sent to RevenueCat;
+- signing into a second device and restoring resolves to the same server entitlement;
+- cancellation, refund, grace, expiry, duplicate webhook and out-of-order webhook cases reconcile correctly;
 - offline launch retains the last cached entitlement state only as allowed by the SDK, then refreshes when online.
 
 ## Release gate

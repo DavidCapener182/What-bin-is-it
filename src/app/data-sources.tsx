@@ -12,7 +12,7 @@ export default function DataSourcesScreen() {
         },
         {
           title: 'Collection dates',
-          body: 'Dates come from direct council adapters or the Bin Day nationwide council lookup. Only dated, non-estimated results are stored. The Schedule screen names the source and last successful check.',
+          body: 'Dates come from a direct council adapter, an approved partner feed or an explicitly experimental nationwide adapter. Only dated, non-estimated results are stored. The Schedule screen names the source and last successful check. Directory routing does not mean every council has a verified live schedule.',
         },
         {
           title: 'Missed and bulky collection routes',
@@ -24,11 +24,11 @@ export default function DataSourcesScreen() {
         },
         {
           title: 'Guide information',
-          body: 'The household guide provides cautious UK-wide preparation advice. Your verified schedule localises bin names; “Check locally” remains visible where council rules genuinely differ.',
+          body: 'The household guide provides cautious UK-wide preparation advice. A connected council profile can supply local accepted items, rejected items, preparation rules, bin names and colours without an app release. “Check locally” remains visible when a council profile is not connected or rules genuinely differ.',
         },
       ]}
       title="Data sources"
-      updated="26 July 2026"
+      updated="27 July 2026"
     />
   );
 }

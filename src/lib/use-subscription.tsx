@@ -75,12 +75,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     setError(undefined);
     try {
       setSnapshot(await operation());
+      await account.refreshEntitlement();
     } catch (caught) {
       setError(messageFor(caught));
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [account]);
 
   const showPaywall = useCallback(() => run(presentSubscriptionPaywall), [run]);
   const restore = useCallback(() => run(restoreSubscriptionPurchases), [run]);
@@ -88,7 +89,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SubscriptionContextValue>(() => ({
     ...snapshot,
-    isPlus: snapshot.isPlus || account.entitlement.isPlus,
+    // The native SDK is useful purchase UI, but only the reconciled server
+    // entitlement can unlock resident features.
+    isPlus: account.entitlement.isPlus,
     productIdentifier: snapshot.productIdentifier ?? account.entitlement.productId ?? account.entitlement.planId,
     expirationDate: snapshot.expirationDate ?? account.entitlement.currentPeriodEnd,
     ready,

@@ -134,6 +134,8 @@ export type MissedCollectionReport = {
   councilReference?: string;
   userUpdate?: string;
   expectedResponse?: string;
+  expectedRecollectionDate?: string;
+  statusSource?: 'resident' | 'council-provider';
   details: {
     putOutOnTime: boolean;
     accessibleToCrew: boolean;
@@ -143,6 +145,7 @@ export type MissedCollectionReport = {
     lidClosed?: boolean;
     notOverweight?: boolean;
     neighboursCollected: 'yes' | 'no' | 'unknown';
+    knownServiceIssueChecked?: boolean;
     notes?: string;
     /** Legacy local records created before the guided eligibility questions were expanded. */
     leftAtCollectionPoint?: boolean;
