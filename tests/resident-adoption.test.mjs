@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { parsePilotCouncilLinkSync } from '../server/lib/pilot-council-links.ts';
+import {
+  councilWorkspaceForResidentUse,
+  parsePilotCouncilLinkSync,
+} from '../server/lib/pilot-council-links.ts';
 import {
   isAllowedPilotAnalyticsOrigin,
   pilotAnalyticsPreflight,
@@ -21,6 +24,15 @@ test('accepts only deduplicated council identifiers for an opted-in installation
     consentVersion: '2026-07-27',
     councilIds: ['lad-e08000011', 'lad-e08000014'],
   });
+});
+
+test('turns a resident-linked council into a named prospect workspace', () => {
+  assert.deepEqual(councilWorkspaceForResidentUse('lad-e08000014'), {
+    providerId: 'lad-e08000014',
+    slug: 'sefton-0014',
+    name: 'Sefton',
+  });
+  assert.equal(councilWorkspaceForResidentUse('lad-e99999999'), undefined);
 });
 
 test('rejects postcode, address and arbitrary resident fields', () => {
@@ -46,9 +58,22 @@ test('keeps historical council links while allowing current links to change', as
   assert.match(migration, /primary key \(participant_id, council_id\)/i);
   assert.match(migration, /currently_linked boolean not null default true/i);
   assert.match(analytics, /currently_linked = false/);
+  assert.match(analytics, /INSERT INTO bin_council_organisations/);
+  assert.match(analytics, /'prospect'/);
   assert.match(analytics, /ON CONFLICT \(participant_id, council_id\) DO UPDATE/);
   assert.doesNotMatch(migration, /\bpostcode\b\s+(?:varchar|text|char)/i);
   assert.doesNotMatch(migration, /\baddress\b\s+(?:varchar|text|char)/i);
+});
+
+test('platform superadmins can enter resident-discovered prospect councils', async () => {
+  const auth = await readFile(
+    new URL('../council-backoffice/lib/auth.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    auth,
+    /WHERE organisation\.status IN \('prospect', 'pilot', 'active'\)/,
+  );
 });
 
 test('council portal exposes active, current and all-time definitions', async () => {

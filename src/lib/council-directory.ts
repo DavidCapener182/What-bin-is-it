@@ -1479,6 +1479,7 @@ export const councilDirectoryCounts = councilDirectory.reduce<Record<CouncilCoun
 );
 
 const councilByCode = new Map(councilDirectory.map((council) => [council.code.toUpperCase(), council]));
+const councilByProviderId = new Map(councilDirectory.map((council) => [council.providerId, council]));
 
 function comparable(value: string) {
   return value
@@ -1490,6 +1491,10 @@ function comparable(value: string) {
 
 export function findCouncilByCode(code?: string) {
   return code ? councilByCode.get(code.trim().toUpperCase()) : undefined;
+}
+
+export function findCouncilByProviderId(providerId?: string) {
+  return providerId ? councilByProviderId.get(providerId.trim().toLowerCase()) : undefined;
 }
 
 export function findCouncilByName(name?: string) {

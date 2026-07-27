@@ -192,7 +192,7 @@ export async function councilMemberships(userId: string) {
         organisation.secondary_colour,
         organisation.sponsorship_label
       FROM bin_council_organisations AS organisation
-      WHERE organisation.status IN ('pilot', 'active')
+      WHERE organisation.status IN ('prospect', 'pilot', 'active')
       ORDER BY organisation.name
       LIMIT 500
     `;

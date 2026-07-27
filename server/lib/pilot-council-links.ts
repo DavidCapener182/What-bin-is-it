@@ -1,6 +1,8 @@
+import { findCouncilByProviderId } from '../../src/lib/council-directory.ts';
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export const councilIdPattern = /^[a-z0-9][a-z0-9-]{2,79}$/;
+export const councilIdPattern = /^lad-[ensw][0-9]{8}$/;
 
 export type PilotCouncilLinkSync = {
   participantId: string;
@@ -10,6 +12,21 @@ export type PilotCouncilLinkSync = {
 
 export function isPilotParticipantId(value: unknown): value is string {
   return typeof value === 'string' && uuidPattern.test(value);
+}
+
+export function councilWorkspaceForResidentUse(councilId: string) {
+  const council = findCouncilByProviderId(councilId);
+  if (!council) return undefined;
+  const nameSlug = council.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 75);
+  return {
+    providerId: council.providerId,
+    slug: `${nameSlug}-${council.providerId.slice(-4)}`,
+    name: council.name,
+  };
 }
 
 export function parsePilotCouncilLinkSync(value: unknown): PilotCouncilLinkSync {
@@ -27,6 +44,7 @@ export function parsePilotCouncilLinkSync(value: unknown): PilotCouncilLinkSync 
     || raw.councilIds.some((councilId) => (
       typeof councilId !== 'string'
       || !councilIdPattern.test(councilId)
+      || !councilWorkspaceForResidentUse(councilId)
     ))
   ) {
     throw new Error('The council link update is invalid.');
