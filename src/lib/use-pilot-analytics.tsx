@@ -65,6 +65,7 @@ type PilotAnalyticsContextValue = {
   ready: boolean;
   setEnabled: (enabled: boolean) => Promise<void>;
   syncCouncilLinks: (councilIds: string[]) => Promise<void>;
+  syncCouncilWorkspaces: (councilIds: string[]) => Promise<void>;
   track: (name: PilotAnalyticsEventName, input?: TrackInput) => void;
   eraseAnalytics: (resetChoice?: boolean) => Promise<void>;
 };
@@ -74,7 +75,7 @@ const consentVersion = '2026-07-27';
 const validEventNames = new Set<string>(pilotAnalyticsEventNames);
 const validPlatforms = new Set(['ios', 'android', 'web']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const councilIdPattern = /^[a-z0-9][a-z0-9-]{2,79}$/;
+const councilIdPattern = /^lad-[ensw][0-9]{8}$/;
 const configuredApiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
 const apiBase = configuredApiBase
   || (Platform.OS === 'web' && typeof globalThis.location?.origin === 'string'
@@ -252,6 +253,19 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     return councilSyncSequence.current;
   }, []);
 
+  const syncCouncilWorkspaces = useCallback(async (councilIds: string[]) => {
+    const normalisedCouncilIds = [...new Set(
+      councilIds.filter((councilId) => councilIdPattern.test(councilId)),
+    )].sort().slice(0, 10);
+    if (!normalisedCouncilIds.length) return;
+    const response = await fetch(`${apiBase}/councils/workspaces`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ councilIds: normalisedCouncilIds }),
+    });
+    if (!response.ok) throw new Error('Council portal could not be prepared.');
+  }, []);
+
   const setEnabled = useCallback(async (enabled: boolean) => {
     const current = stateRef.current;
     if (enabled) {
@@ -324,9 +338,18 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     ready,
     setEnabled,
     syncCouncilLinks,
+    syncCouncilWorkspaces,
     track,
     eraseAnalytics,
-  }), [eraseAnalytics, ready, setEnabled, state.consent, syncCouncilLinks, track]);
+  }), [
+    eraseAnalytics,
+    ready,
+    setEnabled,
+    state.consent,
+    syncCouncilLinks,
+    syncCouncilWorkspaces,
+    track,
+  ]);
 
   return <PilotAnalyticsContext.Provider value={value}>{children}</PilotAnalyticsContext.Provider>;
 }

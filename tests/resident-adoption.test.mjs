@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   councilWorkspaceForResidentUse,
   parsePilotCouncilLinkSync,
+  parsePilotCouncilWorkspaceSync,
 } from '../server/lib/pilot-council-links.ts';
 import {
   isAllowedPilotAnalyticsOrigin,
@@ -33,6 +34,20 @@ test('turns a resident-linked council into a named prospect workspace', () => {
     name: 'Sefton',
   });
   assert.equal(councilWorkspaceForResidentUse('lad-e99999999'), undefined);
+});
+
+test('provisions known council workspaces without accepting resident data', () => {
+  assert.deepEqual(parsePilotCouncilWorkspaceSync({
+    councilIds: ['lad-e08000014', 'lad-e08000011', 'lad-e08000014'],
+  }), {
+    councilIds: ['lad-e08000011', 'lad-e08000014'],
+  });
+  for (const residentField of ['participantId', 'postcode', 'address', 'email']) {
+    assert.throws(() => parsePilotCouncilWorkspaceSync({
+      councilIds: ['lad-e08000014'],
+      [residentField]: 'must-not-be-accepted',
+    }), /invalid/);
+  }
 });
 
 test('rejects postcode, address and arbitrary resident fields', () => {
@@ -146,6 +161,14 @@ test('postcode and location success paths sync their resolved council immediatel
     places,
     /syncCouncilLinks\(councilIdsForResidentUse\(\s*addresses\.map/,
   );
+  assert.match(
+    onboarding,
+    /syncCouncilWorkspaces\(\s*councilIdsForResidentUse\(\[\], resolved\.providerId\),?\s*\)/,
+  );
+  assert.match(
+    places,
+    /syncCouncilWorkspaces\(councilIdsForResidentUse\(\s*addresses\.map/,
+  );
 });
 
 test('returning to an installed app retries every saved council link', async () => {
@@ -159,6 +182,7 @@ test('returning to an installed app retries every saved council link', async () 
     appData,
     /state\.addresses\.map\(\(address\) => address\.providerId\)/,
   );
+  assert.match(appData, /await syncCouncilWorkspaces\(councilIds\)/);
 });
 
 test('database array writes use Postgres JSON values rather than encoded strings', async () => {

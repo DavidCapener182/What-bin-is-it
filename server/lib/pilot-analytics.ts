@@ -11,6 +11,7 @@ import {
 export {
   isPilotParticipantId,
   parsePilotCouncilLinkSync,
+  parsePilotCouncilWorkspaceSync,
 } from './pilot-council-links';
 
 export const pilotAnalyticsEventNames = [
@@ -340,40 +341,45 @@ export async function savePilotAnalyticsBatch(batch: PilotAnalyticsBatch) {
   return result.length;
 }
 
+export async function ensurePilotCouncilWorkspaces(councilIds: string[]) {
+  const sql = database();
+  const workspaces = councilIds.map((councilId) => (
+    councilWorkspaceForResidentUse(councilId)
+  )).filter((workspace): workspace is NonNullable<typeof workspace> => Boolean(workspace));
+  if (!workspaces.length) return { workspaceCount: 0 };
+  await sql`
+    INSERT INTO bin_council_organisations (
+      provider_id,
+      slug,
+      name,
+      status,
+      plan_tier
+    )
+    SELECT
+      item.provider_id,
+      item.slug,
+      item.name,
+      'prospect',
+      'pilot'
+    FROM jsonb_to_recordset(${sql.json(workspaces.map((workspace) => ({
+      provider_id: workspace.providerId,
+      slug: workspace.slug,
+      name: workspace.name,
+    })))}::jsonb) AS item(
+      provider_id text,
+      slug text,
+      name text
+    )
+    ON CONFLICT (provider_id) DO NOTHING
+  `;
+  return { workspaceCount: workspaces.length };
+}
+
 export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
+  await ensurePilotCouncilWorkspaces(input.councilIds);
   const sql = database();
   const now = new Date().toISOString();
   await sql.begin(async (transaction) => {
-    const workspaces = input.councilIds.map((councilId) => (
-      councilWorkspaceForResidentUse(councilId)
-    )).filter((workspace): workspace is NonNullable<typeof workspace> => Boolean(workspace));
-    if (workspaces.length) {
-      await transaction`
-        INSERT INTO bin_council_organisations (
-          provider_id,
-          slug,
-          name,
-          status,
-          plan_tier
-        )
-        SELECT
-          item.provider_id,
-          item.slug,
-          item.name,
-          'prospect',
-          'pilot'
-        FROM jsonb_to_recordset(${transaction.json(workspaces.map((workspace) => ({
-          provider_id: workspace.providerId,
-          slug: workspace.slug,
-          name: workspace.name,
-        })))}::jsonb) AS item(
-          provider_id text,
-          slug text,
-          name text
-        )
-        ON CONFLICT (provider_id) DO NOTHING
-      `;
-    }
     await transaction`
       UPDATE bin_council_resident_links
       SET

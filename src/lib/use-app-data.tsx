@@ -328,6 +328,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     eraseAnalytics,
     ready: analyticsReady,
     syncCouncilLinks,
+    syncCouncilWorkspaces,
     track,
   } = usePilotAnalytics();
   const [state, setState] = useState<State>(buildInitialState);
@@ -352,16 +353,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [ready, state]);
 
   const syncSavedCouncilLinks = useCallback(async () => {
-    if (!ready || !analyticsReady || !analyticsEnabled) return;
-    await syncCouncilLinks(councilIdsForResidentUse(
+    if (!ready) return;
+    const councilIds = councilIdsForResidentUse(
       state.addresses.map((address) => address.providerId),
-    ));
+    );
+    await syncCouncilWorkspaces(councilIds);
+    if (!analyticsReady || !analyticsEnabled) return;
+    await syncCouncilLinks(councilIds);
   }, [
     analyticsEnabled,
     analyticsReady,
     ready,
     state.addresses,
     syncCouncilLinks,
+    syncCouncilWorkspaces,
   ]);
 
   useEffect(() => {

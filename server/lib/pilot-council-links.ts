@@ -10,6 +10,10 @@ export type PilotCouncilLinkSync = {
   councilIds: string[];
 };
 
+export type PilotCouncilWorkspaceSync = {
+  councilIds: string[];
+};
+
 export function isPilotParticipantId(value: unknown): value is string {
   return typeof value === 'string' && uuidPattern.test(value);
 }
@@ -29,29 +33,54 @@ export function councilWorkspaceForResidentUse(councilId: string) {
   };
 }
 
+function parseKnownCouncilIds(value: unknown) {
+  if (
+    !Array.isArray(value)
+    || value.length > 10
+    || value.some((councilId) => (
+      typeof councilId !== 'string'
+      || !councilIdPattern.test(councilId)
+      || !councilWorkspaceForResidentUse(councilId)
+    ))
+  ) {
+    return undefined;
+  }
+  return [...new Set(value as string[])].sort();
+}
+
+export function parsePilotCouncilWorkspaceSync(value: unknown): PilotCouncilWorkspaceSync {
+  if (!value || typeof value !== 'object') {
+    throw new Error('A council workspace update is required.');
+  }
+  const raw = value as Record<string, unknown>;
+  const councilIds = parseKnownCouncilIds(raw.councilIds);
+  if (
+    Object.keys(raw).some((key) => key !== 'councilIds')
+    || !councilIds
+  ) {
+    throw new Error('The council workspace update is invalid.');
+  }
+  return { councilIds };
+}
+
 export function parsePilotCouncilLinkSync(value: unknown): PilotCouncilLinkSync {
   if (!value || typeof value !== 'object') {
     throw new Error('A council link update is required.');
   }
   const raw = value as Record<string, unknown>;
   const allowedKeys = new Set(['participantId', 'consentVersion', 'councilIds']);
+  const councilIds = parseKnownCouncilIds(raw.councilIds);
   if (
     Object.keys(raw).some((key) => !allowedKeys.has(key))
     || !isPilotParticipantId(raw.participantId)
     || raw.consentVersion !== '2026-07-27'
-    || !Array.isArray(raw.councilIds)
-    || raw.councilIds.length > 10
-    || raw.councilIds.some((councilId) => (
-      typeof councilId !== 'string'
-      || !councilIdPattern.test(councilId)
-      || !councilWorkspaceForResidentUse(councilId)
-    ))
+    || !councilIds
   ) {
     throw new Error('The council link update is invalid.');
   }
   return {
     participantId: raw.participantId,
     consentVersion: '2026-07-27',
-    councilIds: [...new Set(raw.councilIds as string[])].sort(),
+    councilIds,
   };
 }

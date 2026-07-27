@@ -142,6 +142,12 @@ export default function PlacesScreen() {
       )).catch(() => {
         // Council adoption evidence is retried after the place is saved.
       });
+      void analytics.syncCouncilWorkspaces(councilIdsForResidentUse(
+        addresses.map((address) => address.providerId),
+        result.providerId,
+      )).catch(() => {
+        // Portal creation is retried after the place is saved.
+      });
       await continueWithResolvedPlace(result);
     } catch (error) {
       analytics.track('postcode_lookup_failed', {
@@ -210,6 +216,12 @@ export default function PlacesScreen() {
         result.providerId,
       )).catch(() => {
         // Council adoption evidence is retried after the place is saved.
+      });
+      void analytics.syncCouncilWorkspaces(councilIdsForResidentUse(
+        addresses.map((address) => address.providerId),
+        result.providerId,
+      )).catch(() => {
+        // Portal creation is retried after the place is saved.
       });
       await continueWithResolvedPlace(result);
     } catch (error) {

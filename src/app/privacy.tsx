@@ -20,7 +20,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Council lookups',
-          body: 'When you ask for live data, the postcode, council identifier and selected opaque property reference are sent over HTTPS to the app gateway and the relevant council-data provider. The gateway uses them to answer the request and does not write full addresses to an app database. Infrastructure and upstream services may keep limited security logs under their own retention policies. The app does not create estimated collection dates.',
+          body: 'When you ask for live data, the postcode, council identifier and selected opaque property reference are sent over HTTPS to the app gateway and the relevant council-data provider. The gateway uses them to answer the request and does not write full addresses to an app database. After a successful match, the public council identifier alone can prepare that authority’s empty council workspace; it is not linked to an account, installation, postcode or address. Infrastructure and upstream services may keep limited security logs under their own retention policies. The app does not create estimated collection dates.',
         },
         {
           title: 'Optional anonymous service evidence',

@@ -75,6 +75,11 @@ export default function OnboardingScreen() {
       ).catch(() => {
         // Council adoption evidence is retried after the place is saved.
       });
+      void analytics.syncCouncilWorkspaces(
+        councilIdsForResidentUse([], resolved.providerId),
+      ).catch(() => {
+        // Portal creation is retried after the place is saved.
+      });
       analytics.track('address_options_loaded', {
         councilId: resolved.providerId,
         context: options.length ? 'exact-address' : 'postcode-only',
