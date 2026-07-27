@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -145,9 +146,16 @@ export default function PlacesScreen() {
   }, [initialPostcode]);
 
   function confirmRemoveAddress(address: SavedAddress) {
+    const message = `${address.line1} and its saved collection dates will be removed from this device.`;
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(`Remove ${address.label}?\n\n${message}`)) {
+        removeAddress(address.id);
+      }
+      return;
+    }
     Alert.alert(
       `Remove ${address.label}?`,
-      `${address.line1} and its saved collection dates will be removed from this device.`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => removeAddress(address.id) },
@@ -280,14 +288,14 @@ export default function PlacesScreen() {
                     key={address.id}
                     overshootRight={false}
                     renderRightActions={() => (
-                      <Pressable
+                      <GesturePressable
                         accessibilityLabel={`Remove ${address.label}`}
                         accessibilityRole="button"
                         onPress={() => confirmRemoveAddress(address)}
                         style={({ pressed }) => [styles.removeAction, pressed && styles.removeActionPressed]}>
                         <Ionicons color="#FFFFFF" name="trash-outline" size={21} />
                         <Text style={styles.removeActionText}>Remove</Text>
-                      </Pressable>
+                      </GesturePressable>
                     )}
                     rightThreshold={44}>
                     <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityHint="Swipe left to reveal the remove action" accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>
