@@ -26,6 +26,8 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - A generated 361-council outreach pipeline, pilot offer, integration contract, assurance pack, success measures and property pilot.
 - App Store and Google Play listing copy, privacy declarations, review notes, screenshot plan and automated repository-readiness checks.
 - A free-first commercial stage with stable future Plus product IDs and tested guardrails that keep essential council services outside a paywall.
+- A separately deployed private council console with tenant-scoped staff roles, announcements, disruption alerts, local guidance, missed-collection policy, partner approvals, aggregate evidence exports and an immutable audit trail.
+- A published-content bridge through the council gateway. The resident app never connects to the back-office database and the back-office has no resident route or navigation entry.
 
 ## Run the app
 
@@ -140,6 +142,8 @@ npm run councils:sync
 ```
 
 The sync preserves contact, stage, next-action and notes columns. Authorities without a directly audited source remain labelled `nationwide-routing-unverified`.
+
+The council-facing SaaS architecture, trust rules and channel-readiness boundaries are documented in [the platform brief](docs/councils/PLATFORM.md). The private app lives in [council-backoffice](council-backoffice/README.md) and must be deployed as a separate Vercel project. Pilot claims should use the definitions in [the measurement plan](docs/councils/PILOT-MEASUREMENT.md).
 
 ## Web deployment
 

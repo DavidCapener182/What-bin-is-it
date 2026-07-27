@@ -1,0 +1,19 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+test("uses the resident app Apple system palette and typography", async () => {
+  const [consoleStyles, residentTokens, layout] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../../src/lib/design-system.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+  ]);
+
+  for (const colour of ["#f2f2f7", "#ffffff", "#1c1c1e", "#636366", "#007aff", "#d1d1d6"]) {
+    assert.match(consoleStyles.toLowerCase(), new RegExp(colour));
+    assert.match(residentTokens.toLowerCase(), new RegExp(colour));
+  }
+  assert.match(consoleStyles, /-apple-system, BlinkMacSystemFont, "SF Pro Text"/);
+  assert.doesNotMatch(layout, /IBM_Plex|next\/font/);
+  assert.doesNotMatch(consoleStyles.toLowerCase(), /#061f2a|#0d8b7d|#f5f2eb|radial-gradient/);
+});

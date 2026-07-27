@@ -8,6 +8,8 @@ This folder contains the material needed to move **What Bin Is It Tonight?** fro
 - [Council outreach playbook](councils/OUTREACH.md)
 - [Pilot success measures](councils/SUCCESS-MEASURES.md)
 - [Council data integration guide](councils/INTEGRATION.md)
+- [Council resident-engagement platform](councils/PLATFORM.md)
+- [Pilot measurement definitions](councils/PILOT-MEASUREMENT.md)
 - [Published council coverage model](councils/COVERAGE.md)
 - [Data protection, security and procurement answers](councils/ASSURANCE.md)
 - [Commercial product model](commercial/PRODUCT-MODEL.md)

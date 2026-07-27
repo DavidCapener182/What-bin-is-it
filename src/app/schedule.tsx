@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { CouncilNotices } from '@/components/council-notices';
 import { WasteIcon } from '@/components/bin-glyph';
 import { RouteHead } from '@/components/route-head';
 import { collectionDisplayMeta, collectionMeta, dayDifference, formatCollectionDate, sortCollections, wasteTypes } from '@/lib/data';
@@ -23,6 +24,7 @@ import { useAppData } from '@/lib/use-app-data';
 import { useOnlineStatus } from '@/lib/use-online-status';
 import { useProductState } from '@/lib/use-product-state';
 import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 export default function ScheduleScreen() {
   const theme = useAppTheme();
@@ -42,6 +44,7 @@ export default function ScheduleScreen() {
   const online = useOnlineStatus();
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
   const weeklyBin = useWeeklyBinPalette(collections);
+  const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const grouped = upcoming.reduce<Record<string, typeof collections>>((result, collection) => {
     result[collection.date] = [...(result[collection.date] ?? []), collection];
     return result;
@@ -134,6 +137,7 @@ export default function ScheduleScreen() {
         </SafeAreaView>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <CouncilNotices placement="schedule" profile={councilProfile} />
           {!activeAddress ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIcon}><Ionicons color={theme.accent} name="location-outline" size={30} /></View>

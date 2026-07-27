@@ -17,6 +17,7 @@ import { useAppTheme } from '@/lib/theme';
 import { useAppData } from '@/lib/use-app-data';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 export default function ReportMissedScreen() {
   const theme = useAppTheme();
@@ -24,6 +25,8 @@ export default function ReportMissedScreen() {
   const { activeAddress, collections } = useAppData();
   const analytics = usePilotAnalytics();
   const { markCollection, outcomeFor, reports, saveReport } = useProductState();
+  const councilProfile = useCouncilProfile(activeAddress?.providerId);
+  const remoteReporting = councilProfile?.reporting;
   const collection = useMemo(() => (
     collections.find((item) => item.id === params.collectionId)
     ?? sortCollections(collections).find((item) => new Date(`${item.date}T17:00:00`) <= new Date())
@@ -47,9 +50,9 @@ export default function ReportMissedScreen() {
   const [notes, setNotes] = useState('');
   const eligibilityRecorded = useRef<string | undefined>(undefined);
   const analyticsEligibility = activeAddress && collection
-    ? evaluateMissedReportEligibility(activeAddress, collection)
+    ? evaluateMissedReportEligibility(activeAddress, collection, new Date(), remoteReporting)
     : undefined;
-  const analyticsCapability = activeAddress ? reportingCapability(activeAddress) : undefined;
+  const analyticsCapability = activeAddress ? reportingCapability(activeAddress, remoteReporting) : undefined;
 
   useEffect(() => {
     if (
@@ -102,8 +105,8 @@ export default function ReportMissedScreen() {
   }
 
   const meta = collectionDisplayMeta(collection);
-  const capability = reportingCapability(activeAddress);
-  const eligibility = evaluateMissedReportEligibility(activeAddress, collection);
+  const capability = reportingCapability(activeAddress, remoteReporting);
+  const eligibility = evaluateMissedReportEligibility(activeAddress, collection, new Date(), remoteReporting);
   const eligible = eligibility.eligible;
   const canContinue = (
     putOutOnTime
@@ -131,7 +134,7 @@ export default function ReportMissedScreen() {
         ? knownServiceIssueChecked
         : undefined,
       notes: notes.trim() || undefined,
-    });
+    }, new Date(), remoteReporting);
     report.status = 'opened-council-service';
     report.updatedAt = new Date().toISOString();
     saveReport(report);

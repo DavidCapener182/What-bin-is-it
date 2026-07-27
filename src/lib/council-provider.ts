@@ -57,7 +57,56 @@ export type CouncilProfile = {
     destination: 'general' | 'recycling' | 'garden' | 'food' | 'other' | 'service' | 'check';
     heading: string;
     detail: string;
+    serviceUrl?: string;
   }>;
+  branding?: {
+    displayName: string;
+    primaryColour: string;
+    secondaryColour: string;
+    sponsorshipLabel?: string;
+  };
+  announcements?: {
+    id: string;
+    kind: string;
+    severity: string;
+    title: string;
+    body: string;
+    placements: string[];
+    startsAt?: string;
+    endsAt?: string;
+    sourceUrl?: string;
+  }[];
+  disruptions?: {
+    id: string;
+    title: string;
+    detail: string;
+    collectionTypes: string[];
+    areaLabels: string[];
+    cause: string;
+    residentInstruction: string;
+    startsAt: string;
+    expectedResumeAt?: string;
+    endsAt?: string;
+    sourceUrl?: string;
+  }[];
+  partners?: {
+    id: string;
+    name: string;
+    category: string;
+    description: string;
+    serviceUrl: string;
+    itemKeys: string[];
+    disclosureLabel: string;
+  }[];
+  reporting?: {
+    enabled: boolean;
+    mode: 'official-handoff' | 'direct-api' | 'disabled';
+    reportUrl?: string;
+    eligibilityStartsHours: number;
+    reportingDeadlineHours: number;
+    requireDelayCheck: boolean;
+    residentInstruction?: string;
+  };
   links?: Record<string, string>;
 };
 type GatewayProfileResponse = { profile?: CouncilProfile };
@@ -105,6 +154,53 @@ const capabilityStatuses = new Set<CouncilCapabilityStatus>([
   'experimental',
   'not-connected',
 ]);
+const councilPlacements = new Set(['home', 'schedule', 'guide', 'widget', 'push']);
+
+function isSafeHttps(value: unknown) {
+  return typeof value === 'string' && value.length <= 500 && value.startsWith('https://');
+}
+
+function validOptionalDateTime(value: unknown) {
+  return value === undefined || (typeof value === 'string' && !Number.isNaN(Date.parse(value)));
+}
+
+function validPlatformContent(profile: CouncilProfile) {
+  if (profile.branding && (
+    typeof profile.branding.displayName !== 'string'
+    || !/^#[0-9A-F]{6}$/i.test(profile.branding.primaryColour)
+    || !/^#[0-9A-F]{6}$/i.test(profile.branding.secondaryColour)
+  )) return false;
+  if (profile.announcements?.some((item) => (
+    typeof item.id !== 'string'
+    || typeof item.title !== 'string' || item.title.length > 120
+    || typeof item.body !== 'string' || item.body.length > 600
+    || !Array.isArray(item.placements) || item.placements.some((placement) => !councilPlacements.has(placement))
+    || !validOptionalDateTime(item.startsAt) || !validOptionalDateTime(item.endsAt)
+    || (item.sourceUrl !== undefined && !isSafeHttps(item.sourceUrl))
+  ))) return false;
+  if (profile.disruptions?.some((item) => (
+    typeof item.id !== 'string'
+    || typeof item.title !== 'string' || item.title.length > 120
+    || typeof item.detail !== 'string' || item.detail.length > 600
+    || typeof item.residentInstruction !== 'string' || item.residentInstruction.length > 400
+    || !Array.isArray(item.collectionTypes) || !Array.isArray(item.areaLabels)
+    || !validOptionalDateTime(item.startsAt) || !validOptionalDateTime(item.endsAt)
+    || (item.sourceUrl !== undefined && !isSafeHttps(item.sourceUrl))
+  ))) return false;
+  if (profile.partners?.some((item) => (
+    typeof item.id !== 'string' || typeof item.name !== 'string'
+    || typeof item.description !== 'string' || !isSafeHttps(item.serviceUrl)
+    || !Array.isArray(item.itemKeys) || typeof item.disclosureLabel !== 'string'
+  ))) return false;
+  if (profile.reporting && (
+    typeof profile.reporting.enabled !== 'boolean'
+    || !['official-handoff', 'direct-api', 'disabled'].includes(profile.reporting.mode)
+    || (profile.reporting.reportUrl !== undefined && !isSafeHttps(profile.reporting.reportUrl))
+    || !Number.isInteger(profile.reporting.eligibilityStartsHours)
+    || !Number.isInteger(profile.reporting.reportingDeadlineHours)
+  )) return false;
+  return true;
+}
 
 async function fetchWithTimeout(input: string, init?: RequestInit, timeoutMs = 15_000) {
   const controller = new AbortController();
@@ -300,9 +396,11 @@ export async function fetchCouncilProfile(providerId: string): Promise<CouncilPr
             && rule.destination !== 'check'
           || typeof rule.heading !== 'string'
           || typeof rule.detail !== 'string'
+          || (rule.serviceUrl !== undefined && !isSafeHttps(rule.serviceUrl))
         ))
       )
     )
+    || !validPlatformContent(profile)
   ) {
     throw new Error('The council coverage profile returned an unexpected format.');
   }

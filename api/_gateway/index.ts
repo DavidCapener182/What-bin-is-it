@@ -1,6 +1,7 @@
 import { getAdapter } from './adapter-registry.ts';
 import { councilPartnerRegistryStatus } from './council-partner-adapter.ts';
 import { councilProfileFor } from './council-profile.ts';
+import { councilPlatformProfile } from './council-platform-content.ts';
 import { fetchOpenStreetMapServices } from './openstreetmap-services.ts';
 
 type CollectionRequest = { postcode?: unknown; addressId?: unknown; providerId?: unknown };
@@ -243,11 +244,20 @@ export default {
       if (!providerId || !/^[a-z0-9-]+$/.test(providerId)) {
         return json({ error: 'Unknown council provider.' }, 400);
       }
+      let verifiedProfile;
       try {
-        return json({ profile: councilProfileFor(providerId) });
+        verifiedProfile = councilProfileFor(providerId);
       } catch (error) {
         console.error('Council profile registry failed', error);
         return json({ error: 'The council profile registry is invalid.' }, 503);
+      }
+      try {
+        return json({ profile: await councilPlatformProfile(verifiedProfile) });
+      } catch (error) {
+        // Council-authored content is an enhancement. Keep the verified static
+        // collection profile available if the private platform database is down.
+        console.error('Council platform content unavailable; using verified profile', error);
+        return json({ profile: verifiedProfile });
       }
     }
     if (request.method === 'GET' && pathname === '/v1/addresses') {

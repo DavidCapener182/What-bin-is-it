@@ -45,7 +45,56 @@ export type CouncilProfile = {
     destination: CouncilGuidanceDestination;
     heading: string;
     detail: string;
+    serviceUrl?: string;
   }>;
+  branding?: {
+    displayName: string;
+    primaryColour: string;
+    secondaryColour: string;
+    sponsorshipLabel?: string;
+  };
+  announcements?: {
+    id: string;
+    kind: string;
+    severity: string;
+    title: string;
+    body: string;
+    placements: string[];
+    startsAt?: string;
+    endsAt?: string;
+    sourceUrl?: string;
+  }[];
+  disruptions?: {
+    id: string;
+    title: string;
+    detail: string;
+    collectionTypes: string[];
+    areaLabels: string[];
+    cause: string;
+    residentInstruction: string;
+    startsAt: string;
+    expectedResumeAt?: string;
+    endsAt?: string;
+    sourceUrl?: string;
+  }[];
+  partners?: {
+    id: string;
+    name: string;
+    category: string;
+    description: string;
+    serviceUrl: string;
+    itemKeys: string[];
+    disclosureLabel: string;
+  }[];
+  reporting?: {
+    enabled: boolean;
+    mode: 'official-handoff' | 'direct-api' | 'disabled';
+    reportUrl?: string;
+    eligibilityStartsHours: number;
+    reportingDeadlineHours: number;
+    requireDelayCheck: boolean;
+    residentInstruction?: string;
+  };
   links?: {
     bins?: string;
     recycling?: string;

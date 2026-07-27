@@ -1,17 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { CouncilNotices } from '@/components/council-notices';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta } from '@/lib/data';
-import {
-  CouncilProfile,
-  fetchCouncilProfile,
-  fetchNearbyServices,
-} from '@/lib/council-provider';
+import { CouncilProfile, fetchNearbyServices } from '@/lib/council-provider';
 import { bulkyWasteServiceUrl } from '@/lib/council-reporting';
 import { appFonts } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
@@ -21,6 +18,7 @@ import { Collection, CouncilService } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 type FindMode = 'guide' | 'services';
 type ServiceFilter = 'all' | 'nearest' | CouncilService['type'] | 'open' | 'item' | 'council' | 'accessible';
@@ -54,6 +52,8 @@ function GuideResult({
   collections,
   councilName,
   findService,
+  partners,
+  openPartner,
   query,
 }: {
   item: GuideItem;
@@ -62,6 +62,8 @@ function GuideResult({
   collections: Collection[];
   councilName?: string;
   findService: (item: GuideItem) => void;
+  partners?: CouncilProfile['partners'];
+  openPartner: (partner: NonNullable<CouncilProfile['partners']>[number], item: GuideItem) => void;
   query: string;
 }) {
   const theme = useAppTheme();
@@ -103,6 +105,27 @@ function GuideResult({
               <Ionicons color={theme.accent} name="map-outline" size={17} />
               <Text style={styles.inlineServiceText}>Find a nearby service</Text>
             </Pressable>
+          ) : null}
+          {partners?.length ? (
+            <View style={styles.partnerGroup}>
+              <Text style={styles.guideHeading}>Partner services</Text>
+              <Text style={styles.partnerPolicy}>Council and free options come first. These commercial services match this item.</Text>
+              {partners.map((partner) => (
+                <Pressable
+                  accessibilityLabel={`Open ${partner.name}, ${partner.disclosureLabel}`}
+                  accessibilityRole="link"
+                  key={partner.id}
+                  onPress={() => openPartner(partner, item)}
+                  style={styles.partnerCard}>
+                  <View style={styles.partnerCopy}>
+                    <Text style={styles.partnerDisclosure}>{partner.disclosureLabel}</Text>
+                    <Text style={styles.partnerName}>{partner.name}</Text>
+                    <Text style={styles.partnerDetail}>{partner.description}</Text>
+                  </View>
+                  <Ionicons color={theme.accent} name="open-outline" size={18} />
+                </Pressable>
+              ))}
+            </View>
           ) : null}
           <Pressable
             accessibilityRole="button"
@@ -157,23 +180,8 @@ export default function GuideScreen() {
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>('all');
   const [serviceItem, setServiceItem] = useState<GuideItem | undefined>();
   const [recent, setRecent] = useState<string[]>([]);
-  const [councilProfile, setCouncilProfile] = useState<CouncilProfile>();
+  const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const modeRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    if (!activeAddress?.providerId) {
-      return () => { active = false; };
-    }
-    void fetchCouncilProfile(activeAddress.providerId)
-      .then((profile) => {
-        if (active) setCouncilProfile(profile);
-      })
-      .catch(() => {
-        if (active) setCouncilProfile(undefined);
-      });
-    return () => { active = false; };
-  }, [activeAddress?.providerId]);
 
   const activeCouncilProfile = councilProfile?.providerId === activeAddress?.providerId
     ? councilProfile
@@ -254,6 +262,19 @@ export default function GuideScreen() {
     if (activeAddress && !services) void findServices();
   }
 
+  function openPartner(
+    partner: NonNullable<CouncilProfile['partners']>[number],
+    item: GuideItem,
+  ) {
+    analytics.track('guide_result_selected', {
+      councilId: activeAddress?.providerId,
+      context: `partner-${partner.category}`,
+      outcome: 'success',
+      reasonCode: item.id,
+    });
+    void Linking.openURL(partner.serviceUrl);
+  }
+
   return (
     <AppShell activeRoute="/guide">
       <RouteHead
@@ -276,6 +297,7 @@ export default function GuideScreen() {
           <Text style={[styles.subtitle, { color: weeklyBin.secondary }]}>Search the recycling guide or find a verified local service.</Text>
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <CouncilNotices placement="guide" profile={activeCouncilProfile} />
           <View accessibilityLabel="Guide section" accessibilityRole="tablist" style={styles.modePicker}>
             {(['guide', 'services'] as const).map((value, index) => (
               <Pressable
@@ -344,7 +366,20 @@ export default function GuideScreen() {
               {!query && <View style={styles.chips}><Text style={styles.chipsLabel}>Popular</Text>{['Batteries', 'Pizza box', 'Vapes', 'Mattress'].map((chip) => <Pressable accessibilityLabel={`Search for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></Pressable>)}</View>}
               {!query && recent.length ? <View style={styles.chips}><Text style={styles.chipsLabel}>Recent</Text>{recent.map((chip) => <Pressable accessibilityLabel={`Search again for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.recentChip}><Text style={styles.recentChipText}>{chip}</Text></Pressable>)}</View> : null}
               <View accessibilityLiveRegion="polite" style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : `${guideItemCount} items`}</Text><Text style={styles.sectionTitle}>{query ? 'Best route' : 'Common household items'}</Text></View><View style={styles.checkPill}><Ionicons color={theme.warning} name="alert-circle-outline" size={14} /><Text style={styles.checkText}>Check locally</Text></View></View>
-              <View style={styles.guideList}>{results.map((item) => <GuideResult collections={collections} councilName={activeAddress?.councilName} expanded={selected === item.id} findService={switchToServices} item={item} key={item.id} onPress={() => selectGuideItem(item)} query={query} />)}</View>
+              <View style={styles.guideList}>{results.map((item) => (
+                <GuideResult
+                  collections={collections}
+                  councilName={activeAddress?.councilName}
+                  expanded={selected === item.id}
+                  findService={switchToServices}
+                  item={item}
+                  key={item.id}
+                  onPress={() => selectGuideItem(item)}
+                  openPartner={openPartner}
+                  partners={activeCouncilProfile?.partners?.filter((partner) => partner.itemKeys.includes(item.id))}
+                  query={query}
+                />
+              ))}</View>
               {results.length === 0 && <View style={styles.empty}><Ionicons color={theme.tertiaryText} name="search-outline" size={28} /><Text style={styles.emptyTitle}>We don’t know that one yet</Text><Text style={styles.emptyText}>Try a shorter name, or use Local services for unusual, hazardous or bulky items.</Text></View>}
             </View>
             <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" nativeID="services-panel" style={styles.hiddenPanel} />
@@ -426,6 +461,13 @@ function createStyles(theme: AppTheme) {
   localNoteText: { color: theme.secondaryText, fontSize: 12, lineHeight: 16, flex: 1, fontWeight: '600' },
   inlineServiceButton: { minHeight: 44, marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   inlineServiceText: { color: theme.accent, fontSize: 13, fontWeight: '700' },
+  partnerGroup: { marginTop: 7, gap: 7 },
+  partnerPolicy: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, fontWeight: '600' },
+  partnerCard: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 2, padding: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, borderRadius: 12, backgroundColor: theme.surface },
+  partnerCopy: { flex: 1 },
+  partnerDisclosure: { color: theme.warning, fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: .35 },
+  partnerName: { color: theme.text, fontSize: 13, fontWeight: '800', marginTop: 3 },
+  partnerDetail: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, marginTop: 2, fontWeight: '600' },
   empty: { borderRadius: 18, padding: 23, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.separator, alignItems: 'center' },
   emptyTitle: { color: theme.text, fontSize: 13.5, fontWeight: '700', marginTop: 8 },
   emptyText: { color: theme.secondaryText, fontSize: 13, textAlign: 'center', lineHeight: 18, marginTop: 4, maxWidth: 270 },

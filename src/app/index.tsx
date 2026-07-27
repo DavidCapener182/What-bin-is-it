@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { BinGlyph, WasteIcon } from '@/components/bin-glyph';
+import { CouncilNotices } from '@/components/council-notices';
 import { RouteHead } from '@/components/route-head';
 import { isUkPostcode } from '@/lib/council-provider';
 import { deriveCollectionLifecycle } from '@/lib/collection-lifecycle';
@@ -41,6 +42,7 @@ import { Collection } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useOnlineStatus } from '@/lib/use-online-status';
 import { useProductState } from '@/lib/use-product-state';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 function collectionAnswer(collections: Collection[]) {
   const labels = collections.map((collection) => collectionDisplayMeta(collection).label);
@@ -77,6 +79,7 @@ export default function HomeScreen() {
     updatePlaceReminders,
   } = useProductState();
   const online = useOnlineStatus();
+  const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const [postcode, setPostcode] = useState('');
   const [postcodeError, setPostcodeError] = useState('');
   const [showAddressPicker, setShowAddressPicker] = useState(false);
@@ -152,7 +155,7 @@ export default function HomeScreen() {
     )
   );
   const actionEligibility = activeAddress && actionCollections[0]
-    ? evaluateMissedReportEligibility(activeAddress, actionCollections[0])
+    ? evaluateMissedReportEligibility(activeAddress, actionCollections[0], new Date(), councilProfile?.reporting)
     : undefined;
   const lifecycle = actionCollections[0]
     ? deriveCollectionLifecycle(
@@ -404,6 +407,7 @@ export default function HomeScreen() {
           </LinearGradient>
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <CouncilNotices placement="home" profile={councilProfile} />
             {exactAddressRequired ? (
               <Pressable accessibilityRole="button" onPress={() => router.push('/places')} style={({ pressed }) => [styles.setupRequiredCard, pressed && styles.pressed]}>
                 <View style={styles.actionIcon}><Ionicons color="#FFFFFF" name="home-outline" size={23} /></View>

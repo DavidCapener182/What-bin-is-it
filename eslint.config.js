@@ -5,6 +5,13 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*", ".output/*", ".vercel/output/*", "api/v1/*.js", "council-pilot-crm/**"],
+    ignores: [
+      "dist/*",
+      ".output/*",
+      ".vercel/output/*",
+      "api/v1/*.js",
+      "council-pilot-crm/**",
+      "council-backoffice/**",
+    ],
   }
 ]);

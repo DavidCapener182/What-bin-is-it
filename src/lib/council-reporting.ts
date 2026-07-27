@@ -1,4 +1,7 @@
 import type { Collection, MissedCollectionReport, SavedAddress } from '@/lib/types';
+import type { CouncilProfile } from '@/lib/council-provider';
+
+type RemoteReportingRule = CouncilProfile['reporting'];
 
 export const missedCollectionServiceUrl = 'https://www.gov.uk/missed-bin-collection';
 export const bulkyWasteServiceUrl = 'https://www.gov.uk/collection-large-waste-items';
@@ -187,16 +190,30 @@ function councilDateAtTime(
   return instant;
 }
 
-export function missedReportPolicy(address: SavedAddress) {
-  return councilPolicies[address.providerId] ?? fallbackPolicy;
+export function missedReportPolicy(address: SavedAddress, remoteRule?: RemoteReportingRule) {
+  const base = councilPolicies[address.providerId] ?? fallbackPolicy;
+  if (!remoteRule?.enabled || remoteRule.mode === 'disabled') return base;
+  return {
+    ...base,
+    eligibleHour: remoteRule.eligibilityStartsHours % 24,
+    eligibleDayOffset: Math.floor(remoteRule.eligibilityStartsHours / 24),
+    reportWithinHours: remoteRule.reportingDeadlineHours,
+    serviceUrl: remoteRule.reportUrl ?? base.serviceUrl,
+    sourceUrl: remoteRule.reportUrl ?? base.sourceUrl,
+    knownIssuesUrl: remoteRule.requireDelayCheck ? base.knownIssuesUrl : undefined,
+    requiresKnownIssuesCheck: remoteRule.requireDelayCheck,
+    note: remoteRule.residentInstruction
+      ?? `This council accepts missed-collection checks ${remoteRule.eligibilityStartsHours} hours after the scheduled day begins and for the following ${remoteRule.reportingDeadlineHours} hours.`,
+  };
 }
 
 export function evaluateMissedReportEligibility(
   address: SavedAddress,
   collection: Collection,
   now = new Date(),
+  remoteRule?: RemoteReportingRule,
 ) {
-  const policy = missedReportPolicy(address);
+  const policy = missedReportPolicy(address, remoteRule);
   const eligibleAfter = councilDateAtTime(
     collection.date,
     policy.eligibleDayOffset ?? 0,
@@ -227,8 +244,11 @@ export function evaluateMissedReportEligibility(
   };
 }
 
-export function reportingCapability(address: SavedAddress): CouncilReportingCapability {
-  const policy = missedReportPolicy(address);
+export function reportingCapability(
+  address: SavedAddress,
+  remoteRule?: RemoteReportingRule,
+): CouncilReportingCapability {
+  const policy = missedReportPolicy(address, remoteRule);
   return {
     level: 2,
     method: 'council-website',
@@ -251,9 +271,10 @@ export function buildMissedReport(
   binLabel: string,
   details: MissedCollectionReport['details'],
   now = new Date(),
+  remoteRule?: RemoteReportingRule,
 ): MissedCollectionReport {
-  const capability = reportingCapability(address);
-  const eligibility = evaluateMissedReportEligibility(address, collection, now);
+  const capability = reportingCapability(address, remoteRule);
+  const eligibility = evaluateMissedReportEligibility(address, collection, now, remoteRule);
   const localTrackingId = createLocalTrackingId(now);
   return {
     id: `report-${now.getTime()}-${collection.id.replace(/[^a-z0-9]/gi, '').slice(-12)}`,
