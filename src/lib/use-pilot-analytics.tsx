@@ -64,6 +64,7 @@ type PilotAnalyticsContextValue = {
   enabled: boolean;
   ready: boolean;
   setEnabled: (enabled: boolean) => Promise<void>;
+  syncCouncilLinks: (councilIds: string[]) => Promise<void>;
   track: (name: PilotAnalyticsEventName, input?: TrackInput) => void;
   eraseAnalytics: (resetChoice?: boolean) => Promise<void>;
 };
@@ -73,6 +74,7 @@ const consentVersion = '2026-07-27';
 const validEventNames = new Set<string>(pilotAnalyticsEventNames);
 const validPlatforms = new Set(['ios', 'android', 'web']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const councilIdPattern = /^[a-z0-9][a-z0-9-]{2,79}$/;
 const configuredApiBase = process.env.EXPO_PUBLIC_COUNCIL_API_BASE?.replace(/\/$/, '');
 const apiBase = configuredApiBase
   || (Platform.OS === 'web' && typeof globalThis.location?.origin === 'string'
@@ -139,6 +141,7 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
   const flushing = useRef(false);
+  const councilSyncSequence = useRef<Promise<void>>(Promise.resolve());
 
   const updateState = useCallback((next: StoredAnalytics) => {
     stateRef.current = next;
@@ -224,6 +227,31 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     void updateState(next).then(() => flush());
   }, [flush, updateState]);
 
+  const syncCouncilLinks = useCallback(async (councilIds: string[]) => {
+    const normalisedCouncilIds = [...new Set(
+      councilIds.filter((councilId) => councilIdPattern.test(councilId)),
+    )].sort().slice(0, 10);
+    councilSyncSequence.current = councilSyncSequence.current
+      .catch(() => undefined)
+      .then(async () => {
+        const current = stateRef.current;
+        if (current.consent !== 'granted' || !current.participantId) return;
+        const response = await fetch(`${apiBase}/analytics/council-links`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            participantId: current.participantId,
+            consentVersion,
+            councilIds: normalisedCouncilIds,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Council adoption evidence could not be updated.');
+        }
+      });
+    return councilSyncSequence.current;
+  }, []);
+
   const setEnabled = useCallback(async (enabled: boolean) => {
     const current = stateRef.current;
     if (enabled) {
@@ -295,9 +323,10 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     enabled: state.consent === 'granted',
     ready,
     setEnabled,
+    syncCouncilLinks,
     track,
     eraseAnalytics,
-  }), [eraseAnalytics, ready, setEnabled, state.consent, track]);
+  }), [eraseAnalytics, ready, setEnabled, state.consent, syncCouncilLinks, track]);
 
   return <PilotAnalyticsContext.Provider value={value}>{children}</PilotAnalyticsContext.Provider>;
 }

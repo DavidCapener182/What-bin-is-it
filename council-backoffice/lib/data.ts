@@ -20,6 +20,11 @@ type AnalyticsCountRow = {
   guide_matches: number;
   missed_confirmations: number;
 };
+type ResidentAdoptionRow = {
+  active_residents: number;
+  currently_linked: number;
+  all_time_residents: number;
+};
 type GatewayRow = {
   checks: number;
   successes: number;
@@ -86,6 +91,19 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
     WHERE council_id = ${providerId}
       AND occurred_at >= now() - make_interval(days => ${periodDays})
   `;
+  const residentAdoptionRows = await sql<ResidentAdoptionRow[]>`
+    SELECT
+      count(DISTINCT participant_id) FILTER (
+        WHERE currently_linked
+          AND last_seen_at >= now() - make_interval(days => ${periodDays})
+      )::int AS active_residents,
+      count(DISTINCT participant_id) FILTER (
+        WHERE currently_linked
+      )::int AS currently_linked,
+      count(DISTINCT participant_id)::int AS all_time_residents
+    FROM bin_council_resident_links
+    WHERE council_id = ${providerId}
+  `;
   const gatewayRows = await sql<GatewayRow[]>`
     SELECT
       count(*)::int AS checks,
@@ -110,6 +128,11 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
     guide_matches: 0,
     missed_confirmations: 0,
   };
+  const residentAdoption = residentAdoptionRows[0] ?? {
+    active_residents: 0,
+    currently_linked: 0,
+    all_time_residents: 0,
+  };
   const gateway = gatewayRows[0] ?? { checks: 0, successes: 0, average_duration_ms: null };
   const reminderRate = percentage(analytics.reminders, analytics.participants);
   const guideSuccess = percentage(analytics.guide_matches, analytics.guide_searches);
@@ -117,11 +140,25 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
   return {
     metrics: [
       {
-        label: "Consenting installations",
-        value: analytics.participants.toLocaleString("en-GB"),
-        detail: `Unique opted-in installations in the last ${periodDays} days`,
+        label: "Active residents",
+        value: residentAdoption.active_residents.toLocaleString("en-GB"),
+        detail: `Council-linked, consenting installations seen in the last ${periodDays} days`,
         state: "available",
         tone: "teal",
+      },
+      {
+        label: "Currently linked",
+        value: residentAdoption.currently_linked.toLocaleString("en-GB"),
+        detail: "Latest saved-place state includes this council; uninstall cannot be detected",
+        state: "available",
+        tone: "blue",
+      },
+      {
+        label: "All-time residents",
+        value: residentAdoption.all_time_residents.toLocaleString("en-GB"),
+        detail: "Ever linked to this council; removing or changing a saved place does not reduce it",
+        state: "available",
+        tone: "amber",
       },
       {
         label: "Reminder adoption",

@@ -23,6 +23,10 @@ export default function PrivacyScreen() {
           body: 'When you ask for live data, the postcode, council identifier and selected opaque property reference are sent over HTTPS to the app gateway and the relevant council-data provider. The gateway uses them to answer the request and does not write full addresses to an app database. Infrastructure and upstream services may keep limited security logs under their own retention policies. The app does not create estimated collection dates.',
         },
         {
+          title: 'Optional anonymous service evidence',
+          body: 'If you choose “Help improve local bin services”, the app creates a random installation identifier and sends structured, allow-listed service events. To evidence council reach, it also sends only the council provider identifiers represented by your locally saved places. It never sends your postcode, address, property reference, coordinates, account, search words or report notes for this purpose. Council dashboards show aggregate active, currently linked and all-time participating installations. Removing or changing a place updates the current link but retains the historical council reach; uninstall cannot be detected and ages out only from the rolling active count. Erasing anonymous app evidence deletes the pseudonymous installation records.',
+        },
+        {
           title: 'Location',
           body: 'Location is requested only when you tap “Use my current location”. It is used in the foreground to find a nearby postcode and council. The app does not request background location or continuously track you, and manual postcode entry remains available.',
         },

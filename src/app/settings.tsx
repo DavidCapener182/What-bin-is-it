@@ -427,7 +427,7 @@ export default function SettingsScreen() {
               <Row detail={lastVerifiedAt ? new Date(lastVerifiedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : sourceStatus} icon="refresh-outline" onPress={() => void refreshCollections()} title="Refresh verified dates" />
               <Row detail="See how council dates, locations and report routes are sourced" icon="server-outline" onPress={() => router.push('/data-sources')} title="View data sources" />
               <ToggleRow
-                detail="Optional app evidence without your postcode, address, location, search words or report notes"
+                detail="Optional council usage counts without your postcode, address, location, search words or report notes"
                 onChange={(enabled) => void analytics.setEnabled(enabled)}
                 title="Help improve local bin services"
                 value={analytics.enabled}
@@ -435,7 +435,7 @@ export default function SettingsScreen() {
               <View style={styles.privacyRow}>
                 <Ionicons color={theme.accent} name="lock-closed-outline" size={20} />
                 <Text style={[styles.privacyText, { color: theme.secondaryText }]}>
-                  Saved places, local report tracking, and preferences stay on this device. Optional evidence is off until you choose it and can be erased at any time.
+                  Saved places, local report tracking, and preferences stay on this device. If you opt in, only a random installation ID and its council identifiers support aggregate usage counts. Evidence can be erased at any time.
                 </Text>
               </View>
               <Row

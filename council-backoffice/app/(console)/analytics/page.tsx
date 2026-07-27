@@ -22,7 +22,7 @@ export default async function AnalyticsPage() {
         <article className="panel">
           <div className="panel-heading"><h2>What councils can evidence</h2></div>
           <div className="connection-list">
-            <div className="connection-row"><div><strong>Resident reach</strong><br /><span>Unique random installation IDs among residents who explicitly opted in</span></div></div>
+            <div className="connection-row"><div><strong>Resident reach</strong><br /><span>Active, currently linked and all-time random installation IDs among residents who explicitly opted in</span></div></div>
             <div className="connection-row"><div><strong>Service reliability</strong><br /><span>Successful council-gateway checks and average response time</span></div></div>
             <div className="connection-row"><div><strong>Behavioural need</strong><br /><span>Structured guide item keys and matched/no-match outcomes, never raw search text</span></div></div>
             <div className="connection-row"><div><strong>Recovery completion</strong><br /><span>Official handoffs and resident-confirmed submissions, not report narratives</span></div></div>

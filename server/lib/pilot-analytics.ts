@@ -1,6 +1,16 @@
 import { timingSafeEqual } from 'node:crypto';
 
 import { binDatabase, binDatabaseConfigured } from './bin-database';
+import {
+  councilIdPattern,
+  isPilotParticipantId,
+  type PilotCouncilLinkSync,
+} from './pilot-council-links';
+
+export {
+  isPilotParticipantId,
+  parsePilotCouncilLinkSync,
+} from './pilot-council-links';
 
 export const pilotAnalyticsEventNames = [
   'analytics_consent_granted',
@@ -69,8 +79,6 @@ const reasonSet = new Set([
   'permission-denied',
   'unknown',
 ]);
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const councilIdPattern = /^[a-z0-9][a-z0-9-]{2,79}$/;
 const appVersionPattern = /^[0-9A-Za-z.+-]{1,32}$/;
 
 export type PilotAnalyticsEvent = {
@@ -164,10 +172,6 @@ function minimumPublicCohort() {
 
 export function pilotAnalyticsConfigured() {
   return binDatabaseConfigured();
-}
-
-export function isPilotParticipantId(value: unknown): value is string {
-  return typeof value === 'string' && uuidPattern.test(value);
 }
 
 function boundedInteger(value: unknown, maximum: number) {
@@ -335,15 +339,88 @@ export async function savePilotAnalyticsBatch(batch: PilotAnalyticsBatch) {
   return result.length;
 }
 
+export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
+  const sql = database();
+  const now = new Date().toISOString();
+  const councilIdsJson = JSON.stringify(input.councilIds);
+  await sql.begin(async (transaction) => {
+    await transaction`
+      UPDATE bin_council_resident_links
+      SET
+        currently_linked = false,
+        unlinked_at = ${now}::timestamptz
+      WHERE participant_id = ${input.participantId}::uuid
+        AND currently_linked
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${councilIdsJson}::jsonb) AS desired(council_id)
+          WHERE desired.council_id = bin_council_resident_links.council_id
+        )
+    `;
+    if (input.councilIds.length === 0) return;
+    const rows = input.councilIds.map((councilId) => ({
+      participant_id: input.participantId,
+      council_id: councilId,
+      linked_at: now,
+    }));
+    await transaction`
+      INSERT INTO bin_council_resident_links (
+        participant_id,
+        council_id,
+        first_linked_at,
+        last_linked_at,
+        last_seen_at,
+        currently_linked,
+        unlinked_at
+      )
+      SELECT
+        item.participant_id::uuid,
+        item.council_id,
+        item.linked_at::timestamptz,
+        item.linked_at::timestamptz,
+        item.linked_at::timestamptz,
+        true,
+        null
+      FROM jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS item(
+        participant_id text,
+        council_id text,
+        linked_at text
+      )
+      ON CONFLICT (participant_id, council_id) DO UPDATE
+      SET
+        last_linked_at = CASE
+          WHEN bin_council_resident_links.currently_linked
+            THEN bin_council_resident_links.last_linked_at
+          ELSE EXCLUDED.last_linked_at
+        END,
+        last_seen_at = EXCLUDED.last_seen_at,
+        currently_linked = true,
+        unlinked_at = null
+    `;
+  });
+  return {
+    currentCouncilCount: input.councilIds.length,
+    syncedAt: now,
+  };
+}
+
 export async function deletePilotParticipant(participantId: string) {
   if (!isPilotParticipantId(participantId)) throw new Error('The analytics participant ID is invalid.');
   const sql = database();
-  const deleted = await sql`
-    DELETE FROM bin_analytics_events
-    WHERE participant_id = ${participantId}::uuid
-    RETURNING id
-  `;
-  return deleted.length;
+  const deleted = await sql.begin(async (transaction) => {
+    const events = await transaction`
+      DELETE FROM bin_analytics_events
+      WHERE participant_id = ${participantId}::uuid
+      RETURNING id
+    `;
+    const links = await transaction`
+      DELETE FROM bin_council_resident_links
+      WHERE participant_id = ${participantId}::uuid
+      RETURNING council_id
+    `;
+    return events.length + links.length;
+  });
+  return deleted;
 }
 
 export async function recordPilotGatewayCheck(input: {

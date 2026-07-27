@@ -17,7 +17,7 @@ export async function CouncilOverview({ session }: { session: CouncilStaffSessio
       <PageHeader
         eyebrow="Live service picture"
         title={`Good morning, ${session.organisation.brandName ?? session.organisation.name}.`}
-        description="A privacy-preserving operational view built from consenting installations, verified gateway checks and published council content."
+        description="A privacy-preserving operational view of active, currently linked and all-time consenting installations, verified gateway checks and published council content."
       />
 
       <section aria-label="Council service metrics" className="metric-grid">

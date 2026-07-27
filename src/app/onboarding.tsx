@@ -194,7 +194,7 @@ export default function OnboardingScreen() {
                 <View style={styles.evidenceCopy}>
                   <Text style={[styles.evidenceTitle, { color: theme.text }]}>Help improve local bin services</Text>
                   <Text style={[styles.evidenceText, { color: theme.secondaryText }]}>
-                    Optional anonymous app evidence only. We never include your postcode, address, location, search words or report notes.
+                    Optional anonymous app evidence only. It can count a random installation against its council, but never includes your postcode, address, location, search words or report notes.
                   </Text>
                 </View>
                 <Switch

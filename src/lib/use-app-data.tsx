@@ -321,7 +321,13 @@ async function loadState() {
 }
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
-  const { eraseAnalytics, track } = usePilotAnalytics();
+  const {
+    enabled: analyticsEnabled,
+    eraseAnalytics,
+    ready: analyticsReady,
+    syncCouncilLinks,
+    track,
+  } = usePilotAnalytics();
   const [state, setState] = useState<State>(buildInitialState);
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -342,6 +348,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .then(() => syncHomeScreenWidget({ address: activeAddress, collections }))
       .catch(() => undefined);
   }, [ready, state]);
+
+  useEffect(() => {
+    if (!ready || !analyticsReady || !analyticsEnabled) return;
+    const councilIds = [...new Set(state.addresses.map((address) => address.providerId))];
+    void syncCouncilLinks(councilIds).catch(() => {
+      // A fresh sync is attempted on the next launch or saved-place change.
+    });
+  }, [
+    analyticsEnabled,
+    analyticsReady,
+    ready,
+    state.addresses,
+    syncCouncilLinks,
+  ]);
 
   const activeAddress = state.addresses.find((address) => address.id === state.activeAddressId);
   const activeSchedule = state.schedulesByAddressId[state.activeAddressId]
