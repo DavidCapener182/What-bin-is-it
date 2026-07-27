@@ -14,6 +14,7 @@ import type {
 type StaffRow = {
   staff_id: string;
   role: CouncilRole;
+  platform_admin: boolean;
   organisation_id: string;
   provider_id: string;
   slug: string;
@@ -56,10 +57,41 @@ export async function authenticatedCouncilIdentity() {
 
 export async function councilMemberships(userId: string) {
   const sql = councilDatabase();
+  const platformRows = await sql<{ id: string }[]>`
+    SELECT id
+    FROM bin_council_platform_admins
+    WHERE user_id = ${userId}::uuid
+      AND status = 'active'
+    LIMIT 1
+  `;
+  if (platformRows[0]) {
+    return sql<StaffRow[]>`
+      SELECT
+        ${platformRows[0].id}::uuid AS staff_id,
+        'owner'::varchar AS role,
+        true AS platform_admin,
+        organisation.id AS organisation_id,
+        organisation.provider_id,
+        organisation.slug,
+        organisation.name AS organisation_name,
+        organisation.status AS organisation_status,
+        organisation.plan_tier,
+        organisation.brand_name,
+        organisation.logo_url,
+        organisation.primary_colour,
+        organisation.secondary_colour,
+        organisation.sponsorship_label
+      FROM bin_council_organisations AS organisation
+      WHERE organisation.status IN ('pilot', 'active')
+      ORDER BY organisation.name
+      LIMIT 500
+    `;
+  }
   const rows = await sql<StaffRow[]>`
     SELECT
       staff.id AS staff_id,
       staff.role,
+      false AS platform_admin,
       organisation.id AS organisation_id,
       organisation.provider_id,
       organisation.slug,
@@ -96,6 +128,7 @@ export async function getCouncilSession(): Promise<CouncilStaffSession | undefin
     email: identity.email,
     staffId: selected.staff_id,
     role: selected.role,
+    platformAdmin: selected.platform_admin,
     organisation: organisationFromRow(selected),
   };
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { councilRoleCan } from "../lib/permissions.ts";
@@ -42,4 +43,28 @@ test("multi-value fields remove duplicates and empty input", () => {
   form.append("placements", "home");
   form.append("placements", "schedule");
   assert.deepEqual(selectedValues(form, "placements"), ["home", "schedule"]);
+});
+
+test("platform administration is explicit and never inferred from email metadata", async () => {
+  const [authSource, bootstrapSource] = await Promise.all([
+    readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/bootstrap-platform-admin.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(authSource, /bin_council_platform_admins/);
+  assert.match(authSource, /status = 'active'/);
+  assert.doesNotMatch(authSource, /email.*endsWith|user_metadata|app_metadata/);
+  assert.match(bootstrapSource, /--email/);
+  assert.match(bootstrapSource, /--apply/);
+});
+
+test("council authentication uses a dedicated cookie namespace", async () => {
+  const [serverSource, proxySource] = await Promise.all([
+    readFile(new URL("../lib/supabase/server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+  ]);
+  for (const source of [serverSource, proxySource]) {
+    assert.match(source, /name: "what-bin-council-auth"/);
+    assert.match(source, /httpOnly: true/);
+    assert.match(source, /sameSite: "lax"/);
+  }
 });

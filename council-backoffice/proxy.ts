@@ -38,6 +38,7 @@ export async function proxy(request: NextRequest) {
   if (supabaseUrl && supabaseKey) {
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookieOptions: {
+        name: "what-bin-council-auth",
         httpOnly: true,
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",

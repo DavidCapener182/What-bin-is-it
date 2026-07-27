@@ -33,6 +33,7 @@ export type CouncilStaffSession = {
   email?: string;
   staffId: string;
   role: CouncilRole;
+  platformAdmin: boolean;
   organisation: CouncilOrganisation;
 };
 

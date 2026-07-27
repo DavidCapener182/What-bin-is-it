@@ -13,6 +13,7 @@ export async function createCouncilSupabaseServerClient() {
   const { url, key } = configuration();
   return createServerClient(url, key, {
     cookieOptions: {
+      name: "what-bin-council-auth",
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

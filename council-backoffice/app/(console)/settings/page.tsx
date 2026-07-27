@@ -22,7 +22,7 @@ export default async function CouncilSettingsPage({ searchParams }: { searchPara
             <div className="connection-row"><span>Provider ID</span><strong>{session.organisation.providerId}</strong></div>
             <div className="connection-row"><span>Plan</span><strong>{session.organisation.planTier}</strong></div>
             <div className="connection-row"><span>Status</span><strong>{session.organisation.status}</strong></div>
-            <div className="connection-row"><span>Your role</span><strong className="role-capitalise">{session.role}</strong></div>
+            <div className="connection-row"><span>Your role</span><strong className="role-capitalise">{session.platformAdmin ? "Platform superadmin" : session.role}</strong></div>
           </div>
         </article>
         <aside className="panel">

@@ -99,7 +99,7 @@ export async function ConsoleShell({
         <div className="sidebar-footer">
           <div className="role-pill">
             <ShieldCheck aria-hidden="true" size={16} />
-            {session.role}
+            {session.platformAdmin ? "Platform superadmin" : session.role}
           </div>
           <span className="sidebar-email">{session.email ?? "Council staff account"}</span>
           <form action={signOutCouncil}>

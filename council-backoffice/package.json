@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings=0",
     "test": "node --no-warnings --experimental-strip-types --test tests/*.test.mjs",
     "staff:bootstrap": "node scripts/bootstrap-council-staff.mjs",
+    "platform-admin:bootstrap": "node scripts/bootstrap-platform-admin.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {

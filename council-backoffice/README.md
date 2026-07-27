@@ -45,6 +45,14 @@ npm run staff:bootstrap -- \
 
 After checking the exact council, account and role, repeat with `--apply`. The script never guesses an organisation from an email domain and cannot create an Auth user.
 
+Platform-wide access is a separate, explicit assignment:
+
+```bash
+npm run platform-admin:bootstrap -- --email person@example.gov.uk
+```
+
+Run it once without `--apply`, verify the exact existing Auth account, then repeat with `--apply`. A platform superadmin can switch across every active council tenant and receives owner-level permissions inside the selected tenant. No email domain or user metadata grants this access.
+
 ## Deployment
 
 Deploy this directory as its own Vercel project with Root Directory set to `council-backoffice`. Do not add its URL to resident navigation. Required environment variables are listed in `.env.example`.

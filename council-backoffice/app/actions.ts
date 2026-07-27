@@ -150,16 +150,26 @@ async function allowSignInAttempt(email: string) {
 async function authorisedCouncilEmail(email: string) {
   const sql = councilDatabase();
   const rows = await sql<{ authorised: boolean }[]>`
-    SELECT EXISTS (
-      SELECT 1
-      FROM auth.users AS user_account
-      INNER JOIN bin_council_staff AS staff
-        ON staff.user_id = user_account.id
-      INNER JOIN bin_council_organisations AS organisation
-        ON organisation.id = staff.organisation_id
-      WHERE lower(user_account.email) = ${email}
-        AND staff.status = 'active'
-        AND organisation.status IN ('pilot', 'active')
+    SELECT (
+      EXISTS (
+        SELECT 1
+        FROM auth.users AS user_account
+        INNER JOIN bin_council_staff AS staff
+          ON staff.user_id = user_account.id
+        INNER JOIN bin_council_organisations AS organisation
+          ON organisation.id = staff.organisation_id
+        WHERE lower(user_account.email) = ${email}
+          AND staff.status = 'active'
+          AND organisation.status IN ('pilot', 'active')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM auth.users AS user_account
+        INNER JOIN bin_council_platform_admins AS platform_admin
+          ON platform_admin.user_id = user_account.id
+        WHERE lower(user_account.email) = ${email}
+          AND platform_admin.status = 'active'
+      )
     ) AS authorised
   `;
   return rows[0]?.authorised === true;
