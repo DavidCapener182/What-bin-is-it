@@ -317,7 +317,7 @@ export async function savePilotAnalyticsBatch(batch: PilotAnalyticsBatch) {
       item.reason_code,
       item.duration_ms,
       item.metric_value
-    FROM jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS item(
+    FROM jsonb_to_recordset(${sql.json(rows)}::jsonb) AS item(
       id text,
       participant_id text,
       consent_version text,
@@ -342,7 +342,6 @@ export async function savePilotAnalyticsBatch(batch: PilotAnalyticsBatch) {
 export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
   const sql = database();
   const now = new Date().toISOString();
-  const councilIdsJson = JSON.stringify(input.councilIds);
   await sql.begin(async (transaction) => {
     await transaction`
       UPDATE bin_council_resident_links
@@ -353,7 +352,7 @@ export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
         AND currently_linked
         AND NOT EXISTS (
           SELECT 1
-          FROM jsonb_array_elements_text(${councilIdsJson}::jsonb) AS desired(council_id)
+          FROM jsonb_array_elements_text(${transaction.json(input.councilIds)}::jsonb) AS desired(council_id)
           WHERE desired.council_id = bin_council_resident_links.council_id
         )
     `;
@@ -381,7 +380,7 @@ export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
         item.linked_at::timestamptz,
         true,
         null
-      FROM jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS item(
+      FROM jsonb_to_recordset(${transaction.json(rows)}::jsonb) AS item(
         participant_id text,
         council_id text,
         linked_at text

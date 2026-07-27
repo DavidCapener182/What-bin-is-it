@@ -122,3 +122,14 @@ test('postcode and location success paths sync their resolved council immediatel
     /syncCouncilLinks\(councilIdsForResidentUse\(\s*addresses\.map/,
   );
 });
+
+test('database array writes use Postgres JSON values rather than encoded strings', async () => {
+  const analytics = await readFile(
+    new URL('../server/lib/pilot-analytics.ts', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(analytics, /JSON\.stringify\(rows\)/);
+  assert.match(analytics, /sql\.json\(rows\)/);
+  assert.match(analytics, /transaction\.json\(input\.councilIds\)/);
+  assert.match(analytics, /transaction\.json\(rows\)/);
+});
