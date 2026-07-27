@@ -7,7 +7,7 @@ export default defineHandler(async (event) => {
   try {
     const user = await requireBinAccount(event.req);
     const sql = binDatabase();
-    const [entitlements, grants, supporter, nativeEvents] = await Promise.all([
+    const [entitlements, grants, supporter, nativeEvents, supportThreads, supportMessages] = await Promise.all([
       sql`
         SELECT plan_id, source, status, product_id, current_period_end, created_at, updated_at
         FROM bin_user_entitlements
@@ -31,6 +31,36 @@ export default defineHandler(async (event) => {
         ORDER BY occurred_at DESC
         LIMIT 250
       `,
+      sql`
+        SELECT
+          id,
+          council_provider_id,
+          council_name,
+          topic,
+          subject,
+          status,
+          last_message_at,
+          resolved_at,
+          created_at,
+          updated_at
+        FROM bin_resident_support_threads
+        WHERE resident_user_id = ${user.id}
+        ORDER BY created_at DESC
+        LIMIT 500
+      `,
+      sql`
+        SELECT
+          message.thread_id,
+          message.sender_kind,
+          message.body,
+          message.created_at
+        FROM bin_resident_support_messages AS message
+        INNER JOIN bin_resident_support_threads AS thread
+          ON thread.id = message.thread_id
+        WHERE thread.resident_user_id = ${user.id}
+        ORDER BY message.created_at
+        LIMIT 5000
+      `,
     ]);
     return Response.json({
       exportedAt: new Date().toISOString(),
@@ -40,6 +70,10 @@ export default defineHandler(async (event) => {
       providerGrants: grants,
       webBilling: supporter,
       nativeBillingEvents: nativeEvents,
+      supportConversations: {
+        threads: supportThreads,
+        messages: supportMessages,
+      },
     }, {
       headers: {
         'cache-control': 'no-store',

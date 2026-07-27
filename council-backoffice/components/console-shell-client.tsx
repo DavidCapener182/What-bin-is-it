@@ -21,7 +21,7 @@ const primaryNavigation = [
 const platformNavigation = [
   { href: "/", label: "Platform overview", icon: "gauge" },
   { href: "/crm", label: "Relationship CRM", icon: "building" },
-  { href: "/crm/messages", label: "Correspondence", icon: "messages" },
+  { href: "/crm/messages", label: "Resident inbox", icon: "messages" },
 ] as const;
 
 const governanceNavigation = [
@@ -150,7 +150,7 @@ export function ConsoleShellClient({
         {platformSurface ? (
           <>
             <NavLink href="/crm" icon="building" label="CRM" />
-            <NavLink href="/crm/messages" icon="messages" label="Messages" />
+            <NavLink href="/crm/messages" icon="messages" label="Inbox" />
           </>
         ) : (
           <>

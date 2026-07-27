@@ -12,10 +12,10 @@ Platform superadmins can:
 - enter a selected council portal explicitly;
 - manage a relationship CRM for councils, sponsors, partners and enterprise prospects;
 - record professional contacts with source, lawful-basis, suppression and retention controls;
-- see platform-wide sent, received and internal correspondence;
-- group correspondence by organisation, contact and thread;
+- receive resident support messages sent from the What Bin app;
+- reply to residents inside the app and close or reopen support threads;
 - manage opportunity stages, annual pipeline values and follow-up tasks; and
-- review mailbox-connection status without claiming that email sync is active when it is not.
+- keep resident support separate from professional relationship records.
 
 Council staff can:
 
@@ -31,23 +31,21 @@ Council staff can:
 
 The console does **not** store resident addresses, postcodes, free-text missed-bin reports, IP addresses, user agents or push tokens.
 
-## Relationship CRM and correspondence
+## Relationship CRM and resident inbox
 
 The relationship CRM is a platform-owner workspace, not a resident case-management system and not part of an individual council portal. It stores professional business-contact details only.
 
-Manual correspondence recording is live for email, calls, SMS, LinkedIn, meetings and internal notes. It supports:
+The separate Resident inbox is the app's private support channel:
 
-- sent, received and internal directions;
-- organisation and professional-contact linking;
-- subjects, full message text, timestamps and delivery state;
-- external message IDs for future idempotent mailbox synchronisation;
-- attachment names without copying files into the CRM;
-- search and filters across organisations, contacts, channels and directions; and
-- a metadata-only audit event that does not duplicate message bodies or addresses.
+- residents send from Help and support in the web or mobile app;
+- platform staff reply in `/crm/messages`;
+- replies appear in the resident's in-app conversation;
+- threads can be filtered, closed and reopened; and
+- support replies and status changes create audit events.
 
-Automatic Gmail or Outlook capture is **not** represented as connected until a real OAuth mailbox integration is approved. OAuth access and refresh tokens must live in an approved server-side secret store; `bin_crm_mailbox_connections` contains connection state and a secret reference only.
+It does not connect Gmail, Outlook or another external mailbox. Support records contain the account reference, message text, timestamps and optional council identifier. They do not copy the resident's saved address, postcode or account email.
 
-All CRM tables use the `bin_crm_*` prefix, have RLS enabled, and revoke `anon` and `authenticated` Data API grants. Platform-superadmin checks are repeated in every CRM page and server mutation.
+All CRM and resident-support tables use the `bin_*` prefix, have RLS enabled, and revoke `anon` and `authenticated` Data API grants. Platform-superadmin checks are repeated in every CRM and inbox page and server mutation.
 
 ## Local setup
 

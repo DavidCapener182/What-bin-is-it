@@ -36,7 +36,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Reports and support',
-          body: 'Missed-bin reports are tracked locally unless a future council integration clearly says it submits directly. Opening an official council service does not mean the app submitted a report. Support or feedback leaves the app only when you choose an external email or GitHub issue route; information you publish there is handled by that service.',
+          body: 'Missed-bin reports are tracked locally unless a future council integration clearly says it submits directly. Opening an official council service does not mean the app submitted a report. If you sign in and message What Bin support, the account reference, message text, timestamps and selected council identifier are stored so the back-office team can reply inside the app. Your saved address, postcode and account email are not copied into the support conversation.',
         },
         {
           title: 'Optional purchases',
@@ -44,7 +44,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Service providers',
-          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, Supabase for optional account and plan records, Stripe for web billing, platform notification services when enabled, and RevenueCat in native builds where Plus purchasing is enabled. The Data sources screen explains which source supports each collection feature.',
+          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, Supabase for optional account, plan and in-app support records, Stripe for web billing, platform notification services when enabled, and RevenueCat in native builds where Plus purchasing is enabled. The Data sources screen explains which source supports each collection feature.',
         },
         {
           title: 'Retention and deletion',

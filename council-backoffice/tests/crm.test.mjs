@@ -65,6 +65,33 @@ test("all CRM pages and mutations require explicit platform-superadmin authorisa
     actions,
     /saveCrmMessageAction[\s\S]*?requirePlatformAdminAction\(\)[\s\S]*?createCrmMessage/,
   );
+  assert.match(messagesPage, /In-app support inbox/);
+  assert.match(actions, /replyToResidentSupportAction[\s\S]*?requirePlatformAdminAction\(\)/);
+});
+
+test("resident support inbox is private, Bin-prefixed and contains no copied address or email fields", async () => {
+  const migration = await readFile(
+    new URL("../../supabase/migrations/20260727185548_resident_support_inbox.sql", import.meta.url),
+    "utf8",
+  );
+  for (const table of [
+    "bin_resident_support_threads",
+    "bin_resident_support_messages",
+  ]) {
+    assert.match(migration, new RegExp(`create table if not exists public\\.${table}`));
+    assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
+    assert.match(
+      migration,
+      new RegExp(`revoke all on table public\\.${table} from anon, authenticated`),
+    );
+  }
+  assert.match(migration, /resident_user_id/);
+  assert.match(migration, /council_provider_id/);
+  assert.match(migration, /retention_review_at/);
+  assert.doesNotMatch(
+    migration,
+    /\b(postcode|street_address|resident_email|mailbox_email)\b\s+(?:varchar|text)/i,
+  );
 });
 
 test("platform surfaces stay above council portals until a council is deliberately entered", async () => {

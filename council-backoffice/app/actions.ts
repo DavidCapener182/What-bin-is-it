@@ -36,6 +36,10 @@ import {
   upsertGuidance,
 } from "@/lib/data";
 import { assertCouncilPermission } from "@/lib/permissions";
+import {
+  replyToResidentSupportThread,
+  setResidentSupportThreadStatus,
+} from "@/lib/resident-support";
 import { createCouncilSupabaseServerClient } from "@/lib/supabase/server";
 import {
   assertUuid,
@@ -718,4 +722,41 @@ export async function saveCrmMessageAction(formData: FormData) {
     redirect(errorPath(path, error));
   }
   redirect(successPath(path, "Correspondence saved."));
+}
+
+export async function replyToResidentSupportAction(formData: FormData) {
+  let path = "/crm/messages";
+  try {
+    const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
+    path = `/crm/messages?thread=${threadId}`;
+    const session = await requirePlatformAdminAction();
+    await replyToResidentSupportThread(
+      session,
+      threadId,
+      requiredText(formData.get("body"), "Reply", 5_000),
+    );
+    revalidatePath("/crm/messages");
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Reply sent in the app."));
+}
+
+export async function changeResidentSupportStatusAction(formData: FormData) {
+  let path = "/crm/messages";
+  try {
+    const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
+    path = `/crm/messages?thread=${threadId}`;
+    const session = await requirePlatformAdminAction();
+    const status = allowedValue(
+      formData.get("status"),
+      ["waiting-support", "closed"] as const,
+      "Conversation status",
+    );
+    await setResidentSupportThreadStatus(session, threadId, status);
+    revalidatePath("/crm/messages");
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Conversation updated."));
 }

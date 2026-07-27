@@ -39,7 +39,7 @@ export default async function PlatformCrmPage({
         description="Track council, sponsor and partner conversations, opportunities and follow-ups across the What Bin platform. This workspace contains professional business-contact data only."
         action={(
           <div className="page-header-actions">
-            <Link className="secondary-button" href="/crm/messages"><MessagesSquare aria-hidden="true" size={16} /> Correspondence</Link>
+            <Link className="secondary-button" href="/crm/messages"><MessagesSquare aria-hidden="true" size={16} /> Resident inbox</Link>
             <Link className="secondary-button" href="/">Platform overview</Link>
           </div>
         )}

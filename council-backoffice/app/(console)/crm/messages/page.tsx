@@ -1,239 +1,241 @@
 import Link from "next/link";
 import {
-  ArrowLeft,
+  CheckCircle2,
   Inbox,
-  MailCheck,
-  MailOpen,
-  MessagesSquare,
-  PlugZap,
+  MessageCircle,
+  RotateCcw,
   Search,
+  Send,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 
-import { CrmMessageComposer } from "@/components/crm-message-composer";
+import {
+  changeResidentSupportStatusAction,
+  replyToResidentSupportAction,
+} from "@/app/actions";
 import { FeedbackBanner } from "@/components/feedback-banner";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { requirePlatformAdminSession } from "@/lib/auth";
-import {
-  listCrmComposeOptions,
-  listCrmMailboxConnections,
-  listCrmMessages,
-  listCrmThreads,
-} from "@/lib/crm";
 import { formatDateTime, humanise } from "@/lib/format";
-import type { CrmMessage } from "@/lib/types";
+import {
+  listResidentSupportThreads,
+  residentSupportThread,
+  type ResidentSupportStatus,
+} from "@/lib/resident-support";
 
-const directions = ["sent", "received", "internal"] as const;
-const channels = ["email", "phone", "sms", "linkedin", "meeting", "note"] as const;
+const statuses = ["waiting-support", "waiting-resident", "closed"] as const;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function allowed<T extends string>(value: string | undefined, choices: readonly T[]) {
-  return value && choices.includes(value as T) ? value as T : undefined;
-}
-
-function messageAddresses(message: CrmMessage) {
-  const from = message.senderAddress ? `From ${message.senderAddress}` : undefined;
-  const to = message.recipientAddresses.length
-    ? `To ${message.recipientAddresses.join(", ")}`
+function allowedStatus(value?: string): ResidentSupportStatus | undefined {
+  return value && statuses.includes(value as ResidentSupportStatus)
+    ? value as ResidentSupportStatus
     : undefined;
-  return [from, to].filter(Boolean).join(" · ");
 }
 
-export default async function CrmMessagesPage({
+function threadStatus(status: ResidentSupportStatus) {
+  if (status === "waiting-support") return "Needs reply";
+  if (status === "waiting-resident") return "Waiting for resident";
+  return "Closed";
+}
+
+export default async function ResidentInboxPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    account?: string;
-    channel?: string;
-    direction?: string;
     error?: string;
     q?: string;
     saved?: string;
+    status?: string;
+    thread?: string;
   }>;
 }) {
   await requirePlatformAdminSession();
   const params = await searchParams;
-  const composeOptions = await listCrmComposeOptions();
-  const accountId = composeOptions.accounts.some((account) => account.id === params.account)
-    ? params.account
-    : undefined;
-  const direction = allowed(params.direction, directions);
-  const channel = allowed(params.channel, channels);
-  const [messages, threads, mailboxes] = await Promise.all([
-    listCrmMessages({ accountId, direction, channel, query: params.q }),
-    listCrmThreads(),
-    listCrmMailboxConnections(),
+  const status = allowedStatus(params.status);
+  const [allThreads, threads] = await Promise.all([
+    listResidentSupportThreads(),
+    listResidentSupportThreads({ query: params.q, status }),
   ]);
-  const sent = messages.filter((message) => message.direction === "sent").length;
-  const received = messages.filter((message) => message.direction === "received").length;
-  const openThreads = threads.filter((thread) => thread.status === "open" || thread.status === "waiting").length;
+  const requestedThreadId = typeof params.thread === "string" && uuidPattern.test(params.thread)
+    ? params.thread
+    : undefined;
+  const selectedThreadId = requestedThreadId ?? threads[0]?.id;
+  const selectedThread = selectedThreadId
+    ? await residentSupportThread(selectedThreadId)
+    : undefined;
+  const needsReply = allThreads.filter((thread) => thread.status === "waiting-support").length;
+  const waitingResident = allThreads.filter((thread) => thread.status === "waiting-resident").length;
+  const closed = allThreads.filter((thread) => thread.status === "closed").length;
 
   return (
     <>
       <PageHeader
-        eyebrow="Relationship CRM"
-        title="Correspondence"
-        description="One platform-wide record of messages sent and received with councils, sponsors, partners and other organisations connected to What Bin."
-        action={<Link className="secondary-button" href="/crm"><ArrowLeft aria-hidden="true" size={16} /> Relationship CRM</Link>}
+        eyebrow="Resident services"
+        title="In-app support inbox"
+        description="Messages sent by residents from the What Bin web or mobile app. Replies are delivered inside the app—there is no email mailbox or external message sync."
+        action={<Link className="secondary-button" href="/crm">Relationship CRM</Link>}
       />
       <FeedbackBanner error={params.error} saved={params.saved} />
 
-      <section aria-label="Correspondence metrics" className="metric-grid correspondence-metrics">
+      <section aria-label="Resident support metrics" className="metric-grid correspondence-metrics">
         <article className="metric-card tone-blue">
-          <span className="metric-label">Recorded messages</span>
-          <strong className="metric-value">{messages.length}</strong>
-          <span className="metric-detail">Matching the current filters</span>
+          <span className="metric-label">Conversations</span>
+          <strong className="metric-value">{allThreads.length}</strong>
+          <span className="metric-detail">All in-app support threads</span>
         </article>
-        <article className="metric-card tone-blue">
-          <span className="metric-label">Sent</span>
-          <strong className="metric-value">{sent}</strong>
-          <span className="metric-detail">Outbound correspondence recorded</span>
+        <article className="metric-card tone-red">
+          <span className="metric-label">Needs reply</span>
+          <strong className="metric-value">{needsReply}</strong>
+          <span className="metric-detail">A resident sent the latest message</span>
         </article>
-        <article className="metric-card tone-blue">
-          <span className="metric-label">Received</span>
-          <strong className="metric-value">{received}</strong>
-          <span className="metric-detail">Inbound correspondence recorded</span>
+        <article className="metric-card tone-teal">
+          <span className="metric-label">Waiting for resident</span>
+          <strong className="metric-value">{waitingResident}</strong>
+          <span className="metric-detail">Support has replied in the app</span>
         </article>
-        <article className="metric-card tone-blue">
-          <span className="metric-label">Open threads</span>
-          <strong className="metric-value">{openThreads}</strong>
-          <span className="metric-detail">Open or waiting for a reply</span>
+        <article className="metric-card tone-amber">
+          <span className="metric-label">Closed</span>
+          <strong className="metric-value">{closed}</strong>
+          <span className="metric-detail">Resolved support conversations</span>
         </article>
       </section>
 
-      <section className="mailbox-panel panel space-bottom-lg">
+      <section className="panel resident-inbox-intro space-bottom-lg">
+        <div className="resident-inbox-mark"><MessageCircle aria-hidden="true" size={24} /></div>
         <div>
-          <span className="eyebrow">Automatic capture</span>
-          <h2>Mailbox connections</h2>
+          <span className="eyebrow">One private channel</span>
+          <h2>Resident app ↔ What Bin back office</h2>
           <p>
-            Manual recording is available now. Gmail or Outlook messages will only appear
-            automatically after a secure OAuth mailbox connection is configured.
+            Residents open Help and support, choose a topic and send a message. Staff reply below,
+            and that reply appears in the resident&apos;s conversation in the app.
           </p>
         </div>
-        {mailboxes.length ? (
-          <div className="mailbox-list">
-            {mailboxes.map((mailbox) => (
-              <div className="mailbox-row" key={mailbox.id}>
-                <MailCheck aria-hidden="true" size={20} />
-                <div>
-                  <strong>{mailbox.mailboxEmail}</strong>
-                  <span>{humanise(mailbox.provider)} · Last sync {formatDateTime(mailbox.lastSyncedAt)}</span>
-                </div>
-                <StatusPill status={mailbox.status} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mailbox-empty">
-            <PlugZap aria-hidden="true" size={22} />
-            <div><strong>No mailbox connected</strong><span>There is no hidden or simulated email sync.</span></div>
-          </div>
-        )}
       </section>
 
-      <div className="correspondence-layout">
-        <section className="panel form-panel correspondence-composer">
-          <h2>Record correspondence</h2>
-          <p className="form-intro">
-            Save a sent message, a received reply, a call, meeting, LinkedIn conversation or
-            internal note against the correct relationship.
-          </p>
-          {composeOptions.accounts.length ? (
-            <CrmMessageComposer
-              accounts={composeOptions.accounts}
-              contacts={composeOptions.contacts}
-              initialAccountId={accountId}
-            />
-          ) : (
-            <div className="empty-state compact-empty">
-              <Inbox aria-hidden="true" size={28} />
-              <h2>Add an organisation first</h2>
-              <p>Create a council, sponsor or partner relationship before recording correspondence.</p>
-              <Link className="primary-button" href="/crm">Open relationship CRM</Link>
+      <form action="/crm/messages" className="correspondence-filters resident-inbox-filters" method="get">
+        <div className="field correspondence-search">
+          <label className="sr-only" htmlFor="q">Search resident conversations</label>
+          <span className="search-field-icon"><Search aria-hidden="true" size={18} /></span>
+          <input defaultValue={params.q} id="q" name="q" placeholder="Search topic, council or conversation reference" />
+        </div>
+        <div className="field">
+          <label className="sr-only" htmlFor="status">Conversation status</label>
+          <select defaultValue={status ?? ""} id="status" name="status">
+            <option value="">All statuses</option>
+            {statuses.map((value) => <option key={value} value={value}>{threadStatus(value)}</option>)}
+          </select>
+        </div>
+        <button className="primary-button" type="submit">Filter</button>
+      </form>
+
+      <div className="resident-inbox-layout">
+        <section aria-label="Resident support conversations" className="resident-thread-list">
+          {threads.length ? threads.map((thread) => (
+            <Link
+              className={`resident-thread-card${selectedThread?.id === thread.id ? " resident-thread-selected" : ""}`}
+              href={`/crm/messages?thread=${thread.id}`}
+              key={thread.id}
+            >
+              <div className="resident-thread-icon"><UserRound aria-hidden="true" size={20} /></div>
+              <div className="resident-thread-copy">
+                <div className="resident-thread-top">
+                  <strong>{thread.subject}</strong>
+                  <time dateTime={thread.lastMessageAt}>{formatDateTime(thread.lastMessageAt)}</time>
+                </div>
+                <span>{thread.residentReference}{thread.councilName ? ` · ${thread.councilName}` : ""}</span>
+                <div className="resident-thread-footer">
+                  <StatusPill status={thread.status} />
+                  <span>{thread.lastSender === "resident" ? "Resident replied" : "Support replied"}</span>
+                </div>
+              </div>
+            </Link>
+          )) : (
+            <div className="empty-state resident-inbox-empty">
+              <Inbox aria-hidden="true" size={34} />
+              <h2>No resident conversations</h2>
+              <p>Messages sent from Help and support in the resident app will appear here.</p>
             </div>
           )}
         </section>
 
-        <section aria-label="Correspondence history">
-          <form action="/crm/messages" className="correspondence-filters" method="get">
-            <div className="field correspondence-search">
-              <label className="sr-only" htmlFor="q">Search correspondence</label>
-              <span className="search-field-icon"><Search aria-hidden="true" size={18} /></span>
-              <input defaultValue={params.q} id="q" name="q" placeholder="Search messages, organisations or contacts" />
-            </div>
-            <div className="field">
-              <label className="sr-only" htmlFor="account">Organisation</label>
-              <select defaultValue={accountId ?? ""} id="account" name="account">
-                <option value="">All organisations</option>
-                {composeOptions.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label className="sr-only" htmlFor="directionFilter">Direction</label>
-              <select defaultValue={direction ?? ""} id="directionFilter" name="direction">
-                <option value="">All directions</option>
-                {directions.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label className="sr-only" htmlFor="channelFilter">Channel</label>
-              <select defaultValue={channel ?? ""} id="channelFilter" name="channel">
-                <option value="">All channels</option>
-                {channels.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}
-              </select>
-            </div>
-            <button className="primary-button" type="submit">Filter</button>
-          </form>
-
-          <div className="message-list">
-            {messages.length ? messages.map((message) => (
-              <article className={`message-card message-${message.direction}`} key={message.id}>
-                <div className="message-direction-icon">
-                  {message.direction === "received"
-                    ? <MailOpen aria-hidden="true" size={20} />
-                    : <MailCheck aria-hidden="true" size={20} />}
+        <section aria-label="Selected resident conversation" className="panel resident-conversation">
+          {selectedThread ? (
+            <>
+              <div className="resident-conversation-head">
+                <div>
+                  <span className="eyebrow">{humanise(selectedThread.topic)}</span>
+                  <h2>{selectedThread.subject}</h2>
+                  <p>
+                    {selectedThread.residentReference}
+                    {selectedThread.councilName ? ` · ${selectedThread.councilName}` : " · No council selected"}
+                  </p>
                 </div>
-                <div className="message-card-content">
-                  <div className="message-card-top">
-                    <div>
-                      <span className="message-account">
-                        <Link href={`/crm/${message.accountId}`}>{message.accountName}</Link>
-                        {message.contactName ? ` · ${message.contactName}` : ""}
-                      </span>
-                      <h2>{message.subject}</h2>
-                    </div>
-                    <StatusPill status={message.deliveryStatus} />
-                  </div>
-                  <div className="data-meta">
-                    <span>{humanise(message.direction)}</span>
-                    <span>{humanise(message.channel)}</span>
-                    <time dateTime={message.occurredAt}>{formatDateTime(message.occurredAt)}</time>
-                  </div>
-                  {messageAddresses(message) ? <div className="message-addresses">{messageAddresses(message)}</div> : null}
-                  <details className="message-body">
-                    <summary>View full correspondence</summary>
-                    <p>{message.body}</p>
-                    {message.attachmentNames.length ? (
-                      <div className="tag-list">
-                        {message.attachmentNames.map((name) => <span className="tag" key={name}>{name}</span>)}
-                      </div>
-                    ) : null}
-                  </details>
-                </div>
-              </article>
-            )) : (
-              <div className="empty-state">
-                <MessagesSquare aria-hidden="true" size={34} />
-                <h2>No correspondence recorded</h2>
-                <p>Save the first real sent or received message. No demonstration conversations are inserted.</p>
+                <StatusPill status={selectedThread.status} />
               </div>
-            )}
-          </div>
+
+              <div className="resident-message-stack">
+                {selectedThread.messages.map((message) => (
+                  <article className={`resident-message resident-message-${message.sender}`} key={message.id}>
+                    <div className="resident-message-bubble">
+                      <p>{message.body}</p>
+                      <span>
+                        {message.sender === "resident" ? "Resident" : "What Bin support"}
+                        {" · "}
+                        <time dateTime={message.createdAt}>{formatDateTime(message.createdAt)}</time>
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              {selectedThread.status !== "closed" ? (
+                <div className="resident-reply-area">
+                  <form action={replyToResidentSupportAction} className="resident-reply-form">
+                    <input name="threadId" type="hidden" value={selectedThread.id} />
+                    <div className="field">
+                      <label htmlFor="residentReply">Reply in the app</label>
+                      <textarea
+                        id="residentReply"
+                        maxLength={5_000}
+                        name="body"
+                        placeholder="Write a clear support reply. The resident will see this in What Bin."
+                        required
+                        rows={5}
+                      />
+                      <span className="help-text">Do not ask the resident to email. Keep the whole conversation in the app.</span>
+                    </div>
+                    <button className="primary-button" type="submit"><Send aria-hidden="true" size={17} /> Send reply</button>
+                  </form>
+                  <form action={changeResidentSupportStatusAction}>
+                    <input name="threadId" type="hidden" value={selectedThread.id} />
+                    <input name="status" type="hidden" value="closed" />
+                    <button className="secondary-button" type="submit">
+                      <CheckCircle2 aria-hidden="true" size={17} /> Close conversation
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <form action={changeResidentSupportStatusAction} className="resident-closed-actions">
+                  <input name="threadId" type="hidden" value={selectedThread.id} />
+                  <input name="status" type="hidden" value="waiting-support" />
+                  <button className="secondary-button" type="submit"><RotateCcw aria-hidden="true" size={17} /> Reopen conversation</button>
+                </form>
+              )}
+            </>
+          ) : (
+            <div className="empty-state resident-inbox-empty">
+              <MessageCircle aria-hidden="true" size={34} />
+              <h2>Select a conversation</h2>
+              <p>Choose a resident thread to read it and reply inside the app.</p>
+            </div>
+          )}
         </section>
       </div>
 
       <div className="truth-note space-top-lg">
-        <ShieldCheck aria-hidden="true" size={17} /> Correspondence is restricted to platform superadmins. Use professional business contact details only; resident service records must remain in the resident-service systems.
+        <ShieldCheck aria-hidden="true" size={17} /> Support is restricted to platform superadmins. The inbox stores the account reference, message text and optional council identifier—not the resident&apos;s saved address, postcode or email.
       </div>
     </>
   );

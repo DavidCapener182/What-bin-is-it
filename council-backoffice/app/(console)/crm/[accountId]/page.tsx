@@ -144,9 +144,7 @@ export default async function CrmAccountPage({
       <section className="crm-section">
         <div className="crm-section-heading">
           <div><span className="eyebrow">Correspondence</span><h2>Sent and received messages</h2></div>
-          <Link className="secondary-button button-small" href={`/crm/messages?account=${account.id}`}>
-            Open correspondence centre
-          </Link>
+          <Link className="secondary-button button-small" href="#relationship-notes">Record conversation</Link>
         </div>
         <div className="message-list">
           {messages.length ? messages.slice(0, 6).map((message) => (
@@ -175,13 +173,13 @@ export default async function CrmAccountPage({
               <Mail aria-hidden="true" size={30} />
               <h3>No correspondence yet</h3>
               <p>Sent and received messages recorded against this relationship will appear here.</p>
-              <Link className="primary-button" href={`/crm/messages?account=${account.id}`}>Record correspondence</Link>
+              <Link className="primary-button" href="#relationship-notes">Record conversation</Link>
             </div>
           )}
         </div>
       </section>
 
-      <section className="crm-section">
+      <section className="crm-section" id="relationship-notes">
         <div className="crm-section-heading">
           <div><span className="eyebrow">Relationship notes</span><h2>Calls, meetings and outcomes</h2></div>
           <MessageSquareText aria-hidden="true" color="#007AFF" size={23} />

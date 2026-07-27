@@ -13,6 +13,10 @@ export default defineHandler(async (event) => {
     await sql.begin(async (transaction) => {
       await transaction`SELECT pg_advisory_xact_lock(hashtext(${user.id}))`;
       await transaction`
+        DELETE FROM bin_resident_support_threads
+        WHERE resident_user_id = ${user.id}
+      `;
+      await transaction`
         UPDATE bin_supporters
         SET user_id = null, updated_at = now()
         WHERE user_id = ${user.id}
