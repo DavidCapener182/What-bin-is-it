@@ -8,10 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { formatCollectionDate } from '@/lib/data';
+import { appFonts } from '@/lib/design-system';
 import { useAppTheme } from '@/lib/theme';
 import { MissedCollectionReport } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useProductState } from '@/lib/use-product-state';
+import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 
 const statusLabels: Record<MissedCollectionReport['status'], string> = {
   draft: 'Draft',
@@ -30,7 +32,8 @@ const statusLabels: Record<MissedCollectionReport['status'], string> = {
 
 export default function ReportsScreen() {
   const theme = useAppTheme();
-  const { activeAddress } = useAppData();
+  const { activeAddress, collections } = useAppData();
+  const weeklyBin = useWeeklyBinPalette(collections);
   const { reports, updateReport } = useProductState();
   const [referenceById, setReferenceById] = useState<Record<string, string>>({});
   const [updateById, setUpdateById] = useState<Record<string, string>>({});
@@ -77,18 +80,27 @@ export default function ReportsScreen() {
         path="/reports"
       />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
-        <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
+        <SafeAreaView
+          edges={['top']}
+          style={[
+            styles.header,
+            {
+              backgroundColor: weeklyBin.background,
+              borderBottomColor: weeklyBin.accent ? weeklyBin.background : theme.separator,
+            },
+          ]}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={[styles.title, { color: theme.text }]}>Reports</Text>
-              <Text style={[styles.subtitle, { color: theme.secondaryText }]}>Missed collections and follow-up</Text>
+              <Text style={[styles.kicker, { color: weeklyBin.foreground }]}>Reports</Text>
+              <Text style={[styles.title, { color: weeklyBin.foreground }]}>Missed collections</Text>
+              <Text style={[styles.subtitle, { color: weeklyBin.secondary }]}>Reports and council follow-up</Text>
             </View>
             <Pressable
               accessibilityLabel="Open settings"
               accessibilityRole="button"
               onPress={() => router.push('/settings')}
-              style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.groupedBackground }, pressed && styles.pressed]}>
-              <Ionicons color={theme.accent} name="settings-outline" size={21} />
+              style={({ pressed }) => [styles.iconButton, { backgroundColor: weeklyBin.control }, pressed && styles.pressed]}>
+              <Ionicons color={weeklyBin.accent ? weeklyBin.foreground : theme.accent} name="settings-outline" size={21} />
             </Pressable>
           </View>
         </SafeAreaView>
@@ -263,9 +275,10 @@ export default function ReportsScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 34, lineHeight: 40, fontWeight: '700', letterSpacing: -1.1 },
+  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: 'hidden' },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  kicker: { fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
+  title: { fontSize: 34, lineHeight: 40, fontWeight: '700', letterSpacing: -1.1, marginTop: 2 },
   subtitle: { fontSize: 15, lineHeight: 20, marginTop: 2 },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, paddingBottom: 112, gap: 14 },

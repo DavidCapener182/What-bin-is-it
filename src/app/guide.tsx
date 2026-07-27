@@ -15,6 +15,7 @@ import { GuideDestination, GuideItem, guideItemCount, searchGuide } from '@/lib/
 import { recyclingMaterialsLabel } from '@/lib/recycling-materials';
 import { Collection, CouncilService } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 
 type FindMode = 'guide' | 'services';
 type ServiceFilter = 'all' | 'nearest' | CouncilService['type'] | 'open' | 'item' | 'council' | 'accessible';
@@ -141,6 +142,7 @@ export default function GuideScreen() {
   const theme = useAppTheme();
   const styles = createStyles(theme);
   const { activeAddress, collections } = useAppData();
+  const weeklyBin = useWeeklyBinPalette(collections);
   const [mode, setMode] = useState<FindMode>('guide');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | undefined>();
@@ -205,10 +207,18 @@ export default function GuideScreen() {
         path="/guide"
       />
       <View style={styles.page}>
-        <SafeAreaView edges={['top']} style={styles.safe}>
-          <Text style={styles.kicker}>Guide</Text>
-          <Text style={styles.title}>What are you throwing away?</Text>
-          <Text style={styles.subtitle}>Search the recycling guide or find a verified local service.</Text>
+        <SafeAreaView
+          edges={['top']}
+          style={[
+            styles.safe,
+            {
+              backgroundColor: weeklyBin.background,
+              borderBottomColor: weeklyBin.accent ? weeklyBin.background : theme.separator,
+            },
+          ]}>
+          <Text style={[styles.kicker, { color: weeklyBin.foreground }]}>Guide</Text>
+          <Text style={[styles.title, { color: weeklyBin.foreground }]}>What are you throwing away?</Text>
+          <Text style={[styles.subtitle, { color: weeklyBin.secondary }]}>Search the recycling guide or find a verified local service.</Text>
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View accessibilityLabel="Guide section" accessibilityRole="tablist" style={styles.modePicker}>
@@ -289,8 +299,8 @@ export default function GuideScreen() {
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
   page: { flex: 1, backgroundColor: theme.background },
-  safe: { backgroundColor: theme.surface, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 21, borderBottomWidth: 1, borderBottomColor: theme.separator },
-  kicker: { color: theme.accent, fontFamily: appFonts.text, fontSize: 13, letterSpacing: 0, fontWeight: '700' },
+  safe: { backgroundColor: theme.surface, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 21, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: 'hidden' },
+  kicker: { fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
   title: { color: theme.text, fontFamily: appFonts.display, fontSize: 32, lineHeight: 38, fontWeight: '700', letterSpacing: -1.05, marginTop: 3 },
   subtitle: { color: theme.secondaryText, fontSize: 12.5, marginTop: 6, fontWeight: '500' },
   content: { padding: 18, paddingBottom: 122, gap: 17 },

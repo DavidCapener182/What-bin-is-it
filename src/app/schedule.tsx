@@ -22,6 +22,7 @@ import { WasteType } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useOnlineStatus } from '@/lib/use-online-status';
 import { useProductState } from '@/lib/use-product-state';
+import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 
 export default function ScheduleScreen() {
   const theme = useAppTheme();
@@ -40,6 +41,7 @@ export default function ScheduleScreen() {
   const [calendarWasteTypes, setCalendarWasteTypes] = useState<WasteType[]>([...wasteTypes]);
   const online = useOnlineStatus();
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
+  const weeklyBin = useWeeklyBinPalette(collections);
   const grouped = upcoming.reduce<Record<string, typeof collections>>((result, collection) => {
     result[collection.date] = [...(result[collection.date] ?? []), collection];
     return result;
@@ -104,18 +106,30 @@ export default function ScheduleScreen() {
         path="/schedule"
       />
       <View style={styles.page}>
-        <SafeAreaView edges={['top']} style={styles.safe}>
-          <Text style={styles.kicker}>Schedule</Text>
-          <Text style={styles.title}>Upcoming collections</Text>
+        <SafeAreaView
+          edges={['top']}
+          style={[
+            styles.safe,
+            {
+              backgroundColor: weeklyBin.background,
+              borderBottomColor: weeklyBin.accent ? weeklyBin.background : theme.separator,
+            },
+          ]}>
+          <Text style={[styles.kicker, { color: weeklyBin.foreground }]}>Schedule</Text>
+          <Text style={[styles.title, { color: weeklyBin.foreground }]}>Upcoming collections</Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/places')}
-            style={({ pressed }) => [styles.addressPill, pressed && styles.pressed]}>
-            <Ionicons color={theme.accent} name="location" size={16} />
-            <Text numberOfLines={1} style={styles.address}>
+            style={({ pressed }) => [
+              styles.addressPill,
+              { backgroundColor: weeklyBin.control },
+              pressed && styles.pressed,
+            ]}>
+            <Ionicons color={weeklyBin.accent ? weeklyBin.foreground : theme.accent} name="location" size={16} />
+            <Text numberOfLines={1} style={[styles.address, { color: weeklyBin.accent ? weeklyBin.foreground : theme.accent }]}>
               {activeAddress ? `${activeAddress.label} · ${activeAddress.postcode}` : 'Add an address'}
             </Text>
-            <Ionicons color={theme.accent} name="chevron-down" size={14} />
+            <Ionicons color={weeklyBin.accent ? weeklyBin.foreground : theme.accent} name="chevron-down" size={14} />
           </Pressable>
         </SafeAreaView>
 
@@ -298,8 +312,8 @@ export default function ScheduleScreen() {
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
   page: { flex: 1, backgroundColor: theme.background },
-  safe: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 22, backgroundColor: theme.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
-  kicker: { color: theme.accent, fontFamily: appFonts.text, fontSize: 13, letterSpacing: 0, fontWeight: '700' },
+  safe: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 22, backgroundColor: theme.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: 'hidden' },
+  kicker: { fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
   title: { color: theme.text, fontFamily: appFonts.display, fontSize: 32, lineHeight: 38, fontWeight: '700', letterSpacing: -1.05, marginTop: 3 },
   addressPill: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', maxWidth: '100%', gap: 6, backgroundColor: theme.accentSoft, borderRadius: 15, paddingHorizontal: 11, marginTop: 12 },
   address: { color: theme.accent, fontSize: 13, fontWeight: '700', flexShrink: 1 },
