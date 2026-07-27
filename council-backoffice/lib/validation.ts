@@ -41,7 +41,31 @@ export function isoDateTime(value: FormDataEntryValue | null, required = false) 
   return date.toISOString();
 }
 
-export function splitValues(value: FormDataEntryValue | null, maximum = 50) {
+export function isoDate(value: FormDataEntryValue | null, required = false) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw && !required) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new Error("Enter a valid date.");
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== raw) {
+    throw new Error("Enter a valid date.");
+  }
+  return raw;
+}
+
+export function safeEmail(value: FormDataEntryValue | null) {
+  const email = optionalText(value, 254)?.toLowerCase();
+  if (!email) return undefined;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    throw new Error("Enter a valid professional email address.");
+  }
+  return email;
+}
+
+export function splitValues(
+  value: FormDataEntryValue | null,
+  maximum = 50,
+  maximumItemLength = 120,
+) {
   if (typeof value !== "string") return [];
   const values = [...new Set(
     value
@@ -49,7 +73,7 @@ export function splitValues(value: FormDataEntryValue | null, maximum = 50) {
       .map((item) => item.trim())
       .filter(Boolean),
   )];
-  if (values.length > maximum || values.some((item) => item.length > 120)) {
+  if (values.length > maximum || values.some((item) => item.length > maximumItemLength)) {
     throw new Error(`Enter no more than ${maximum} short values.`);
   }
   return values;

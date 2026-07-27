@@ -29,13 +29,15 @@ export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
+  const localDevelopmentRequest = process.env.NODE_ENV !== "production"
+    && (request.nextUrl.hostname === "localhost" || request.nextUrl.hostname === "127.0.0.1");
   const requestHeaders = new Headers(request.headers);
   const csp = cspFor(nonce, supabaseUrl);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("content-security-policy", csp);
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
-  if (supabaseUrl && supabaseKey) {
+  if (supabaseUrl && supabaseKey && !localDevelopmentRequest) {
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookieOptions: {
         name: "what-bin-council-auth",

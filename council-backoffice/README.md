@@ -4,6 +4,19 @@ This is the private, separately deployed council back office for **What Bin Is I
 
 ## Product boundary
 
+The console has two deliberately separate levels.
+
+Platform superadmins can:
+
+- see the complete council estate before entering any individual authority;
+- enter a selected council portal explicitly;
+- manage a relationship CRM for councils, sponsors, partners and enterprise prospects;
+- record professional contacts with source, lawful-basis, suppression and retention controls;
+- see platform-wide sent, received and internal correspondence;
+- group correspondence by organisation, contact and thread;
+- manage opportunity stages, annual pipeline values and follow-up tasks; and
+- review mailbox-connection status without claiming that email sync is active when it is not.
+
 Council staff can:
 
 - review privacy-safe operational metrics;
@@ -17,6 +30,24 @@ Council staff can:
 - manage resident-facing authority identity.
 
 The console does **not** store resident addresses, postcodes, free-text missed-bin reports, IP addresses, user agents or push tokens.
+
+## Relationship CRM and correspondence
+
+The relationship CRM is a platform-owner workspace, not a resident case-management system and not part of an individual council portal. It stores professional business-contact details only.
+
+Manual correspondence recording is live for email, calls, SMS, LinkedIn, meetings and internal notes. It supports:
+
+- sent, received and internal directions;
+- organisation and professional-contact linking;
+- subjects, full message text, timestamps and delivery state;
+- external message IDs for future idempotent mailbox synchronisation;
+- attachment names without copying files into the CRM;
+- search and filters across organisations, contacts, channels and directions; and
+- a metadata-only audit event that does not duplicate message bodies or addresses.
+
+Automatic Gmail or Outlook capture is **not** represented as connected until a real OAuth mailbox integration is approved. OAuth access and refresh tokens must live in an approved server-side secret store; `bin_crm_mailbox_connections` contains connection state and a secret reference only.
+
+All CRM tables use the `bin_crm_*` prefix, have RLS enabled, and revoke `anon` and `authenticated` Data API grants. Platform-superadmin checks are repeated in every CRM page and server mutation.
 
 ## Local setup
 
@@ -51,7 +82,7 @@ Platform-wide access is a separate, explicit assignment:
 npm run platform-admin:bootstrap -- --email person@example.gov.uk
 ```
 
-Run it once without `--apply`, verify the exact existing Auth account, then repeat with `--apply`. A platform superadmin can switch across every active council tenant and receives owner-level permissions inside the selected tenant. No email domain or user metadata grants this access.
+Run it once without `--apply`, verify the exact existing Auth account, then repeat with `--apply`. A platform superadmin first lands on the global platform overview. Council content and operational tools stay hidden until the superadmin deliberately selects **Enter council portal**. Inside that selected tenant the platform superadmin receives owner-level permissions. No email domain or user metadata grants this access.
 
 ## Deployment
 

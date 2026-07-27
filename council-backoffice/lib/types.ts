@@ -127,3 +127,126 @@ export type AuditEvent = {
   summary: Record<string, unknown>;
   occurredAt: string;
 };
+
+export const crmAccountTypes = ["council", "sponsor", "partner", "enterprise"] as const;
+export type CrmAccountType = (typeof crmAccountTypes)[number];
+
+export const crmStages = [
+  "lead",
+  "contacted",
+  "discovery",
+  "proposal",
+  "pilot",
+  "won",
+  "lost",
+  "paused",
+] as const;
+export type CrmStage = (typeof crmStages)[number];
+
+export type CrmAccount = {
+  id: string;
+  accountType: CrmAccountType;
+  name: string;
+  councilOrganisationId?: string;
+  websiteUrl?: string;
+  stage: CrmStage;
+  annualValuePence?: number;
+  summary?: string;
+  ownerUserId?: string;
+  lastContactAt?: string;
+  nextFollowUpAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CrmContact = {
+  id: string;
+  accountId: string;
+  fullName: string;
+  jobTitle?: string;
+  professionalEmail?: string;
+  professionalPhone?: string;
+  linkedinUrl?: string;
+  preferredChannel: "email" | "phone" | "linkedin" | "meeting" | "none";
+  lawfulBasis: "legitimate-interests" | "consent" | "contract" | "public-task";
+  source: string;
+  doNotContact: boolean;
+  retentionReviewAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CrmActivity = {
+  id: string;
+  accountId: string;
+  contactId?: string;
+  contactName?: string;
+  kind: "email" | "call" | "meeting" | "note" | "proposal" | "demo" | "task-update";
+  direction: "inbound" | "outbound" | "internal";
+  subject: string;
+  summary: string;
+  occurredAt: string;
+  nextStep?: string;
+  nextFollowUpAt?: string;
+  createdAt: string;
+};
+
+export type CrmTask = {
+  id: string;
+  accountId: string;
+  contactId?: string;
+  contactName?: string;
+  title: string;
+  dueAt?: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  status: "open" | "in-progress" | "completed" | "cancelled";
+  completedAt?: string;
+  assignedTo?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CrmChannel = "email" | "phone" | "sms" | "linkedin" | "meeting" | "note";
+
+export type CrmMessage = {
+  id: string;
+  threadId: string;
+  accountId: string;
+  accountName: string;
+  contactId?: string;
+  contactName?: string;
+  direction: "sent" | "received" | "internal";
+  channel: CrmChannel;
+  senderAddress?: string;
+  recipientAddresses: string[];
+  subject: string;
+  body: string;
+  occurredAt: string;
+  deliveryStatus: "draft" | "sent" | "delivered" | "received" | "read" | "failed";
+  externalMessageId?: string;
+  attachmentNames: string[];
+  createdAt: string;
+};
+
+export type CrmThread = {
+  id: string;
+  accountId: string;
+  accountName: string;
+  contactId?: string;
+  contactName?: string;
+  channel: CrmChannel;
+  subject: string;
+  status: "open" | "waiting" | "closed" | "archived";
+  lastMessageAt?: string;
+  lastDirection?: "sent" | "received" | "internal";
+  messageCount: number;
+};
+
+export type CrmMailboxConnection = {
+  id: string;
+  provider: "gmail" | "outlook";
+  mailboxEmail: string;
+  status: "disconnected" | "pending" | "active" | "error" | "revoked";
+  lastSyncedAt?: string;
+  lastErrorCode?: string;
+};

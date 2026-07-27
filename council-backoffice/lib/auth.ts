@@ -1,4 +1,7 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { councilDatabase } from "./database";
@@ -28,6 +31,111 @@ type StaffRow = {
   sponsorship_label: string | null;
 };
 
+const developmentSuperadminCookie = "what-bin-council-dev-superadmin";
+
+function developmentSuperadminConfiguration() {
+  if (process.env.NODE_ENV === "production") return undefined;
+  const email = process.env.COUNCIL_BACKOFFICE_DEV_SUPERADMIN_EMAIL?.trim().toLowerCase();
+  const secret = process.env.COUNCIL_BACKOFFICE_DEV_SESSION_SECRET?.trim();
+  if (!email || !secret || secret.length < 32) return undefined;
+  return { email, secret };
+}
+
+async function isLocalDevelopmentRequest() {
+  if (process.env.NODE_ENV === "production") return false;
+  const requestHeaders = await headers();
+  const host = (
+    requestHeaders.get("x-forwarded-host")
+    ?? requestHeaders.get("host")
+    ?? ""
+  ).split(",")[0].trim().toLowerCase();
+  return /^localhost(?::\d+)?$/.test(host) || /^127\.0\.0\.1(?::\d+)?$/.test(host);
+}
+
+function signDevelopmentIdentity(payload: string, secret: string) {
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+async function developmentSuperadminIdentity() {
+  const configuration = developmentSuperadminConfiguration();
+  if (!configuration || !await isLocalDevelopmentRequest()) return undefined;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(developmentSuperadminCookie)?.value;
+  if (!token) return undefined;
+  const separator = token.lastIndexOf(".");
+  if (separator < 1) return undefined;
+  const encoded = token.slice(0, separator);
+  const suppliedSignature = token.slice(separator + 1);
+  const expectedSignature = signDevelopmentIdentity(encoded, configuration.secret);
+  const supplied = Buffer.from(suppliedSignature);
+  const expected = Buffer.from(expectedSignature);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as {
+      email?: unknown;
+      userId?: unknown;
+      issuedAt?: unknown;
+    };
+    if (
+      payload.email !== configuration.email
+      || typeof payload.userId !== "string"
+      || typeof payload.issuedAt !== "number"
+      || Date.now() - payload.issuedAt > 12 * 60 * 60 * 1_000
+    ) {
+      return undefined;
+    }
+    return { userId: payload.userId, email: configuration.email };
+  } catch {
+    return undefined;
+  }
+}
+
+export async function developmentSuperadminLoginAvailable() {
+  return Boolean(developmentSuperadminConfiguration() && await isLocalDevelopmentRequest());
+}
+
+export async function startDevelopmentSuperadminSession(email: string) {
+  const configuration = developmentSuperadminConfiguration();
+  if (
+    !configuration
+    || !await isLocalDevelopmentRequest()
+    || email.trim().toLowerCase() !== configuration.email
+  ) {
+    return false;
+  }
+  const sql = councilDatabase();
+  const rows = await sql<{ user_id: string }[]>`
+    SELECT platform_admin.user_id
+    FROM bin_council_platform_admins AS platform_admin
+    INNER JOIN auth.users AS user_account
+      ON user_account.id = platform_admin.user_id
+    WHERE lower(user_account.email) = ${configuration.email}
+      AND platform_admin.status = 'active'
+    LIMIT 1
+  `;
+  if (!rows[0]) return false;
+  const encoded = Buffer.from(JSON.stringify({
+    email: configuration.email,
+    userId: rows[0].user_id,
+    issuedAt: Date.now(),
+  })).toString("base64url");
+  const signature = signDevelopmentIdentity(encoded, configuration.secret);
+  const cookieStore = await cookies();
+  cookieStore.set(developmentSuperadminCookie, `${encoded}.${signature}`, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: false,
+    path: "/",
+    maxAge: 12 * 60 * 60,
+  });
+  return true;
+}
+
+export async function clearDevelopmentSuperadminSession() {
+  const cookieStore = await cookies();
+  cookieStore.delete(developmentSuperadminCookie);
+}
+
 function organisationFromRow(row: StaffRow): CouncilOrganisation {
   return {
     id: row.organisation_id,
@@ -45,6 +153,8 @@ function organisationFromRow(row: StaffRow): CouncilOrganisation {
 }
 
 export async function authenticatedCouncilIdentity() {
+  const developmentIdentity = await developmentSuperadminIdentity();
+  if (developmentIdentity) return developmentIdentity;
   const supabase = await createCouncilSupabaseServerClient();
   const { data, error } = await supabase.auth.getClaims();
   const claims = data?.claims;
@@ -148,5 +258,21 @@ export async function requireCouncilAction(permission: CouncilPermission) {
   const session = await getCouncilSession();
   if (!session) throw new Error("This account has not been assigned to an active council.");
   assertCouncilPermission(session.role, permission);
+  return session;
+}
+
+export async function requirePlatformAdminSession() {
+  const session = await requireCouncilSession("dashboard:view");
+  if (!session.platformAdmin) redirect("/");
+  return session;
+}
+
+export async function requirePlatformAdminAction() {
+  const identity = await authenticatedCouncilIdentity();
+  if (!identity) throw new Error("Your platform sign-in has expired.");
+  const session = await getCouncilSession();
+  if (!session?.platformAdmin) {
+    throw new Error("Platform superadmin access is required.");
+  }
   return session;
 }

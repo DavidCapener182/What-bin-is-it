@@ -6,7 +6,23 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { councilMemberships, authenticatedCouncilIdentity, requireCouncilAction } from "@/lib/auth";
+import {
+  authenticatedCouncilIdentity,
+  clearDevelopmentSuperadminSession,
+  councilMemberships,
+  requireCouncilAction,
+  requirePlatformAdminAction,
+  startDevelopmentSuperadminSession,
+} from "@/lib/auth";
+import {
+  createCrmAccount,
+  createCrmActivity,
+  createCrmContact,
+  createCrmMessage,
+  createCrmTask,
+  updateCrmAccountStage,
+  updateCrmTaskStatus,
+} from "@/lib/crm";
 import { councilDatabase } from "@/lib/database";
 import {
   createAnnouncement,
@@ -24,11 +40,14 @@ import { createCouncilSupabaseServerClient } from "@/lib/supabase/server";
 import {
   assertUuid,
   integerValue,
+  isoDate,
   isoDateTime,
   normaliseItemKey,
   optionalText,
   requiredText,
+  safeEmail,
   safeHttpsUrl,
+  safeReturnPath,
   selectedValues,
   splitValues,
 } from "@/lib/validation";
@@ -178,6 +197,13 @@ async function authorisedCouncilEmail(email: string) {
 export async function requestCouncilSignIn(formData: FormData) {
   const email = requiredText(formData.get("email"), "Email", 254).toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) redirect("/login?sent=1");
+  let developmentSessionStarted = false;
+  try {
+    developmentSessionStarted = await startDevelopmentSuperadminSession(email);
+  } catch {
+    // Local convenience access fails closed and the verified email flow remains available.
+  }
+  if (developmentSessionStarted) redirect("/");
   try {
     const permitted = await allowSignInAttempt(email);
     const authorised = permitted && await authorisedCouncilEmail(email);
@@ -201,6 +227,7 @@ export async function requestCouncilSignIn(formData: FormData) {
 export async function signOutCouncil() {
   const supabase = await createCouncilSupabaseServerClient();
   await supabase.auth.signOut({ scope: "local" });
+  await clearDevelopmentSuperadminSession();
   const cookieStore = await cookies();
   cookieStore.delete("what-bin-council-org");
   redirect("/login?signedOut=1");
@@ -222,7 +249,8 @@ export async function switchCouncil(formData: FormData) {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
-  redirect("/");
+  const returnTo = safeReturnPath(optionalText(formData.get("returnTo"), 200));
+  redirect(returnTo);
 }
 
 export async function saveAnnouncementAction(formData: FormData) {
@@ -467,4 +495,227 @@ export async function saveOrganisationBrandAction(formData: FormData) {
     redirect(errorPath(path, error));
   }
   redirect(successPath(path, "Council branding updated."));
+}
+
+export async function saveCrmAccountAction(formData: FormData) {
+  const path = "/crm";
+  let accountId: string | undefined;
+  try {
+    const session = await requirePlatformAdminAction();
+    const annualValuePounds = optionalText(formData.get("annualValuePounds"), 12)
+      ? integerValue(formData.get("annualValuePounds"), "Annual opportunity", 0, 10_000_000)
+      : undefined;
+    accountId = await createCrmAccount(session, {
+      accountType: allowedValue(
+        formData.get("accountType"),
+        ["council", "sponsor", "partner", "enterprise"] as const,
+        "Account type",
+      ),
+      name: requiredText(formData.get("name"), "Account name", 180),
+      websiteUrl: safeHttpsUrl(formData.get("websiteUrl")),
+      stage: allowedValue(
+        formData.get("stage"),
+        ["lead", "contacted", "discovery", "proposal", "pilot", "won", "lost", "paused"] as const,
+        "Stage",
+      ),
+      annualValuePence: annualValuePounds === undefined ? undefined : annualValuePounds * 100,
+      summary: optionalText(formData.get("summary"), 2000),
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(`/crm/${accountId}?saved=${encodeURIComponent("CRM account created.")}`);
+}
+
+export async function changeCrmAccountStageAction(formData: FormData) {
+  const accountId = assertUuid(requiredText(formData.get("accountId"), "Account", 36));
+  const path = `/crm/${accountId}`;
+  try {
+    const session = await requirePlatformAdminAction();
+    await updateCrmAccountStage(
+      session,
+      accountId,
+      allowedValue(
+        formData.get("stage"),
+        ["lead", "contacted", "discovery", "proposal", "pilot", "won", "lost", "paused"] as const,
+        "Stage",
+      ),
+    );
+    revalidatePath("/crm");
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Pipeline stage updated."));
+}
+
+export async function saveCrmContactAction(formData: FormData) {
+  const accountId = assertUuid(requiredText(formData.get("accountId"), "Account", 36));
+  const path = `/crm/${accountId}`;
+  try {
+    const session = await requirePlatformAdminAction();
+    await createCrmContact(session, {
+      accountId,
+      fullName: requiredText(formData.get("fullName"), "Contact name", 160),
+      jobTitle: optionalText(formData.get("jobTitle"), 160),
+      professionalEmail: safeEmail(formData.get("professionalEmail")),
+      professionalPhone: optionalText(formData.get("professionalPhone"), 40),
+      linkedinUrl: safeHttpsUrl(formData.get("linkedinUrl")),
+      preferredChannel: allowedValue(
+        formData.get("preferredChannel"),
+        ["email", "phone", "linkedin", "meeting", "none"] as const,
+        "Preferred channel",
+      ),
+      lawfulBasis: allowedValue(
+        formData.get("lawfulBasis"),
+        ["legitimate-interests", "consent", "contract", "public-task"] as const,
+        "Lawful basis",
+      ),
+      source: requiredText(formData.get("source"), "Contact source", 200),
+      doNotContact: formData.get("doNotContact") === "on",
+      retentionReviewAt: isoDate(formData.get("retentionReviewAt"), true)!,
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Professional contact saved."));
+}
+
+export async function saveCrmActivityAction(formData: FormData) {
+  const accountId = assertUuid(requiredText(formData.get("accountId"), "Account", 36));
+  const path = `/crm/${accountId}`;
+  try {
+    const session = await requirePlatformAdminAction();
+    const contact = optionalText(formData.get("contactId"), 36);
+    await createCrmActivity(session, {
+      accountId,
+      contactId: contact ? assertUuid(contact) : undefined,
+      kind: allowedValue(
+        formData.get("kind"),
+        ["email", "call", "meeting", "note", "proposal", "demo", "task-update"] as const,
+        "Activity type",
+      ),
+      direction: allowedValue(
+        formData.get("direction"),
+        ["inbound", "outbound", "internal"] as const,
+        "Direction",
+      ),
+      subject: requiredText(formData.get("subject"), "Subject", 180),
+      summary: requiredText(formData.get("summary"), "Conversation summary", 3000),
+      occurredAt: isoDateTime(formData.get("occurredAt"), true)!,
+      nextStep: optionalText(formData.get("nextStep"), 500),
+      nextFollowUpAt: isoDateTime(formData.get("nextFollowUpAt")),
+    });
+    revalidatePath("/crm");
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Conversation recorded."));
+}
+
+export async function saveCrmTaskAction(formData: FormData) {
+  const accountId = assertUuid(requiredText(formData.get("accountId"), "Account", 36));
+  const path = `/crm/${accountId}`;
+  try {
+    const session = await requirePlatformAdminAction();
+    const contact = optionalText(formData.get("contactId"), 36);
+    await createCrmTask(session, {
+      accountId,
+      contactId: contact ? assertUuid(contact) : undefined,
+      title: requiredText(formData.get("title"), "Follow-up", 200),
+      dueAt: isoDateTime(formData.get("dueAt")),
+      priority: allowedValue(
+        formData.get("priority"),
+        ["low", "normal", "high", "urgent"] as const,
+        "Priority",
+      ),
+    });
+    revalidatePath("/crm");
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Follow-up created."));
+}
+
+export async function changeCrmTaskStatusAction(formData: FormData) {
+  const accountId = assertUuid(requiredText(formData.get("accountId"), "Account", 36));
+  const path = `/crm/${accountId}`;
+  try {
+    const session = await requirePlatformAdminAction();
+    await updateCrmTaskStatus(
+      session,
+      assertUuid(requiredText(formData.get("taskId"), "Follow-up", 36)),
+      allowedValue(
+        formData.get("status"),
+        ["open", "in-progress", "completed", "cancelled"] as const,
+        "Follow-up status",
+      ),
+    );
+    revalidatePath("/crm");
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Follow-up status updated."));
+}
+
+export async function saveCrmMessageAction(formData: FormData) {
+  const accountId = assertUuid(requiredText(formData.get("accountId"), "Organisation", 36));
+  const path = "/crm/messages";
+  try {
+    const session = await requirePlatformAdminAction();
+    const contact = optionalText(formData.get("contactId"), 36);
+    const thread = optionalText(formData.get("threadId"), 36);
+    const direction = allowedValue(
+      formData.get("direction"),
+      ["sent", "received", "internal"] as const,
+      "Direction",
+    );
+    const deliveryStatus = allowedValue(
+      formData.get("deliveryStatus"),
+      ["draft", "sent", "delivered", "received", "read", "failed"] as const,
+      "Message status",
+    );
+    const validStatuses = {
+      sent: ["draft", "sent", "delivered", "failed"],
+      received: ["received", "read"],
+      internal: ["read"],
+    } as const;
+    if (!(validStatuses[direction] as readonly string[]).includes(deliveryStatus)) {
+      throw new Error(`Choose a valid status for a ${direction} message.`);
+    }
+    const recipientAddresses = splitValues(formData.get("recipientAddresses"), 25, 320);
+    if (direction === "sent" && !recipientAddresses.length) {
+      throw new Error("Record at least one recipient for a sent message.");
+    }
+    await createCrmMessage(session, {
+      threadId: thread ? assertUuid(thread) : undefined,
+      accountId,
+      contactId: contact ? assertUuid(contact) : undefined,
+      direction,
+      channel: allowedValue(
+        formData.get("channel"),
+        ["email", "phone", "sms", "linkedin", "meeting", "note"] as const,
+        "Channel",
+      ),
+      senderAddress: optionalText(formData.get("senderAddress"), 320),
+      recipientAddresses,
+      subject: requiredText(formData.get("subject"), "Subject", 300),
+      body: requiredText(formData.get("body"), "Message", 20_000),
+      occurredAt: isoDateTime(formData.get("occurredAt"), true)!,
+      deliveryStatus,
+      externalMessageId: optionalText(formData.get("externalMessageId"), 500),
+      attachmentNames: splitValues(formData.get("attachmentNames"), 25, 200),
+    });
+    revalidatePath("/crm");
+    revalidatePath(path);
+    revalidatePath(`/crm/${accountId}`);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Correspondence saved."));
 }

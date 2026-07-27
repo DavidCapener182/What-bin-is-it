@@ -6,8 +6,18 @@ export function councilDatabase() {
   const databaseUrl = process.env.BIN_DATABASE_URL?.trim();
   if (!databaseUrl) throw new Error("Council back-office storage is not configured.");
   if (!client) {
-    client = postgres(databaseUrl, {
-      max: 3,
+    const connectionUrl = new URL(databaseUrl);
+    if (process.env.NODE_ENV !== "production" && connectionUrl.port === "6543") {
+      // Supabase's session-mode pooler is steadier for a persistent local dev
+      // server. Production serverless functions continue to use transaction
+      // mode from the configured URL.
+      connectionUrl.port = "5432";
+    }
+    client = postgres(connectionUrl.toString(), {
+      // Vercel and local hot reload can create several application processes.
+      // One connection per process avoids exhausting the Supabase pooler while
+      // remaining ample for this low-volume private administration console.
+      max: 1,
       prepare: false,
       connect_timeout: 10,
       idle_timeout: 20,
