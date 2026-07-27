@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
@@ -21,6 +21,7 @@ import { useAccount } from '@/lib/use-account';
 export default function AccountScreen() {
   const theme = useAppTheme();
   const account = useAccount();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
 
   return (
@@ -39,15 +40,22 @@ export default function AccountScreen() {
           <View style={styles.headerButton} />
         </SafeAreaView>
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + 20, 28) }]}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
           <View style={[styles.hero, { backgroundColor: theme.hero }]}>
             <View style={styles.heroIcon}>
-              <Ionicons color="#FFFFFF" name="person-outline" size={26} />
+              <Ionicons color="#FFFFFF" name="person-outline" size={23} />
             </View>
-            <Text style={styles.heroTitle}>{account.user ? 'Your plan, wherever you use the app.' : 'A quick, password-free sign in.'}</Text>
-            <Text style={[styles.heroBody, { color: theme.heroSecondary }]}>
-              Your saved addresses stay on this device. The account keeps only your email and Free or Plus access.
-            </Text>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroTitle}>{account.user ? 'Your plan follows you.' : 'Sign in without a password.'}</Text>
+              <Text style={[styles.heroBody, { color: theme.heroSecondary }]}>
+                Keep Free or Plus access across devices. Your saved bin addresses stay on this device.
+              </Text>
+            </View>
           </View>
 
           {!account.configured ? (
@@ -102,9 +110,9 @@ export default function AccountScreen() {
             </>
           ) : (
             <View style={[styles.form, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-              <Text style={[styles.formTitle, { color: theme.text }]}>Sign in or create your account</Text>
+              <Text style={[styles.formTitle, { color: theme.text }]}>Continue with email</Text>
               <Text style={[styles.formBody, { color: theme.secondaryText }]}>
-                Enter your email and we’ll send a one-time secure link. There is no password to remember.
+                We’ll send you a one-time secure sign-in link.
               </Text>
               <Text style={[styles.inputLabel, { color: theme.secondaryText }]}>Email address</Text>
               <TextInput
@@ -134,7 +142,7 @@ export default function AccountScreen() {
                     </>}
               </Pressable>
               <Text style={[styles.smallPrint, { color: theme.secondaryText }]}>
-                Signing in creates a Free account if this email is new. It does not upload your saved addresses.
+                New here? We’ll create a Free account. Your saved addresses are never uploaded.
               </Text>
             </View>
           )}
@@ -155,7 +163,7 @@ export default function AccountScreen() {
           <View style={[styles.privacy, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
             <Ionicons color={theme.accent} name="lock-closed-outline" size={20} />
             <Text style={[styles.privacyText, { color: theme.secondaryText }]}>
-              Supabase securely handles sign-in. What Bin stores the minimum account and plan record needed to restore access; Stripe, Apple or Google handles payment details.
+              Secure sign-in by Supabase. Payment details stay with Stripe, Apple or Google.
             </Text>
           </View>
         </ScrollView>
@@ -169,11 +177,12 @@ const styles = StyleSheet.create({
   header: { height: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
   headerButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700' },
-  content: { padding: 16, paddingBottom: 48, gap: 16 },
-  hero: { borderRadius: 24, padding: 22 },
-  heroIcon: { width: 50, height: 50, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 33, letterSpacing: -0.6, fontWeight: '700', marginTop: 18 },
-  heroBody: { fontSize: 14.5, lineHeight: 20, fontWeight: '500', marginTop: 9 },
+  content: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 12, gap: 12 },
+  hero: { borderRadius: 21, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 13 },
+  heroIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
+  heroCopy: { flex: 1, minWidth: 0 },
+  heroTitle: { color: '#FFFFFF', fontSize: 21, lineHeight: 25, letterSpacing: -0.35, fontWeight: '700' },
+  heroBody: { fontSize: 13, lineHeight: 18, fontWeight: '500', marginTop: 4 },
   notice: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
   noticeText: { flex: 1, fontSize: 14, lineHeight: 20 },
   group: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 17, overflow: 'hidden' },
@@ -182,21 +191,21 @@ const styles = StyleSheet.create({
   rowCopy: { flex: 1 },
   rowLabel: { fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
   rowValue: { fontSize: 15, lineHeight: 20, fontWeight: '700', marginTop: 2 },
-  form: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 17, padding: 17 },
+  form: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 17, padding: 16 },
   formTitle: { fontSize: 19, lineHeight: 24, fontWeight: '700' },
   formBody: { fontSize: 14, lineHeight: 20, marginTop: 6 },
-  inputLabel: { fontSize: 12.5, lineHeight: 17, fontWeight: '600', marginTop: 18, marginBottom: 7 },
+  inputLabel: { fontSize: 12.5, lineHeight: 17, fontWeight: '600', marginTop: 14, marginBottom: 7 },
   input: { minHeight: 52, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 14, fontSize: 16 },
   primaryButton: { minHeight: 52, borderRadius: 14, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15.5, fontWeight: '700' },
-  smallPrint: { fontSize: 12, lineHeight: 17, marginTop: 12 },
+  smallPrint: { fontSize: 12, lineHeight: 17, marginTop: 10 },
   secondaryButton: { minHeight: 50, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   secondaryButtonText: { fontSize: 15, fontWeight: '700' },
   signOut: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   signOutText: { fontSize: 15, fontWeight: '700' },
   message: { borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   messageText: { flex: 1, fontSize: 13.5, lineHeight: 19, fontWeight: '600' },
-  privacy: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, padding: 15, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  privacy: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   privacyText: { flex: 1, fontSize: 12.5, lineHeight: 18 },
   pressed: { opacity: 0.65 },
   disabled: { opacity: 0.5 },

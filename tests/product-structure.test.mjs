@@ -62,6 +62,16 @@ test('keeps the Today answer hero compact on a phone viewport', () => {
   assert.match(today, /countdownOrb: \{ height: 72, width: 72, borderRadius: 36/);
 });
 
+test('keeps the account form compact and keyboard-safe on shorter phones', () => {
+  const account = read('src/app/account.tsx');
+  assert.match(account, /automaticallyAdjustKeyboardInsets/);
+  assert.match(account, /keyboardDismissMode="on-drag"/);
+  assert.match(account, /style=\{styles\.heroCopy\}/);
+  assert.match(account, /hero: \{[^}]*flexDirection: 'row'/);
+  assert.match(account, /heroTitle: \{[^}]*fontSize: 21/);
+  assert.doesNotMatch(account, /A quick, password-free sign in\./);
+});
+
 test('anchors the web navigation dock to the full visual viewport', () => {
   const html = read('src/app/+html.tsx');
   const shell = read('src/components/app-shell.tsx');
