@@ -7,6 +7,7 @@ import { sortCollections } from '@/lib/data';
 import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
 import { Collection, DisruptionAlert, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { syncHomeScreenWidget } from '@/widgets/home-screen-widget-sync';
 
 const storageKey = '@what-bin-is-it-tonight/state-v4';
@@ -320,6 +321,7 @@ async function loadState() {
 }
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
+  const { eraseAnalytics, track } = usePilotAnalytics();
   const [state, setState] = useState<State>(buildInitialState);
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -356,6 +358,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             ? 'error'
             : 'empty';
   const refreshAddress = useCallback(async (targetAddress: SavedAddress, clearExisting: boolean): Promise<CollectionRefreshOutcome> => {
+    const startedAt = Date.now();
+    track('collection_lookup_started', {
+      councilId: targetAddress.providerId,
+      context: clearExisting ? 'address-add' : 'refresh',
+    });
     setRefreshing(true);
     if (clearExisting) {
       setState((current) => ({
@@ -398,6 +405,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           },
         },
       }));
+      track('collection_lookup_succeeded', {
+        councilId: targetAddress.providerId,
+        context: clearExisting ? 'address-add' : 'refresh',
+        outcome: 'success',
+        durationMs: Math.min(120_000, Date.now() - startedAt),
+        metricValue: Math.min(1000, collections.length),
+      });
+      track('verified_dates_shown', {
+        councilId: targetAddress.providerId,
+        outcome: 'success',
+      });
       return { verified: true, message: sourceStatus };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'We could not refresh your collection schedule.';
@@ -417,11 +435,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           },
         },
       }));
+      track('collection_lookup_failed', {
+        councilId: targetAddress.providerId,
+        context: clearExisting ? 'address-add' : 'refresh',
+        outcome: 'failure',
+        durationMs: Math.min(120_000, Date.now() - startedAt),
+        reasonCode: /not found|no dated|no collection/i.test(message)
+          ? 'not-found'
+          : /timed out|too long/i.test(message)
+            ? 'timeout'
+            : /not connected|unsupported/i.test(message)
+              ? 'unsupported'
+              : 'unavailable',
+      });
       return { verified: false, message };
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [track]);
 
   useEffect(() => {
     const metadataNeedsRefresh = (
@@ -445,6 +476,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   ]);
 
   const addAddress = useCallback(async (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => {
+    if (address.councilAddressId) {
+      track('exact_address_selected', {
+        councilId: address.providerId,
+        context: 'exact-address',
+        outcome: 'success',
+      });
+    }
     const exactExisting = address.councilAddressId
       ? state.addresses.find((savedAddress) => (
           savedAddress.providerId === address.providerId
@@ -503,7 +541,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
     autoRefreshAttempts.current.add(targetAddress.id);
     return refreshAddress(targetAddress, true);
-  }, [refreshAddress, state.addresses]);
+  }, [refreshAddress, state.addresses, track]);
 
   const value = useMemo<AppDataContextValue>(() => ({
     addresses: state.addresses,
@@ -527,10 +565,21 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     )),
     removeAddress: (id) => setState((current) => removeAddressFromState(current, id)),
     addAddress,
-    updatePreferences: (next) => setState((current) => ({
-      ...current,
-      preferences: { ...current.preferences, ...next },
-    })),
+    updatePreferences: (next) => setState((current) => {
+      if (
+        typeof next.enabled === 'boolean'
+        && next.enabled !== current.preferences.enabled
+      ) {
+        track(next.enabled ? 'reminders_enabled' : 'reminders_disabled', {
+          councilId: activeAddress?.providerId,
+          outcome: next.enabled ? 'enabled' : 'disabled',
+        });
+      }
+      return {
+        ...current,
+        preferences: { ...current.preferences, ...next },
+      };
+    }),
     toggleWasteType: (type) => setState((current) => ({
       ...current,
       preferences: {
@@ -563,6 +612,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
     },
     clearAllAppData: async () => {
+      await eraseAnalytics(true);
       await AsyncStorage.multiRemove([storageKey, previousStorageKey, olderStorageKey, legacyStorageKey]);
       setState(buildInitialState());
       autoRefreshAttempts.current.clear();
@@ -578,6 +628,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     activeSchedule.sourceStatus,
     addAddress,
     collectionDataState,
+    eraseAnalytics,
     ready,
     refreshAddress,
     refreshing,
@@ -585,6 +636,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     state.addresses,
     state.schedulesByAddressId,
     state.preferences,
+    track,
   ]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

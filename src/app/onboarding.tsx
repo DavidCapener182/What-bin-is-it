@@ -22,6 +22,7 @@ import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { useAppTheme } from '@/lib/theme';
 import { CouncilAddressOption } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
 
 const totalSteps = 8;
@@ -30,6 +31,7 @@ const reminderTimes = [18, 19, 20, 21];
 export default function OnboardingScreen() {
   const theme = useAppTheme();
   const { addAddress } = useAppData();
+  const analytics = usePilotAnalytics();
   const { completeOnboarding, skipOnboarding, updatePlaceReminders } = useProductState();
   const [step, setStep] = useState(0);
   const [postcode, setPostcode] = useState('');
@@ -48,6 +50,7 @@ export default function OnboardingScreen() {
   }
 
   async function findAddress() {
+    analytics.track('postcode_lookup_started', { context: 'manual' });
     setBusy(true);
     try {
       const resolved = await lookupPostcode(postcode);
@@ -61,8 +64,26 @@ export default function OnboardingScreen() {
       setPlace(resolved);
       setAddresses(options);
       setSelectedAddress(options.length === 1 ? options[0] : undefined);
+      analytics.track('postcode_lookup_succeeded', {
+        councilId: resolved.providerId,
+        context: 'manual',
+        outcome: 'success',
+      });
+      analytics.track('address_options_loaded', {
+        councilId: resolved.providerId,
+        context: options.length ? 'exact-address' : 'postcode-only',
+        outcome: 'success',
+        metricValue: Math.min(1000, options.length),
+      });
       setStep(2);
     } catch (error) {
+      analytics.track('postcode_lookup_failed', {
+        context: 'manual',
+        outcome: 'failure',
+        reasonCode: /postcode/i.test(error instanceof Error ? error.message : '')
+          ? 'invalid-postcode'
+          : 'unavailable',
+      });
       Alert.alert('Could not find that address', error instanceof Error ? error.message : 'Check the postcode and try again.');
     } finally {
       setBusy(false);
@@ -165,6 +186,25 @@ export default function OnboardingScreen() {
                   </View>
                 ))}
               </View>
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityState={{ checked: analytics.enabled }}
+                onPress={() => void analytics.setEnabled(!analytics.enabled)}
+                style={[styles.evidenceChoice, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                <View style={styles.evidenceCopy}>
+                  <Text style={[styles.evidenceTitle, { color: theme.text }]}>Help improve local bin services</Text>
+                  <Text style={[styles.evidenceText, { color: theme.secondaryText }]}>
+                    Optional anonymous app evidence only. We never include your postcode, address, location, search words or report notes.
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                  pointerEvents="none"
+                  trackColor={{ false: theme.tertiaryText, true: theme.accent }}
+                  value={analytics.enabled}
+                />
+              </Pressable>
               <Pressable accessibilityRole="button" onPress={() => setStep(1)} style={[styles.primary, { backgroundColor: theme.accent }]}>
                 <Text style={styles.primaryText}>Get started</Text>
               </Pressable>
@@ -356,6 +396,10 @@ const styles = StyleSheet.create({
   promise: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, padding: 15, gap: 14 },
   promiseRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   promiseText: { fontSize: 15, fontWeight: '600' },
+  evidenceChoice: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  evidenceCopy: { flex: 1 },
+  evidenceTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  evidenceText: { fontSize: 12.5, lineHeight: 17, marginTop: 4 },
   primary: { minHeight: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 'auto', paddingHorizontal: 16 },
   primaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   postcodeInput: { height: 56, borderRadius: 13, borderWidth: 1, paddingHorizontal: 15, fontSize: 18, fontWeight: '600' },

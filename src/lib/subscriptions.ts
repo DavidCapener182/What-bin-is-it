@@ -39,6 +39,10 @@ export async function presentSubscriptionManagement(): Promise<SubscriptionSnaps
   return unavailableSubscriptionSnapshot;
 }
 
+export async function identifySubscriptionUser(_userId?: string): Promise<SubscriptionSnapshot> {
+  return unavailableSubscriptionSnapshot;
+}
+
 export function listenForSubscriptionChanges(_listener: SubscriptionListener) {
   return () => undefined;
 }

@@ -12,12 +12,12 @@ export function LaunchSplash() {
     const timer = setTimeout(() => {
       Animated.timing(opacity, {
         toValue: 0,
-        duration: 320,
+        duration: 640,
         useNativeDriver: Platform.OS !== 'web',
       }).start(({ finished }) => {
         if (finished) setVisible(false);
       });
-    }, 900);
+    }, 1800);
 
     return () => {
       clearTimeout(timer);

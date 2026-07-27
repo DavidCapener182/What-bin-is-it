@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,6 +23,7 @@ import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { shareSavedPlace } from '@/lib/schedule-tools';
 import { CouncilAddressOption, SavedAddress } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useSubscription } from '@/lib/use-subscription';
 
 type AddressChoice = {
@@ -40,6 +42,7 @@ export default function PlacesScreen() {
   const styles = createStyles(theme);
   const params = useLocalSearchParams<{ postcode?: string }>();
   const { addresses, activeAddress, addAddress, removeAddress, setActiveAddress, refreshCollections, refreshing } = useAppData();
+  const analytics = usePilotAnalytics();
   const subscription = useSubscription();
   const initialPostcode = typeof params.postcode === 'string' ? params.postcode : '';
   const initialLookupHandled = useRef(false);
@@ -94,6 +97,12 @@ export default function PlacesScreen() {
   async function continueWithResolvedPlace(result: ResolvedPlace) {
     if (result.providerId && result.providerId !== 'unconnected') {
       const councilAddresses = await fetchCouncilAddresses(result.postcode, result.providerId);
+      analytics.track('address_options_loaded', {
+        councilId: result.providerId,
+        context: councilAddresses.length ? 'exact-address' : 'postcode-only',
+        outcome: 'success',
+        metricValue: Math.min(1000, councilAddresses.length),
+      });
       if (councilAddresses.length === 1) {
         await saveResolvedPlace(result, councilAddresses[0]);
         return;
@@ -109,14 +118,30 @@ export default function PlacesScreen() {
 
   async function addPlace(postcodeValue = postcode) {
     if (!isUkPostcode(postcodeValue)) {
+      analytics.track('postcode_lookup_failed', {
+        context: 'manual',
+        outcome: 'failure',
+        reasonCode: 'invalid-postcode',
+      });
       Alert.alert('Add a full postcode', 'Enter a postcode such as M1 1AE to find its local authority.');
       return;
     }
+    analytics.track('postcode_lookup_started', { context: 'manual' });
     setLookupMode('postcode');
     try {
       const result = await lookupPostcode(postcodeValue);
+      analytics.track('postcode_lookup_succeeded', {
+        councilId: result.providerId,
+        context: 'manual',
+        outcome: 'success',
+      });
       await continueWithResolvedPlace(result);
     } catch (error) {
+      analytics.track('postcode_lookup_failed', {
+        context: 'manual',
+        outcome: 'failure',
+        reasonCode: 'unavailable',
+      });
       Alert.alert('Could not add this place', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
       setLookupMode(undefined);
@@ -145,9 +170,16 @@ export default function PlacesScreen() {
   }, [initialPostcode]);
 
   function confirmRemoveAddress(address: SavedAddress) {
+    const message = `${address.line1} and its saved collection dates will be removed from this device.`;
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(`Remove ${address.label}?\n\n${message}`)) {
+        removeAddress(address.id);
+      }
+      return;
+    }
     Alert.alert(
       `Remove ${address.label}?`,
-      `${address.line1} and its saved collection dates will be removed from this device.`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => removeAddress(address.id) },
@@ -156,12 +188,25 @@ export default function PlacesScreen() {
   }
 
   async function useCurrentLocation() {
+    analytics.track('postcode_lookup_started', { context: 'location' });
     setLookupMode('location');
     try {
       const coordinates = await getDeviceCoordinates();
       const result = await lookupNearestPostcode(coordinates.latitude, coordinates.longitude);
+      analytics.track('postcode_lookup_succeeded', {
+        councilId: result.providerId,
+        context: 'location',
+        outcome: 'success',
+      });
       await continueWithResolvedPlace(result);
     } catch (error) {
+      analytics.track('postcode_lookup_failed', {
+        context: 'location',
+        outcome: 'failure',
+        reasonCode: /permission/i.test(error instanceof Error ? error.message : '')
+          ? 'permission-denied'
+          : 'unavailable',
+      });
       Alert.alert('Could not use your location', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
       setLookupMode(undefined);
@@ -280,14 +325,14 @@ export default function PlacesScreen() {
                     key={address.id}
                     overshootRight={false}
                     renderRightActions={() => (
-                      <Pressable
+                      <GesturePressable
                         accessibilityLabel={`Remove ${address.label}`}
                         accessibilityRole="button"
                         onPress={() => confirmRemoveAddress(address)}
                         style={({ pressed }) => [styles.removeAction, pressed && styles.removeActionPressed]}>
                         <Ionicons color="#FFFFFF" name="trash-outline" size={21} />
                         <Text style={styles.removeActionText}>Remove</Text>
-                      </Pressable>
+                      </GesturePressable>
                     )}
                     rightThreshold={44}>
                     <Pressable accessibilityLabel={`Use ${address.label}, ${address.postcode}`} accessibilityHint="Swipe left to reveal the remove action" accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setActiveAddress(address.id)} style={({ pressed }) => [styles.placeCard, index !== addresses.length - 1 && styles.placeBorder, active && styles.placeActive, pressed && styles.pressed]}>

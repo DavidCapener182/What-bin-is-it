@@ -15,6 +15,7 @@ import { GuideDestination, GuideItem, guideItemCount, searchGuide } from '@/lib/
 import { recyclingMaterialsLabel } from '@/lib/recycling-materials';
 import { Collection, CouncilService } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 
 type FindMode = 'guide' | 'services';
@@ -142,6 +143,7 @@ export default function GuideScreen() {
   const theme = useAppTheme();
   const styles = createStyles(theme);
   const { activeAddress, collections } = useAppData();
+  const analytics = usePilotAnalytics();
   const weeklyBin = useWeeklyBinPalette(collections);
   const [mode, setMode] = useState<FindMode>('guide');
   const [query, setQuery] = useState('');
@@ -171,8 +173,19 @@ export default function GuideScreen() {
     if (!activeAddress) return;
     setFinding(true);
     try {
-      setServices(await fetchNearbyServices(activeAddress));
+      const found = await fetchNearbyServices(activeAddress);
+      setServices(found);
+      analytics.track('local_services_succeeded', {
+        councilId: activeAddress.providerId,
+        outcome: 'success',
+        metricValue: Math.min(1000, found.length),
+      });
     } catch (error) {
+      analytics.track('local_services_failed', {
+        councilId: activeAddress.providerId,
+        outcome: 'failure',
+        reasonCode: 'unavailable',
+      });
       Alert.alert('Could not find local services', error instanceof Error ? error.message : 'Please try again in a moment.');
     } finally {
       setFinding(false);
@@ -190,6 +203,20 @@ export default function GuideScreen() {
   function selectGuideItem(item: GuideItem) {
     setSelected(selected === item.id ? undefined : item.id);
     setRecent((current) => [item.name, ...current.filter((name) => name !== item.name)].slice(0, 4));
+    analytics.track('guide_result_selected', {
+      councilId: activeAddress?.providerId,
+      context: item.destination,
+      outcome: 'success',
+    });
+  }
+
+  function recordGuideSearch() {
+    if (!query.trim()) return;
+    analytics.track(results.length ? 'guide_search_matched' : 'guide_search_no_match', {
+      councilId: activeAddress?.providerId,
+      outcome: results.length ? 'matched' : 'no-match',
+      metricValue: Math.min(1000, results.length),
+    });
   }
 
   function switchToServices(item?: GuideItem) {
@@ -256,7 +283,7 @@ export default function GuideScreen() {
           {mode === 'guide' ? (
             <>
             <View nativeID="guide-panel" style={styles.panel}>
-              <View style={styles.searchBox}><Ionicons color={theme.secondaryText} name="search" size={19} /><TextInput accessibilityLabel="Search household items" autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" onChangeText={(value) => { setQuery(value); setSelected(undefined); }} placeholder={`Search ${guideItemCount}+ household items…`} placeholderTextColor={theme.tertiaryText} returnKeyType="search" style={styles.input} value={query} /></View>
+              <View style={styles.searchBox}><Ionicons color={theme.secondaryText} name="search" size={19} /><TextInput accessibilityLabel="Search household items" autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" onChangeText={(value) => { setQuery(value); setSelected(undefined); }} onSubmitEditing={recordGuideSearch} placeholder={`Search ${guideItemCount}+ household items…`} placeholderTextColor={theme.tertiaryText} returnKeyType="search" style={styles.input} value={query} /></View>
               {!query && <View style={styles.chips}><Text style={styles.chipsLabel}>Popular</Text>{['Batteries', 'Pizza box', 'Vapes', 'Mattress'].map((chip) => <Pressable accessibilityLabel={`Search for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></Pressable>)}</View>}
               {!query && recent.length ? <View style={styles.chips}><Text style={styles.chipsLabel}>Recent</Text>{recent.map((chip) => <Pressable accessibilityLabel={`Search again for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.recentChip}><Text style={styles.recentChipText}>{chip}</Text></Pressable>)}</View> : null}
               <View accessibilityLiveRegion="polite" style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : `${guideItemCount} items`}</Text><Text style={styles.sectionTitle}>{query ? 'Best route' : 'Common household items'}</Text></View><View style={styles.checkPill}><Ionicons color={theme.warning} name="alert-circle-outline" size={14} /><Text style={styles.checkText}>Check locally</Text></View></View>

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
+import { WebSupporterOffer } from '@/components/web-supporter-offer';
 import { commercialLaunchPhase, residentPaymentsEnabled } from '@/lib/commercial-offer';
 import { appFonts } from '@/lib/design-system';
 import { useAppTheme } from '@/lib/theme';
@@ -35,7 +36,7 @@ export default function PlusScreen() {
     <AppShell activeRoute="/settings" hideNavigation>
       <RouteHead
         title="What Bin? Plus"
-        description="Optional household convenience features for the native What Bin Is It Tonight? app."
+        description="Optional support and household convenience features for What Bin Is It Tonight?"
         path="/plus"
       />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -91,7 +92,9 @@ export default function PlusScreen() {
             </View>
           ) : null}
 
-          {paymentsEnabled ? (
+          {Platform.OS === 'web' ? (
+            <WebSupporterOffer />
+          ) : paymentsEnabled ? (
             <View style={styles.actions}>
               <Pressable
                 accessibilityRole="button"
@@ -135,7 +138,9 @@ export default function PlusScreen() {
           )}
 
           <Text style={[styles.terms, { color: theme.secondaryText }]}>
-            Plans and local prices are shown by Apple or Google before purchase. Subscriptions renew unless cancelled in your store account. Restore is always user initiated.
+            {Platform.OS === 'web'
+              ? 'Web supporter prices are shown before Stripe checkout. Recurring support renews unless cancelled in Stripe’s billing portal.'
+              : 'Plans and local prices are shown by Apple or Google before purchase. Subscriptions renew unless cancelled in your store account. Restore is always user initiated.'}
           </Text>
           <View style={styles.legalLinks}>
             <Pressable accessibilityRole="link" onPress={() => router.push('/terms')}><Text style={[styles.link, { color: theme.accent }]}>Terms</Text></Pressable>

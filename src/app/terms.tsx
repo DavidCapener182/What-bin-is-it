@@ -31,8 +31,12 @@ export default function TermsScreen() {
           body: 'Verified collection information, one saved address, the standard reminder, recycling guidance, local services, service alerts and the basic missed-bin route remain free. Where What Bin? Plus is enabled, it adds optional multi-address, reminder, history, calendar, sharing, widget and support conveniences without restricting those essentials.',
         },
         {
+          title: 'Accounts',
+          body: 'An account is optional for free collection information but required to buy, restore or sync Plus access. New accounts start on the Free plan. Keep access to the email address used for sign-in and do not share a sign-in link. Saved household addresses remain on the device and are not part of the account.',
+        },
+        {
           title: 'Subscriptions and purchases',
-          body: 'Native Plus purchases are processed by Apple App Store or Google Play. The store shows the current local price and billing period before you confirm. Monthly and annual subscriptions renew automatically unless cancelled through your store account at least 24 hours before renewal, subject to the store terms shown at purchase. A lifetime product, if offered, is a one-time purchase tied to the purchasing store account and supported platform. Use Restore purchases in the app to recover an eligible purchase. Refunds, billing and cancellation are handled under the applicable store rules.',
+          body: 'Web Plus purchases are processed by Stripe; native purchases are processed by Apple App Store or Google Play. The checkout or store shows the current price and billing period before you confirm. Monthly and annual subscriptions renew automatically unless cancelled through the relevant billing portal or store account, subject to the terms shown at purchase. A lifetime product, if offered, is a one-time purchase. Sign in and use Restore purchases where available to recover eligible access. Refunds, billing and cancellation are handled under the applicable payment-provider rules.',
         },
         {
           title: 'External services',
@@ -48,7 +52,7 @@ export default function TermsScreen() {
         },
       ]}
       title="Terms"
-      updated="26 July 2026"
+      updated="27 July 2026"
     />
   );
 }

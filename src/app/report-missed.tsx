@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,12 +15,14 @@ import {
 } from '@/lib/council-reporting';
 import { useAppTheme } from '@/lib/theme';
 import { useAppData } from '@/lib/use-app-data';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
 
 export default function ReportMissedScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ collectionId?: string }>();
   const { activeAddress, collections } = useAppData();
+  const analytics = usePilotAnalytics();
   const { markCollection, outcomeFor, reports, saveReport } = useProductState();
   const collection = useMemo(() => (
     collections.find((item) => item.id === params.collectionId)
@@ -42,6 +44,27 @@ export default function ReportMissedScreen() {
   const [notOverweight, setNotOverweight] = useState(false);
   const [neighboursCollected, setNeighboursCollected] = useState<'yes' | 'no' | 'unknown'>('unknown');
   const [notes, setNotes] = useState('');
+  const eligibilityRecorded = useRef<string | undefined>(undefined);
+  const analyticsEligibility = activeAddress && collection
+    ? evaluateMissedReportEligibility(activeAddress, collection)
+    : undefined;
+  const analyticsCapability = activeAddress ? reportingCapability(activeAddress) : undefined;
+
+  useEffect(() => {
+    if (
+      !analyticsEligibility?.eligible
+      || !analyticsCapability
+      || !activeAddress
+      || !collection
+      || eligibilityRecorded.current === collection.id
+    ) return;
+    eligibilityRecorded.current = collection.id;
+    analytics.track('missed_report_eligible', {
+      councilId: activeAddress.providerId,
+      context: analyticsCapability.method === 'direct-api' ? 'direct-api' : 'council-website',
+      outcome: 'eligible',
+    });
+  }, [activeAddress, analytics, analyticsCapability, analyticsEligibility?.eligible, collection]);
 
   if (!activeAddress || !collection) {
     return (
@@ -126,6 +149,11 @@ export default function ReportMissedScreen() {
       `Local tracking ID: ${report.localTrackingId}`,
     ].filter(Boolean).join('\n'));
     await Linking.openURL(report.officialServiceUrl);
+    analytics.track('missed_report_route_opened', {
+      councilId: activeAddress.providerId,
+      context: capability.method === 'direct-api' ? 'direct-api' : 'council-website',
+      outcome: 'opened',
+    });
     router.replace('/reports');
   }
 

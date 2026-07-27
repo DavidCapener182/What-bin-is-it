@@ -23,6 +23,8 @@ import { requestNotificationPermission } from '@/lib/notifications';
 import { useAppTheme } from '@/lib/theme';
 import { AppearancePreference, PlaceReminderPreferences, WasteType } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { useAccount } from '@/lib/use-account';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
 import { useSubscription } from '@/lib/use-subscription';
 
@@ -117,6 +119,8 @@ export default function SettingsScreen() {
   } = useProductState();
   const [busy, setBusy] = useState(false);
   const subscription = useSubscription();
+  const account = useAccount();
+  const analytics = usePilotAnalytics();
   const placePreferences = reminderPreferencesFor(activeAddress?.id);
   const presentWasteTypes = new Set(collections.map((collection) => collection.wasteType));
   const relevantWasteTypes = collections.length
@@ -181,17 +185,23 @@ export default function SettingsScreen() {
   }
 
   function confirmClear() {
+    const message = 'This removes saved addresses, schedules, reminder settings, activity, anonymous app evidence, and local report tracking from this device. It cannot be undone.';
+    const clear = () => {
+      void Promise.all([clearAllAppData(), clearProductData()]).then(() => router.replace('/onboarding'));
+    };
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(`Clear all app data?\n\n${message}`)) clear();
+      return;
+    }
     Alert.alert(
       'Clear all app data?',
-      'This removes saved addresses, schedules, reminder settings, activity, and local report tracking from this device. It cannot be undone.',
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear all data',
           style: 'destructive',
-          onPress: () => {
-            void Promise.all([clearAllAppData(), clearProductData()]).then(() => router.replace('/onboarding'));
-          },
+          onPress: clear,
         },
       ],
     );
@@ -349,10 +359,16 @@ export default function SettingsScreen() {
             ) : null}
           </View>
 
-          {residentPaymentsEnabled() ? (
+          {residentPaymentsEnabled() || Platform.OS === 'web' ? (
             <View style={styles.section}>
-              <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Plan</Text>
+              <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Account and plan</Text>
               <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                <Row
+                  detail={account.user?.email ?? 'Optional sign-in to sync Free or Plus access'}
+                  icon={account.user ? 'person-circle-outline' : 'person-add-outline'}
+                  onPress={() => router.push('/account')}
+                  title={account.user ? 'Your account' : 'Sign in'}
+                />
                 <Row
                   detail={subscription.isPlus ? 'Plus active · manage or restore purchases' : 'Free plan · optional household conveniences'}
                   icon={subscription.isPlus ? 'checkmark-circle-outline' : 'sparkles-outline'}
@@ -410,12 +426,24 @@ export default function SettingsScreen() {
               <Row detail={activeAddress?.councilName ?? 'Add an address to connect its council'} icon="business-outline" onPress={() => router.push('/schedule')} title="Council" />
               <Row detail={lastVerifiedAt ? new Date(lastVerifiedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : sourceStatus} icon="refresh-outline" onPress={() => void refreshCollections()} title="Refresh verified dates" />
               <Row detail="See how council dates, locations and report routes are sourced" icon="server-outline" onPress={() => router.push('/data-sources')} title="View data sources" />
+              <ToggleRow
+                detail="Optional app evidence without your postcode, address, location, search words or report notes"
+                onChange={(enabled) => void analytics.setEnabled(enabled)}
+                title="Help improve local bin services"
+                value={analytics.enabled}
+              />
               <View style={styles.privacyRow}>
                 <Ionicons color={theme.accent} name="lock-closed-outline" size={20} />
                 <Text style={[styles.privacyText, { color: theme.secondaryText }]}>
-                  Saved places, local report tracking, and preferences stay on this device. Postcode and property identifiers are sent only when you request live council data.
+                  Saved places, local report tracking, and preferences stay on this device. Optional evidence is off until you choose it and can be erased at any time.
                 </Text>
               </View>
+              <Row
+                detail="Delete the anonymous evidence ID and its events while keeping your saved places"
+                icon="shield-checkmark-outline"
+                onPress={() => void analytics.eraseAnalytics()}
+                title="Erase anonymous app evidence"
+              />
               <Row danger detail="Remove all local addresses, schedules, reports and preferences" icon="trash-outline" onPress={confirmClear} title="Clear all app data" />
             </View>
           </View>

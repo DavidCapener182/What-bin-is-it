@@ -9,47 +9,54 @@ import { NotificationNavigation } from '@/components/notification-navigation';
 import { PwaRegistration } from '@/components/pwa-registration';
 import { ThemeSynchronizer } from '@/components/theme-synchronizer';
 import { AppDataProvider } from '@/lib/use-app-data';
+import { AccountProvider } from '@/lib/use-account';
 import { ProductStateProvider } from '@/lib/use-product-state';
+import { PilotAnalyticsProvider } from '@/lib/use-pilot-analytics';
 import { SubscriptionProvider } from '@/lib/use-subscription';
 
-SplashScreen.setOptions({ duration: 400, fade: true });
+SplashScreen.setOptions({ duration: 800, fade: true });
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AppDataProvider>
-          <ProductStateProvider>
-            <SubscriptionProvider>
-              <ThemeSynchronizer />
-              <PwaRegistration />
-              <NotificationNavigation />
-              <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="schedule" />
-                <Stack.Screen name="guide" />
-                <Stack.Screen name="reports" />
-                <Stack.Screen name="report-missed" />
-                <Stack.Screen name="report-incorrect" />
-                <Stack.Screen name="history" />
-                <Stack.Screen name="support" />
-                <Stack.Screen name="partners" />
-                <Stack.Screen name="plus" />
-                <Stack.Screen name="privacy" />
-                <Stack.Screen name="terms" />
-                <Stack.Screen name="data-sources" />
-                <Stack.Screen name="onboarding" />
-                <Stack.Screen name="calendar" />
-                <Stack.Screen name="find" />
-                <Stack.Screen name="places" />
-                <Stack.Screen name="settings" />
-                <Stack.Screen name="offline" />
-                <Stack.Screen name="+not-found" />
-              </Stack>
-              <LaunchSplash />
-            </SubscriptionProvider>
-          </ProductStateProvider>
-        </AppDataProvider>
+        <PilotAnalyticsProvider>
+          <AppDataProvider>
+            <ProductStateProvider>
+              <AccountProvider>
+                <SubscriptionProvider>
+                  <ThemeSynchronizer />
+                  <PwaRegistration />
+                  <NotificationNavigation />
+                  <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="schedule" />
+                  <Stack.Screen name="guide" />
+                  <Stack.Screen name="reports" />
+                  <Stack.Screen name="report-missed" />
+                  <Stack.Screen name="report-incorrect" />
+                  <Stack.Screen name="history" />
+                  <Stack.Screen name="support" />
+                  <Stack.Screen name="partners" />
+                  <Stack.Screen name="plus" />
+                  <Stack.Screen name="account" />
+                  <Stack.Screen name="privacy" />
+                  <Stack.Screen name="terms" />
+                  <Stack.Screen name="data-sources" />
+                  <Stack.Screen name="onboarding" />
+                  <Stack.Screen name="calendar" />
+                  <Stack.Screen name="find" />
+                  <Stack.Screen name="places" />
+                  <Stack.Screen name="settings" />
+                  <Stack.Screen name="offline" />
+                  <Stack.Screen name="+not-found" />
+                  </Stack>
+                  <LaunchSplash />
+                </SubscriptionProvider>
+              </AccountProvider>
+            </ProductStateProvider>
+          </AppDataProvider>
+        </PilotAnalyticsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -3,7 +3,7 @@ import { LegalScreen } from '@/components/legal-screen';
 export default function PrivacyScreen() {
   return (
     <LegalScreen
-      description="How What Bin Is It Tonight? stores addresses, council data, notifications and local reports."
+      description="How What Bin Is It Tonight? stores accounts, addresses, council data, notifications and local reports."
       path="/privacy"
       sections={[
         {
@@ -13,6 +13,10 @@ export default function PrivacyScreen() {
         {
           title: 'Data stored on this device',
           body: 'Saved places, verified collection dates, preferences, collection outcomes, activity history and local report tracking are stored on this device. Clearing app data removes them.',
+        },
+        {
+          title: 'Optional account',
+          body: 'You can use the free bin-day features without signing in. If you create an account, Supabase stores your email address, account identifier and sign-in security records. What Bin stores the minimum Free or Plus entitlement linked to that identifier so access can be restored on another device. Saved addresses, postcodes and collection schedules are not uploaded to the account.',
         },
         {
           title: 'Council lookups',
@@ -32,15 +36,15 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Optional purchases',
-          body: 'When What Bin? Plus is enabled in an iPhone or Android build, Apple or Google processes the payment and RevenueCat provides the app with purchase and entitlement status. RevenueCat receives an anonymous app user ID, the purchased product and transaction or subscription status, plus basic app and platform information. The app disables automatic device-identifier collection and does not send your postcode, street address or location to RevenueCat.',
+          body: 'For web support, Stripe processes payment and payer contact details and returns customer, product and billing-status identifiers; What Bin never receives card details. For iPhone or Android Plus, Apple or Google processes payment and RevenueCat provides purchase and entitlement status. When signed in, the account identifier is used to restore the entitlement across supported devices. The app does not send your postcode, street address or location to Stripe, RevenueCat, Apple or Google.',
         },
         {
           title: 'Service providers',
-          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, platform notification services when enabled, and RevenueCat only in native builds where Plus purchasing is enabled. The Data sources screen explains which source supports each collection feature.',
+          body: 'The app uses Postcodes.io for postcode and council resolution, named council or approved collection sources for live dates, OpenStreetMap data for some nearby services, Vercel for the public web app and gateway, Supabase for optional account and plan records, Stripe for web billing, platform notification services when enabled, and RevenueCat in native builds where Plus purchasing is enabled. The Data sources screen explains which source supports each collection feature.',
         },
         {
           title: 'Retention and deletion',
-          body: 'Remove an individual saved place from Places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Browser notification subscriptions are removed when notifications are disabled or expire. There is no resident account in this release.',
+          body: 'Remove an individual saved place from Places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Signing out removes the account session from that device but leaves the account and purchase record available for restoration. To request deletion of the account and associated plan record, use Help and support. Payment providers retain transaction records where required by law. Browser notification subscriptions are removed when notifications are disabled or expire.',
         },
         {
           title: 'Your choices and rights',
@@ -52,7 +56,7 @@ export default function PrivacyScreen() {
         },
       ]}
       title="Privacy"
-      updated="26 July 2026"
+      updated="27 July 2026"
     />
   );
 }

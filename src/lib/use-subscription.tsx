@@ -11,12 +11,14 @@ import {
 import {
   SubscriptionSnapshot,
   configureSubscriptionClient,
+  identifySubscriptionUser,
   listenForSubscriptionChanges,
   presentSubscriptionManagement,
   presentSubscriptionPaywall,
   restoreSubscriptionPurchases,
   unavailableSubscriptionSnapshot,
 } from '@/lib/subscriptions';
+import { useAccount } from '@/lib/use-account';
 
 type SubscriptionContextValue = SubscriptionSnapshot & {
   ready: boolean;
@@ -34,6 +36,7 @@ function messageFor(error: unknown) {
 }
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
+  const account = useAccount();
   const [snapshot, setSnapshot] = useState<SubscriptionSnapshot>(unavailableSubscriptionSnapshot);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -44,9 +47,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     let stopListening = () => undefined;
 
     void configureSubscriptionClient()
-      .then((next) => {
+      .then(async (next) => {
         if (!active) return;
-        setSnapshot(next);
+        const identified = next.configured
+          ? await identifySubscriptionUser(account.user?.id)
+          : next;
+        if (!active) return;
+        setSnapshot(identified);
         stopListening = listenForSubscriptionChanges(setSnapshot);
       })
       .catch((caught) => {
@@ -61,7 +68,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       active = false;
       stopListening();
     };
-  }, []);
+  }, [account.user?.id]);
 
   const run = useCallback(async (operation: () => Promise<SubscriptionSnapshot>) => {
     setBusy(true);
@@ -81,13 +88,16 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SubscriptionContextValue>(() => ({
     ...snapshot,
+    isPlus: snapshot.isPlus || account.entitlement.isPlus,
+    productIdentifier: snapshot.productIdentifier ?? account.entitlement.productId ?? account.entitlement.planId,
+    expirationDate: snapshot.expirationDate ?? account.entitlement.currentPeriodEnd,
     ready,
     busy,
     error,
     showPaywall,
     restore,
     manage,
-  }), [busy, error, manage, ready, restore, showPaywall, snapshot]);
+  }), [account.entitlement, busy, error, manage, ready, restore, showPaywall, snapshot]);
 
   return <SubscriptionContext.Provider value={value}>{children}</SubscriptionContext.Provider>;
 }

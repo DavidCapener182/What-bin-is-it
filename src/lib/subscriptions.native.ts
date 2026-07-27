@@ -110,6 +110,16 @@ export async function presentSubscriptionManagement(): Promise<SubscriptionSnaps
   return getSubscriptionSnapshot();
 }
 
+export async function identifySubscriptionUser(userId?: string): Promise<SubscriptionSnapshot> {
+  if (!configured) return unavailableSubscriptionSnapshot;
+  if (userId) {
+    const { customerInfo } = await Purchases.logIn(userId);
+    return snapshotFromCustomerInfo(customerInfo);
+  }
+  if (await Purchases.isAnonymous()) return getSubscriptionSnapshot();
+  return snapshotFromCustomerInfo(await Purchases.logOut());
+}
+
 export function listenForSubscriptionChanges(listener: SubscriptionListener) {
   if (!configured) return () => undefined;
   const revenueCatListener: CustomerInfoUpdateListener = (customerInfo) => {
