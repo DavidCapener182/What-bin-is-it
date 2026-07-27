@@ -20,7 +20,7 @@ export function pilotAnalyticsCorsHeaders(request: Request): Record<string, stri
   };
 }
 
-export function pilotAnalyticsPreflight(request: Request, method: 'POST' | 'DELETE') {
+export function pilotAnalyticsPreflight(request: Request, method: 'POST' | 'DELETE' | 'POST, DELETE') {
   const origin = request.headers.get('origin');
   if (!origin || !isAllowedPilotAnalyticsOrigin(origin)) {
     return new Response(null, {

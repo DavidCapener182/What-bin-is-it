@@ -31,7 +31,9 @@ Provider events are stored separately in `bin_entitlement_grants`. A server tran
 
 ## Operational data
 
-Pilot analytics are opt-in, pseudonymous, minimised, retained for a bounded period and erasable from the app. Tables owned by this product use the `bin_` prefix.
+Council resident reach is counted automatically with a separate random installation identifier and only the public provider IDs represented by locally saved places. This supports aggregate active, currently linked and all-time installation measures without uploading a postcode, address, property reference, account or email.
+
+Pilot app-improvement analytics remain opt-in, pseudonymous, minimised, retained for a bounded period and erasable separately from the resident count. Tables owned by this product use the `bin_` prefix.
 
 ## Deployment
 

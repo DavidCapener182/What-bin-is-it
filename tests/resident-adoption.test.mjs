@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   councilWorkspaceForResidentUse,
+  parseResidentCouncilLinkSync,
   parsePilotCouncilLinkSync,
   parsePilotCouncilWorkspaceSync,
 } from '../server/lib/pilot-council-links.ts';
@@ -24,6 +25,16 @@ test('accepts only deduplicated council identifiers for an opted-in installation
     participantId,
     consentVersion: '2026-07-27',
     councilIds: ['lad-e08000011', 'lad-e08000014'],
+  });
+});
+
+test('counts a resident installation independently from optional app-improvement consent', () => {
+  assert.deepEqual(parseResidentCouncilLinkSync({
+    installationId: participantId,
+    councilIds: ['lad-w06000005', 'lad-w06000005'],
+  }), {
+    installationId: participantId,
+    councilIds: ['lad-w06000005'],
   });
 });
 
@@ -56,6 +67,11 @@ test('rejects postcode, address and arbitrary resident fields', () => {
       participantId,
       consentVersion: '2026-07-27',
       councilIds: ['lad-e08000011'],
+      [residentField]: 'must-not-be-accepted',
+    }), /invalid/);
+    assert.throws(() => parseResidentCouncilLinkSync({
+      installationId: participantId,
+      councilIds: ['lad-w06000005'],
       [residentField]: 'must-not-be-accepted',
     }), /invalid/);
   }
@@ -155,11 +171,11 @@ test('postcode and location success paths sync their resolved council immediatel
   );
   assert.match(
     onboarding,
-    /syncCouncilLinks\(\s*councilIdsForResidentUse\(\[\], resolved\.providerId\),?\s*\)/,
+    /syncResidentCouncilLinks\(\s*councilIdsForResidentUse\(\[\], resolved\.providerId\),?\s*\)/,
   );
   assert.match(
     places,
-    /syncCouncilLinks\(councilIdsForResidentUse\(\s*addresses\.map/,
+    /syncResidentCouncilLinks\(councilIdsForResidentUse\(\s*addresses\.map/,
   );
   assert.match(
     onboarding,
@@ -182,7 +198,9 @@ test('returning to an installed app retries every saved council link', async () 
     appData,
     /state\.addresses\.map\(\(address\) => address\.providerId\)/,
   );
-  assert.match(appData, /await syncCouncilWorkspaces\(councilIds\)/);
+  assert.match(appData, /syncCouncilWorkspaces\(councilIds\)/);
+  assert.match(appData, /syncResidentCouncilLinks\(councilIds\)/);
+  assert.match(appData, /Promise\.all/);
 });
 
 test('database array writes use Postgres JSON values rather than encoded strings', async () => {
@@ -194,4 +212,24 @@ test('database array writes use Postgres JSON values rather than encoded strings
   assert.match(analytics, /sql\.json\(rows\)/);
   assert.match(analytics, /transaction\.json\(input\.councilIds\)/);
   assert.match(analytics, /transaction\.json\(rows\)/);
+});
+
+test('automatic council counts use a separate resident installation ID and endpoint', async () => {
+  const [residentClient, analyticsClient, endpoint, settings, privacy] = await Promise.all([
+    readFile(new URL('../src/lib/resident-council-links.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/use-pilot-analytics.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../server/routes/api/councils/resident-links.post.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/settings.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/privacy.tsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(residentClient, /resident-installation-v1/);
+  assert.match(residentClient, /\/councils\/resident-links/);
+  assert.match(residentClient, /installationId/);
+  assert.doesNotMatch(residentClient, /consentVersion/);
+  assert.doesNotMatch(analyticsClient, /syncCouncilLinks/);
+  assert.match(endpoint, /parseResidentCouncilLinkSync/);
+  assert.match(residentClient, /legacyAnalyticsStorageKey/);
+  assert.match(residentClient, /legacyAnalytics\?\.participantId/);
+  assert.match(settings, /Optional app-improvement events/);
+  assert.match(privacy, /automatically counts a random installation identifier/i);
 });

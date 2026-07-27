@@ -21,6 +21,7 @@ import { AppTheme, useAppTheme } from '@/lib/theme';
 import { getDeviceCoordinates } from '@/lib/device-location';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { councilIdsForResidentUse } from '@/lib/resident-adoption';
+import { syncResidentCouncilLinks } from '@/lib/resident-council-links';
 import { shareSavedPlace } from '@/lib/schedule-tools';
 import { CouncilAddressOption, SavedAddress } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
@@ -136,11 +137,11 @@ export default function PlacesScreen() {
         context: 'manual',
         outcome: 'success',
       });
-      void analytics.syncCouncilLinks(councilIdsForResidentUse(
+      void syncResidentCouncilLinks(councilIdsForResidentUse(
         addresses.map((address) => address.providerId),
         result.providerId,
       )).catch(() => {
-        // Council adoption evidence is retried after the place is saved.
+        // The automatic resident count is retried after the place is saved.
       });
       void analytics.syncCouncilWorkspaces(councilIdsForResidentUse(
         addresses.map((address) => address.providerId),
@@ -211,11 +212,11 @@ export default function PlacesScreen() {
         context: 'location',
         outcome: 'success',
       });
-      void analytics.syncCouncilLinks(councilIdsForResidentUse(
+      void syncResidentCouncilLinks(councilIdsForResidentUse(
         addresses.map((address) => address.providerId),
         result.providerId,
       )).catch(() => {
-        // Council adoption evidence is retried after the place is saved.
+        // The automatic resident count is retried after the place is saved.
       });
       void analytics.syncCouncilWorkspaces(councilIdsForResidentUse(
         addresses.map((address) => address.providerId),

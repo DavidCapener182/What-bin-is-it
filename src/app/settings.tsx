@@ -185,7 +185,7 @@ export default function SettingsScreen() {
   }
 
   function confirmClear() {
-    const message = 'This removes saved addresses, schedules, reminder settings, activity, anonymous app evidence, and local report tracking from this device. It cannot be undone.';
+    const message = 'This removes saved addresses, schedules, reminder settings, activity, optional app-improvement evidence, the anonymous council resident record, and local report tracking. It cannot be undone.';
     const clear = () => {
       void Promise.all([clearAllAppData(), clearProductData()]).then(() => router.replace('/onboarding'));
     };
@@ -427,7 +427,7 @@ export default function SettingsScreen() {
               <Row detail={lastVerifiedAt ? new Date(lastVerifiedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : sourceStatus} icon="refresh-outline" onPress={() => void refreshCollections()} title="Refresh verified dates" />
               <Row detail="See how council dates, locations and report routes are sourced" icon="server-outline" onPress={() => router.push('/data-sources')} title="View data sources" />
               <ToggleRow
-                detail="Optional council usage counts without your postcode, address, location, search words or report notes"
+                detail="Optional app-improvement events, such as lookup success or failure; council resident counting is separate"
                 onChange={(enabled) => void analytics.setEnabled(enabled)}
                 title="Help improve local bin services"
                 value={analytics.enabled}
@@ -435,14 +435,14 @@ export default function SettingsScreen() {
               <View style={styles.privacyRow}>
                 <Ionicons color={theme.accent} name="lock-closed-outline" size={20} />
                 <Text style={[styles.privacyText, { color: theme.secondaryText }]}>
-                  Saved places, local report tracking, and preferences stay on this device. If you opt in, only a random installation ID and its council identifiers support aggregate usage counts. Evidence can be erased at any time.
+                  Saved places, local report tracking, and preferences stay on this device. A separate random installation ID and council identifier provide automatic resident totals without sending your postcode, address, property reference, account or email.
                 </Text>
               </View>
               <Row
-                detail="Delete the anonymous evidence ID and its events while keeping your saved places"
+                detail="Delete optional app-improvement events while keeping saved places and the separate council resident count"
                 icon="shield-checkmark-outline"
                 onPress={() => void analytics.eraseAnalytics()}
-                title="Erase anonymous app evidence"
+                title="Erase app-improvement evidence"
               />
               <Row danger detail="Remove all local addresses, schedules, reports and preferences" icon="trash-outline" onPress={confirmClear} title="Clear all app data" />
             </View>

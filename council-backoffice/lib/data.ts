@@ -215,7 +215,7 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
       {
         label: "Active residents",
         value: residentAdoption.active_residents.toLocaleString("en-GB"),
-        detail: `Council-linked, consenting installations seen in the last ${periodDays} days`,
+        detail: `Anonymous council-linked installations seen in the last ${periodDays} days`,
         state: "available",
         tone: "teal",
       },
@@ -266,7 +266,7 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
       {
         label: "Push alert reach",
         value: pushReach.toLocaleString("en-GB"),
-        detail: "Current opted-in installations linked to this council; no resident addresses are exposed",
+        detail: "Current notification-enabled installations linked to this council; no resident addresses are exposed",
         state: "available",
         tone: "teal",
       },

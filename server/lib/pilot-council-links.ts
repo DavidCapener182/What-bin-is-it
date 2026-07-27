@@ -10,6 +10,11 @@ export type PilotCouncilLinkSync = {
   councilIds: string[];
 };
 
+export type ResidentCouncilLinkSync = {
+  installationId: string;
+  councilIds: string[];
+};
+
 export type PilotCouncilWorkspaceSync = {
   councilIds: string[];
 };
@@ -81,6 +86,26 @@ export function parsePilotCouncilLinkSync(value: unknown): PilotCouncilLinkSync 
   return {
     participantId: raw.participantId,
     consentVersion: '2026-07-27',
+    councilIds,
+  };
+}
+
+export function parseResidentCouncilLinkSync(value: unknown): ResidentCouncilLinkSync {
+  if (!value || typeof value !== 'object') {
+    throw new Error('A resident council link update is required.');
+  }
+  const raw = value as Record<string, unknown>;
+  const allowedKeys = new Set(['installationId', 'councilIds']);
+  const councilIds = parseKnownCouncilIds(raw.councilIds);
+  if (
+    Object.keys(raw).some((key) => !allowedKeys.has(key))
+    || !isPilotParticipantId(raw.installationId)
+    || !councilIds
+  ) {
+    throw new Error('The resident council link update is invalid.');
+  }
+  return {
+    installationId: raw.installationId,
     councilIds,
   };
 }

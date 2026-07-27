@@ -6,6 +6,10 @@ Demonstrate that residents receive clearer, more reliable waste-service informat
 
 ## Definitions
 
+- **Resident installation:** a random app-installation identifier linked only to the public council provider identifiers represented by its saved places. It is counted independently from optional app-improvement analytics and does not contain an address, postcode, property reference, account or email.
+- **Active resident installation:** a resident installation whose current saved-place state includes the council and which has synced during the reporting period.
+- **Currently linked installation:** a resident installation whose latest saved-place state includes the council. Uninstall cannot be detected.
+- **All-time resident installation:** a resident installation that has ever linked to the council. Removing or changing a saved place does not reduce this measure; an explicit Clear all app data deletion does.
 - **Consenting installation:** a random installation identifier that explicitly opted into pilot analytics and produced an event during the reporting period.
 - **Reminder adoption:** consenting installations that enabled verified collection reminders divided by consenting installations.
 - **Guide search:** a structured matched/no-match event. Raw resident search text is not uploaded.
@@ -14,6 +18,7 @@ Demonstrate that residents receive clearer, more reliable waste-service informat
 
 ## Suggested pilot measures
 
+- active, currently linked and all-time resident installations;
 - verified collection lookup success;
 - reminder adoption;
 - guide matched/no-match rate by approved item key;
@@ -26,8 +31,9 @@ Collection volumes, missed-bin totals and saved-cost claims must not be estimate
 
 ## Privacy controls
 
-- consent is opt-in;
-- installation IDs are random and revocable;
+- the core council-reach installation ID is random, contains no household data and is erasable through Clear all app data;
+- optional app-improvement analytics consent is opt-in and separate from council reach;
+- analytics participant IDs are random and revocable;
 - event context uses allowlisted codes;
 - raw addresses, postcodes, search text and report narratives are excluded;
 - low-volume export groups are suppressed;
@@ -36,4 +42,4 @@ Collection volumes, missed-bin totals and saved-cost claims must not be estimate
 
 ## Pilot exit evidence
 
-Agree the baseline, reporting period, minimum volume and decision threshold before launch. Every dashboard screenshot supplied as evidence should state its period, consent population and data gaps.
+Agree the baseline, reporting period, minimum volume and decision threshold before launch. Every dashboard screenshot supplied as evidence should state its period, whether a measure covers resident installations or the smaller consenting analytics population, and any data gaps.

@@ -20,6 +20,7 @@ import { fetchCouncilAddresses, lookupPostcode, ResolvedPlace } from '@/lib/coun
 import { requestNotificationPermission } from '@/lib/notifications';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { councilIdsForResidentUse } from '@/lib/resident-adoption';
+import { syncResidentCouncilLinks } from '@/lib/resident-council-links';
 import { useAppTheme } from '@/lib/theme';
 import { CouncilAddressOption } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
@@ -70,10 +71,10 @@ export default function OnboardingScreen() {
         context: 'manual',
         outcome: 'success',
       });
-      void analytics.syncCouncilLinks(
+      void syncResidentCouncilLinks(
         councilIdsForResidentUse([], resolved.providerId),
       ).catch(() => {
-        // Council adoption evidence is retried after the place is saved.
+        // The automatic resident count is retried after the place is saved.
       });
       void analytics.syncCouncilWorkspaces(
         councilIdsForResidentUse([], resolved.providerId),
@@ -205,7 +206,7 @@ export default function OnboardingScreen() {
                 <View style={styles.evidenceCopy}>
                   <Text style={[styles.evidenceTitle, { color: theme.text }]}>Help improve local bin services</Text>
                   <Text style={[styles.evidenceText, { color: theme.secondaryText }]}>
-                    Optional anonymous app evidence only. It can count a random installation against its council, but never includes your postcode, address, location, search words or report notes.
+                    Optional app-improvement events only, such as whether a lookup worked. Your council resident count is separate and never includes your postcode, address, location, search words or report notes.
                   </Text>
                 </View>
                 <Switch

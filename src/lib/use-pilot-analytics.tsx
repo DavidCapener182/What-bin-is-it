@@ -64,7 +64,6 @@ type PilotAnalyticsContextValue = {
   enabled: boolean;
   ready: boolean;
   setEnabled: (enabled: boolean) => Promise<void>;
-  syncCouncilLinks: (councilIds: string[]) => Promise<void>;
   syncCouncilWorkspaces: (councilIds: string[]) => Promise<void>;
   track: (name: PilotAnalyticsEventName, input?: TrackInput) => void;
   eraseAnalytics: (resetChoice?: boolean) => Promise<void>;
@@ -142,7 +141,6 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const stateRef = useRef(state);
   const flushing = useRef(false);
-  const councilSyncSequence = useRef<Promise<void>>(Promise.resolve());
 
   const updateState = useCallback((next: StoredAnalytics) => {
     stateRef.current = next;
@@ -228,31 +226,6 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     void updateState(next).then(() => flush());
   }, [flush, updateState]);
 
-  const syncCouncilLinks = useCallback(async (councilIds: string[]) => {
-    const normalisedCouncilIds = [...new Set(
-      councilIds.filter((councilId) => councilIdPattern.test(councilId)),
-    )].sort().slice(0, 10);
-    councilSyncSequence.current = councilSyncSequence.current
-      .catch(() => undefined)
-      .then(async () => {
-        const current = stateRef.current;
-        if (current.consent !== 'granted' || !current.participantId) return;
-        const response = await fetch(`${apiBase}/analytics/council-links`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            participantId: current.participantId,
-            consentVersion,
-            councilIds: normalisedCouncilIds,
-          }),
-        });
-        if (!response.ok) {
-          throw new Error('Council adoption evidence could not be updated.');
-        }
-      });
-    return councilSyncSequence.current;
-  }, []);
-
   const syncCouncilWorkspaces = useCallback(async (councilIds: string[]) => {
     const normalisedCouncilIds = [...new Set(
       councilIds.filter((councilId) => councilIdPattern.test(councilId)),
@@ -337,7 +310,6 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     enabled: state.consent === 'granted',
     ready,
     setEnabled,
-    syncCouncilLinks,
     syncCouncilWorkspaces,
     track,
     eraseAnalytics,
@@ -346,7 +318,6 @@ export function PilotAnalyticsProvider({ children }: { children: ReactNode }) {
     ready,
     setEnabled,
     state.consent,
-    syncCouncilLinks,
     syncCouncilWorkspaces,
     track,
   ]);

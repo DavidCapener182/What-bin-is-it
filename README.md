@@ -9,6 +9,7 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - iPhone, Android, and installable web application with four persistent destinations: Today, Schedule, Guide, and Reports. Address management, account, reminders, privacy, and app controls live in Settings.
 - Private in-app support conversations let signed-in residents message their selected council and the What Bin platform team without leaving the app or exposing a saved address or postcode. Council staff are server-scoped to their own authority; the platform superadmin can see the complete cross-council inbox.
 - A local-first saved-place store, with UK postcode validation and a postcode lookup through the public Postcodes.io service.
+- Privacy-minimised council reach metrics: every saved place automatically links a random installation ID to its public council provider ID so the authority can see aggregate active, currently linked and all-time reach. The count never receives the resident’s postcode, address, property reference, account or email and is separate from optional app-improvement analytics.
 - A searchable, plain-English guide for common household items, with local-rule caveats built in rather than misleading universal answers.
 - A local-services finder for recycling points and household-waste sites. It uses a council adapter when one exists and otherwise offers clearly-labelled OpenStreetMap nearby-place results.
 - A normalised `CouncilProvider` client contract for collection dates; no screen code is coupled to a specific council website.

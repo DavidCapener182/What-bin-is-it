@@ -23,8 +23,12 @@ export default function PrivacyScreen() {
           body: 'When you ask for live data, the postcode, council identifier and selected opaque property reference are sent over HTTPS to the app gateway and the relevant council-data provider. The gateway uses them to answer the request and does not write full addresses to an app database. After a successful match, the public council identifier alone can prepare that authority’s empty council workspace; it is not linked to an account, installation, postcode or address. Infrastructure and upstream services may keep limited security logs under their own retention policies. The app does not create estimated collection dates.',
         },
         {
-          title: 'Optional anonymous service evidence',
-          body: 'If you choose “Help improve local bin services”, the app creates a random installation identifier and sends structured, allow-listed service events. To evidence council reach, it also sends only the council provider identifiers represented by your locally saved places. It never sends your postcode, address, property reference, coordinates, account, search words or report notes for this purpose. Council dashboards show aggregate active, currently linked and all-time participating installations. Removing or changing a place updates the current link but retains the historical council reach; uninstall cannot be detected and ages out only from the rolling active count. Erasing anonymous app evidence deletes the pseudonymous installation records.',
+          title: 'Anonymous council resident count',
+          body: 'When you save a place, the app automatically counts a random installation identifier against that council so the authority can see aggregate active, currently linked and all-time resident reach. This resident count sends only the random installation identifier and council provider identifier; it never sends your postcode, address, property reference, coordinates, account, search words or report notes. Removing or changing a place updates the current link but retains the historical council reach; uninstall cannot be detected and ages out only from the rolling active count. Clearing all app data requests deletion of this resident record.',
+        },
+        {
+          title: 'Optional app-improvement evidence',
+          body: '“Help improve local bin services” is separate from the automatic council resident count. If you enable it, the app sends structured, allow-listed events such as whether a postcode or collection lookup succeeded, reminder adoption and guide-result outcomes. It does not send the postcode, address, property reference, coordinates, account, search words or report notes. You can erase these optional events from Settings without removing saved places.',
         },
         {
           title: 'Location',
@@ -48,7 +52,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Retention and deletion',
-          body: 'Remove an individual saved place from Manage places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports. Turning reminders or service alerts off disables their notification registration; disabled registrations are removed after 30 days and registrations not refreshed for 180 days are removed. Expired provider tokens are disabled when detected. Account can export your What Bin plan record or remove the app-owned plan and purchase-grant records, then sign out the device. Because authentication is currently shared with other products in the same Supabase project, that action does not delete the underlying Supabase sign-in identity. Payment providers retain transaction records where required by law.',
+          body: 'Remove an individual saved place from Manage places, or use Clear all app data in Settings to delete local addresses, schedules, preferences, history and reports and request deletion of the random council resident record. Removing or changing one place updates its current council link while retaining aggregate all-time reach. Turning reminders or service alerts off disables their notification registration; disabled registrations are removed after 30 days and registrations not refreshed for 180 days are removed. Expired provider tokens are disabled when detected. Account can export your What Bin plan record or remove the app-owned plan and purchase-grant records, then sign out the device. Because authentication is currently shared with other products in the same Supabase project, that action does not delete the underlying Supabase sign-in identity. Payment providers retain transaction records where required by law.',
         },
         {
           title: 'Your choices and rights',

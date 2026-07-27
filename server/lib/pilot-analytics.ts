@@ -6,12 +6,14 @@ import {
   councilWorkspaceForResidentUse,
   isPilotParticipantId,
   type PilotCouncilLinkSync,
+  type ResidentCouncilLinkSync,
 } from './pilot-council-links';
 
 export {
   isPilotParticipantId,
   parsePilotCouncilLinkSync,
   parsePilotCouncilWorkspaceSync,
+  parseResidentCouncilLinkSync,
 } from './pilot-council-links';
 
 export const pilotAnalyticsEventNames = [
@@ -375,7 +377,7 @@ export async function ensurePilotCouncilWorkspaces(councilIds: string[]) {
   return { workspaceCount: workspaces.length };
 }
 
-export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
+export async function syncResidentCouncilLinks(input: ResidentCouncilLinkSync) {
   await ensurePilotCouncilWorkspaces(input.councilIds);
   const sql = database();
   const now = new Date().toISOString();
@@ -385,7 +387,7 @@ export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
       SET
         currently_linked = false,
         unlinked_at = ${now}::timestamptz
-      WHERE participant_id = ${input.participantId}::uuid
+      WHERE participant_id = ${input.installationId}::uuid
         AND currently_linked
         AND NOT EXISTS (
           SELECT 1
@@ -395,7 +397,7 @@ export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
     `;
     if (input.councilIds.length === 0) return;
     const rows = input.councilIds.map((councilId) => ({
-      participant_id: input.participantId,
+      participant_id: input.installationId,
       council_id: councilId,
       linked_at: now,
     }));
@@ -440,23 +442,35 @@ export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
   };
 }
 
+export async function syncPilotCouncilLinks(input: PilotCouncilLinkSync) {
+  return syncResidentCouncilLinks({
+    installationId: input.participantId,
+    councilIds: input.councilIds,
+  });
+}
+
 export async function deletePilotParticipant(participantId: string) {
   if (!isPilotParticipantId(participantId)) throw new Error('The analytics participant ID is invalid.');
   const sql = database();
-  const deleted = await sql.begin(async (transaction) => {
-    const events = await transaction`
-      DELETE FROM bin_analytics_events
-      WHERE participant_id = ${participantId}::uuid
-      RETURNING id
-    `;
-    const links = await transaction`
-      DELETE FROM bin_council_resident_links
-      WHERE participant_id = ${participantId}::uuid
-      RETURNING council_id
-    `;
-    return events.length + links.length;
-  });
-  return deleted;
+  const events = await sql`
+    DELETE FROM bin_analytics_events
+    WHERE participant_id = ${participantId}::uuid
+    RETURNING id
+  `;
+  return events.length;
+}
+
+export async function deleteResidentCouncilInstallation(installationId: string) {
+  if (!isPilotParticipantId(installationId)) {
+    throw new Error('The resident installation ID is invalid.');
+  }
+  const sql = database();
+  const deleted = await sql`
+    DELETE FROM bin_council_resident_links
+    WHERE participant_id = ${installationId}::uuid
+    RETURNING council_id
+  `;
+  return deleted.length;
 }
 
 export async function recordPilotGatewayCheck(input: {

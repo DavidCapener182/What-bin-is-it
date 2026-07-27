@@ -9,6 +9,8 @@ These answers describe the current `proof` phase. Reassess them before every sub
 - Optional password-free resident account. Supabase stores email identity and the minimum Free/Plus plan record; saved household addresses remain device-local.
 - Saved addresses, dates, outcomes, reports and preferences are device-local.
 - A user-initiated lookup transmits postcode, council provider ID and an opaque property reference to the gateway and relevant source.
+- Saving a place automatically sends a random installation identifier and its public council provider identifiers for aggregate active, currently linked and all-time council reach. It does not send a postcode, address, property reference, coordinates, account or email in that resident-count request.
+- “Help improve local bin services” is a separate opt-in stream of allow-listed app-improvement events and is not required for the council resident count.
 - Foreground location is requested only after the user taps the location action; it is converted to a postcode and is not continuously tracked.
 - Native reminders are scheduled on the device.
 - With notification consent, the installed web or native app stores an opaque installation identifier, council provider identifiers and a private browser/Expo push credential so verified council service alerts can be delivered. No postcode, address, property reference, account or email is stored in that registration.
@@ -30,10 +32,10 @@ Use the most conservative answer supported by the final production logging confi
 
 If gateway request values are immediately used for the lookup and not retained in readable logs, Apple’s guidance may allow them to be treated as not collected. Confirm Vercel and upstream retention before selecting that answer.
 
-If any request value or derived value is retained, declare at least:
+The random council resident-count identifier is retained, so declare at least:
 
 - **Coarse Location** — postcode/council area; not linked to identity; App Functionality.
-- **Device ID** — opaque installation identifier and native push token; not linked to identity; App Functionality.
+- **Device ID** — opaque resident-count installation identifier and, when enabled, native push token; not linked to identity; App Functionality.
 - **Other User Content** — only if in-app support text is transmitted to and retained by the operator.
 
 For a Plus-enabled build, also declare conservatively:
@@ -58,6 +60,8 @@ Review:
 - the current server-side native/browser push registration and its 30-day disabled / 180-day stale retention limits;
 - encryption in transit: HTTPS;
 - deletion: local data can be removed by deleting an address or using Clear all app data;
+- automatic council reach uses only a random installation identifier and public council provider IDs; Clear all app data requests deletion of that resident record;
+- optional app-improvement events require a separate opt-in choice;
 - optional account identifiers and plan access;
 - no data sale;
 - no advertising.

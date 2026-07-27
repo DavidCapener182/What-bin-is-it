@@ -8,6 +8,7 @@ import { sortCollections } from '@/lib/data';
 import { removeAddressFromState } from '@/lib/address-state';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
 import { councilIdsForResidentUse } from '@/lib/resident-adoption';
+import { eraseResidentCouncilRecord, syncResidentCouncilLinks } from '@/lib/resident-council-links';
 import { Collection, DisruptionAlert, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { syncHomeScreenWidget } from '@/widgets/home-screen-widget-sync';
@@ -324,10 +325,7 @@ async function loadState() {
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const {
-    enabled: analyticsEnabled,
     eraseAnalytics,
-    ready: analyticsReady,
-    syncCouncilLinks,
     syncCouncilWorkspaces,
     track,
   } = usePilotAnalytics();
@@ -357,15 +355,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const councilIds = councilIdsForResidentUse(
       state.addresses.map((address) => address.providerId),
     );
-    await syncCouncilWorkspaces(councilIds);
-    if (!analyticsReady || !analyticsEnabled) return;
-    await syncCouncilLinks(councilIds);
+    await Promise.all([
+      syncCouncilWorkspaces(councilIds),
+      syncResidentCouncilLinks(councilIds),
+    ]);
   }, [
-    analyticsEnabled,
-    analyticsReady,
     ready,
     state.addresses,
-    syncCouncilLinks,
     syncCouncilWorkspaces,
   ]);
 
@@ -652,7 +648,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
     },
     clearAllAppData: async () => {
-      await eraseAnalytics(true);
+      await Promise.all([
+        eraseAnalytics(true),
+        eraseResidentCouncilRecord().catch(() => undefined),
+      ]);
       await AsyncStorage.multiRemove([storageKey, previousStorageKey, olderStorageKey, legacyStorageKey]);
       setState(buildInitialState());
       autoRefreshAttempts.current.clear();
