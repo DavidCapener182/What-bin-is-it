@@ -49,15 +49,14 @@ test("CRM migrations isolate professional relationship data from resident access
   assert.doesNotMatch(correspondenceMigration, /access_token|refresh_token|oauth_token/i);
 });
 
-test("all CRM pages and mutations require explicit platform-superadmin authorisation", async () => {
-  const [overviewPage, messagesPage, accountPage, actions] = await Promise.all([
+test("commercial CRM pages and mutations require explicit platform-superadmin authorisation", async () => {
+  const [overviewPage, accountPage, actions] = await Promise.all([
     readFile(new URL("../app/(console)/crm/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(console)/crm/messages/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/(console)/crm/[accountId]/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
   ]);
 
-  for (const page of [overviewPage, messagesPage, accountPage]) {
+  for (const page of [overviewPage, accountPage]) {
     assert.match(page, /requirePlatformAdminSession\(\)/);
   }
   assert.match(actions, /export async function saveCrmMessageAction/);
@@ -65,8 +64,24 @@ test("all CRM pages and mutations require explicit platform-superadmin authorisa
     actions,
     /saveCrmMessageAction[\s\S]*?requirePlatformAdminAction\(\)[\s\S]*?createCrmMessage/,
   );
-  assert.match(messagesPage, /In-app support inbox/);
-  assert.match(actions, /replyToResidentSupportAction[\s\S]*?requirePlatformAdminAction\(\)/);
+});
+
+test("resident inbox is council-scoped while platform superadmins retain the complete view", async () => {
+  const [messagesPage, actions, support, shell] = await Promise.all([
+    readFile(new URL("../app/(console)/crm/messages/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/resident-support.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/console-shell-client.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(messagesPage, /requireCouncilSession\("support:view"\)/);
+  assert.match(messagesPage, /listResidentSupportThreads\(session/);
+  assert.match(messagesPage, /residentSupportThread\(session, selectedThreadId\)/);
+  assert.match(actions, /replyToResidentSupportAction[\s\S]*?requireCouncilAction\("support:reply"\)/);
+  assert.match(actions, /changeResidentSupportStatusAction[\s\S]*?requireCouncilAction\("support:reply"\)/);
+  assert.match(support, /session\.platformAdmin \? null : session\.organisation\.providerId/);
+  assert.match(support, /council_provider_id = \$\{councilScope\}/);
+  assert.match(shell, /href: "\/crm\/messages", label: "Resident messages"/);
 });
 
 test("resident support inbox is private, Bin-prefixed and contains no copied address or email fields", async () => {

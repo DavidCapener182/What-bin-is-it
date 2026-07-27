@@ -21,9 +21,26 @@ test('accepts a bounded in-app support message with an optional verified council
     topic: 'notifications',
     detail: 'My reminder did not arrive.',
     councilProviderId: 'lad-e08000011',
-    councilName: 'Knowsley Council',
+    councilName: 'Knowsley',
     clientRequestId: requestId,
   });
+});
+
+test('routes a resident thread by the verified directory council, not a supplied label', () => {
+  assert.equal(parseNewResidentSupportThread({
+    topic: 'app-help',
+    detail: 'Please help.',
+    councilProviderId: 'lad-e08000014',
+    councilName: 'A different council',
+    clientRequestId: requestId,
+  }).councilName, 'Sefton');
+  assert.throws(() => parseNewResidentSupportThread({
+    topic: 'app-help',
+    detail: 'Please help.',
+    councilProviderId: 'lad-e99999999',
+    councilName: 'Invented council',
+    clientRequestId: requestId,
+  }), /verified/);
 });
 
 test('rejects copied identity, postcode and email fields from support payloads', () => {

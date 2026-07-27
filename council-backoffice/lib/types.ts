@@ -9,6 +9,8 @@ export type CouncilPermission =
   | "partners:write"
   | "partners:approve"
   | "reports:write"
+  | "support:view"
+  | "support:reply"
   | "analytics:view"
   | "analytics:export"
   | "audit:view"

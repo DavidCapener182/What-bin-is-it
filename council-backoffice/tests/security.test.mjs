@@ -14,6 +14,9 @@ test("support staff cannot publish or export council data", () => {
   assert.equal(councilRoleCan("support", "content:publish"), false);
   assert.equal(councilRoleCan("support", "analytics:export"), false);
   assert.equal(councilRoleCan("support", "reports:write"), true);
+  assert.equal(councilRoleCan("support", "support:view"), true);
+  assert.equal(councilRoleCan("support", "support:reply"), true);
+  assert.equal(councilRoleCan("analyst", "support:view"), false);
 });
 
 test("only owners can change organisation identity", () => {

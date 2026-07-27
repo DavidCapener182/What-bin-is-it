@@ -38,14 +38,15 @@ The relationship CRM is a platform-owner workspace, not a resident case-manageme
 The separate Resident inbox is the app's private support channel:
 
 - residents send from Help and support in the web or mobile app;
-- platform staff reply in `/crm/messages`;
+- council staff reply in `/crm/messages` only to conversations tagged to their own authority;
+- platform superadmins use the same route for the complete cross-council inbox, including unassigned conversations;
 - replies appear in the resident's in-app conversation;
 - threads can be filtered, closed and reopened; and
 - support replies and status changes create audit events.
 
 It does not connect Gmail, Outlook or another external mailbox. Support records contain the account reference, message text, timestamps and optional council identifier. They do not copy the resident's saved address, postcode or account email.
 
-All CRM and resident-support tables use the `bin_*` prefix, have RLS enabled, and revoke `anon` and `authenticated` Data API grants. Platform-superadmin checks are repeated in every CRM and inbox page and server mutation.
+All CRM and resident-support tables use the `bin_*` prefix, have RLS enabled, and revoke `anon` and `authenticated` Data API grants. Commercial CRM pages remain platform-superadmin-only. Resident inbox list, thread, reply and status mutations repeat the signed-in council scope on the server; only platform superadmins receive an unscoped view.
 
 ## Local setup
 

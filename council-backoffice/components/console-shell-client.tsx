@@ -15,6 +15,7 @@ const primaryNavigation = [
   { href: "/guidance", label: "Recycling guidance", icon: "book" },
   { href: "/reports", label: "Missed collections", icon: "clipboard" },
   { href: "/partners", label: "Partner services", icon: "badge-pound" },
+  { href: "/crm/messages", label: "Resident messages", icon: "messages" },
   { href: "/analytics", label: "Evidence & analytics", icon: "activity" },
 ] as const;
 
@@ -99,7 +100,8 @@ export function ConsoleShellClient({
               </span>
               {primaryNavigation
                 .filter((item) => (
-                  item.href !== "/analytics" || councilRoleCan(session.role, "analytics:view")
+                  (item.href !== "/analytics" || councilRoleCan(session.role, "analytics:view"))
+                  && (item.href !== "/crm/messages" || councilRoleCan(session.role, "support:view"))
                 ))
                 .map((item) => (
                   <NavLink
@@ -154,9 +156,11 @@ export function ConsoleShellClient({
           </>
         ) : (
           <>
-            {session.platformAdmin
-              ? <NavLink href="/council" icon="building" label="Council" />
-              : <NavLink href="/announcements" icon="bell" label="Messages" />}
+            {councilRoleCan(session.role, "support:view")
+              ? <NavLink href="/crm/messages" icon="messages" label="Inbox" />
+              : session.platformAdmin
+                ? <NavLink href="/council" icon="building" label="Council" />
+                : <NavLink href="/announcements" icon="bell" label="Messages" />}
             <NavLink href="/disruptions" icon="warning" label="Alerts" />
             <NavLink href="/reports" icon="clipboard" label="Reports" />
             <NavLink href="/settings" icon="settings" label="Settings" />

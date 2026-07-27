@@ -9,6 +9,8 @@ const rolePermissions: Record<CouncilRole, ReadonlySet<CouncilPermission>> = {
     "partners:write",
     "partners:approve",
     "reports:write",
+    "support:view",
+    "support:reply",
     "analytics:view",
     "analytics:export",
     "audit:view",
@@ -22,6 +24,8 @@ const rolePermissions: Record<CouncilRole, ReadonlySet<CouncilPermission>> = {
     "partners:write",
     "partners:approve",
     "reports:write",
+    "support:view",
+    "support:reply",
     "analytics:view",
     "analytics:export",
     "audit:view",
@@ -43,6 +47,8 @@ const rolePermissions: Record<CouncilRole, ReadonlySet<CouncilPermission>> = {
   support: new Set([
     "dashboard:view",
     "reports:write",
+    "support:view",
+    "support:reply",
   ]),
 };
 

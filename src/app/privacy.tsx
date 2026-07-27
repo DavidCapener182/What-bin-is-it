@@ -36,7 +36,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Reports and support',
-          body: 'Missed-bin reports are tracked locally unless a future council integration clearly says it submits directly. Opening an official council service does not mean the app submitted a report. If you sign in and message What Bin support, the account reference, message text, timestamps and selected council identifier are stored so the back-office team can reply inside the app. Your saved address, postcode and account email are not copied into the support conversation.',
+          body: 'Missed-bin reports are tracked locally unless a future council integration clearly says it submits directly. Opening an official council service does not mean the app submitted a report. If you sign in and message support, the account reference, message text, timestamps and selected council identifier are stored so authorised staff can reply inside the app. Staff for the selected council can access only conversations tagged to that council; the What Bin platform superadmin can access all conversations, including messages sent without a selected council. Your saved address, postcode and account email are not copied into the support conversation.',
         },
         {
           title: 'Optional purchases',

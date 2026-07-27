@@ -17,7 +17,7 @@ import {
 import { FeedbackBanner } from "@/components/feedback-banner";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
-import { requirePlatformAdminSession } from "@/lib/auth";
+import { requireCouncilSession } from "@/lib/auth";
 import { formatDateTime, humanise } from "@/lib/format";
 import {
   listResidentSupportThreads,
@@ -51,19 +51,19 @@ export default async function ResidentInboxPage({
     thread?: string;
   }>;
 }) {
-  await requirePlatformAdminSession();
+  const session = await requireCouncilSession("support:view");
   const params = await searchParams;
   const status = allowedStatus(params.status);
   const [allThreads, threads] = await Promise.all([
-    listResidentSupportThreads(),
-    listResidentSupportThreads({ query: params.q, status }),
+    listResidentSupportThreads(session),
+    listResidentSupportThreads(session, { query: params.q, status }),
   ]);
   const requestedThreadId = typeof params.thread === "string" && uuidPattern.test(params.thread)
     ? params.thread
     : undefined;
   const selectedThreadId = requestedThreadId ?? threads[0]?.id;
   const selectedThread = selectedThreadId
-    ? await residentSupportThread(selectedThreadId)
+    ? await residentSupportThread(session, selectedThreadId)
     : undefined;
   const needsReply = allThreads.filter((thread) => thread.status === "waiting-support").length;
   const waitingResident = allThreads.filter((thread) => thread.status === "waiting-resident").length;
@@ -74,8 +74,12 @@ export default async function ResidentInboxPage({
       <PageHeader
         eyebrow="Resident services"
         title="In-app support inbox"
-        description="Messages sent by residents from the What Bin web or mobile app. Replies are delivered inside the app—there is no email mailbox or external message sync."
-        action={<Link className="secondary-button" href="/crm">Relationship CRM</Link>}
+        description={session.platformAdmin
+          ? "Messages sent by residents across every council from the What Bin web or mobile app. Replies are delivered inside the app."
+          : `Messages sent through the app by residents linked to ${session.organisation.name}. Other councils' conversations are not available in this portal.`}
+        action={session.platformAdmin
+          ? <Link className="secondary-button" href="/crm">Relationship CRM</Link>
+          : undefined}
       />
       <FeedbackBanner error={params.error} saved={params.saved} />
 
@@ -108,8 +112,9 @@ export default async function ResidentInboxPage({
           <span className="eyebrow">One private channel</span>
           <h2>Resident app ↔ What Bin back office</h2>
           <p>
-            Residents open Help and support, choose a topic and send a message. Staff reply below,
-            and that reply appears in the resident&apos;s conversation in the app.
+            {session.platformAdmin
+              ? "Residents open Help and support, choose a topic and send a message. This platform view includes every council-tagged conversation and messages without a selected council."
+              : `This inbox includes only conversations created while ${session.organisation.name} was the resident's selected council. Replies appear inside the resident app.`}
           </p>
         </div>
       </section>
@@ -235,7 +240,9 @@ export default async function ResidentInboxPage({
       </div>
 
       <div className="truth-note space-top-lg">
-        <ShieldCheck aria-hidden="true" size={17} /> Support is restricted to platform superadmins. The inbox stores the account reference, message text and optional council identifier—not the resident&apos;s saved address, postcode or email.
+        <ShieldCheck aria-hidden="true" size={17} /> {session.platformAdmin
+          ? "Platform superadmin view: all in-app resident conversations are available."
+          : `Council-scoped view: only ${session.organisation.name} conversations are available.`} The inbox stores the account reference, message text and optional council identifier—not the resident&apos;s saved address, postcode or email.
       </div>
     </>
   );

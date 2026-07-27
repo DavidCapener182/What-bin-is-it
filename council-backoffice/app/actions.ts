@@ -729,7 +729,7 @@ export async function replyToResidentSupportAction(formData: FormData) {
   try {
     const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
     path = `/crm/messages?thread=${threadId}`;
-    const session = await requirePlatformAdminAction();
+    const session = await requireCouncilAction("support:reply");
     await replyToResidentSupportThread(
       session,
       threadId,
@@ -747,7 +747,7 @@ export async function changeResidentSupportStatusAction(formData: FormData) {
   try {
     const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
     path = `/crm/messages?thread=${threadId}`;
-    const session = await requirePlatformAdminAction();
+    const session = await requireCouncilAction("support:reply");
     const status = allowedValue(
       formData.get("status"),
       ["waiting-support", "closed"] as const,

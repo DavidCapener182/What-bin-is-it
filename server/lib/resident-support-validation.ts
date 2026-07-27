@@ -1,3 +1,5 @@
+import { findCouncilByProviderId } from '../../src/lib/council-directory.ts';
+
 export const residentSupportTopics = [
   'app-help',
   'notifications',
@@ -73,8 +75,15 @@ export function parseNewResidentSupportThread(value: unknown): NewResidentSuppor
   }
   const councilProviderId = optionalText(input.councilProviderId, 120);
   const councilName = optionalText(input.councilName, 160);
+  const verifiedCouncil = councilProviderId
+    ? findCouncilByProviderId(councilProviderId)
+    : undefined;
   if (
-    (councilProviderId && (!providerPattern.test(councilProviderId) || !councilName))
+    (councilProviderId && (
+      !providerPattern.test(councilProviderId)
+      || !councilName
+      || !verifiedCouncil
+    ))
     || (!councilProviderId && councilName)
   ) {
     throw new Error('The selected council could not be verified.');
@@ -83,7 +92,7 @@ export function parseNewResidentSupportThread(value: unknown): NewResidentSuppor
     topic: input.topic as ResidentSupportTopic,
     detail: requiredText(input.detail, 'Message', 5_000),
     councilProviderId,
-    councilName,
+    councilName: verifiedCouncil?.name,
     clientRequestId: requiredUuid(input.clientRequestId, 'Message reference'),
   };
 }
