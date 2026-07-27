@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { parsePilotCouncilLinkSync } from '../server/lib/pilot-council-links.ts';
+import {
+  isAllowedPilotAnalyticsOrigin,
+  pilotAnalyticsPreflight,
+} from '../server/lib/pilot-analytics-http.ts';
 
 const participantId = '9f660fd6-b416-4b43-915b-8df48f23626b';
 
@@ -55,4 +59,31 @@ test('council portal exposes active, current and all-time definitions', async ()
   assert.match(dashboard, /label: "Currently linked"/);
   assert.match(dashboard, /label: "All-time residents"/);
   assert.match(dashboard, /last_seen_at >= now\(\) - make_interval/);
+});
+
+test('allows only first-party and local-development analytics origins', () => {
+  assert.equal(isAllowedPilotAnalyticsOrigin('https://what-bin-is-it-tonight.vercel.app'), true);
+  assert.equal(
+    isAllowedPilotAnalyticsOrigin('https://what-bin-is-it-tonight-git-main-example.vercel.app'),
+    true,
+  );
+  assert.equal(isAllowedPilotAnalyticsOrigin('http://localhost:8081'), true);
+  assert.equal(isAllowedPilotAnalyticsOrigin('https://unrelated.example'), false);
+
+  const allowed = pilotAnalyticsPreflight(
+    new Request('https://what-bin-is-it-tonight.vercel.app/api/analytics/council-links', {
+      headers: { origin: 'http://localhost:8081' },
+    }),
+    'POST',
+  );
+  assert.equal(allowed.status, 204);
+  assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:8081');
+
+  const blocked = pilotAnalyticsPreflight(
+    new Request('https://what-bin-is-it-tonight.vercel.app/api/analytics/council-links', {
+      headers: { origin: 'https://unrelated.example' },
+    }),
+    'POST',
+  );
+  assert.equal(blocked.status, 403);
 });

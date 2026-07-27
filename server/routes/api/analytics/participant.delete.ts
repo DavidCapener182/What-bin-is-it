@@ -5,6 +5,7 @@ import {
   isPilotParticipantId,
   pilotAnalyticsConfigured,
 } from '../../../lib/pilot-analytics';
+import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
 const headers = {
   'cache-control': 'no-store',
@@ -13,10 +14,14 @@ const headers = {
 };
 
 export default defineHandler(async (event) => {
+  const responseHeaders = {
+    ...headers,
+    ...pilotAnalyticsCorsHeaders(event.req),
+  };
   if (!pilotAnalyticsConfigured()) {
     return new Response(JSON.stringify({ error: 'Anonymous app evidence is not configured.' }), {
       status: 503,
-      headers,
+      headers: responseHeaders,
     });
   }
   try {
@@ -24,15 +29,15 @@ export default defineHandler(async (event) => {
     if (!isPilotParticipantId(body.participantId)) {
       return new Response(JSON.stringify({ error: 'The analytics participant ID is invalid.' }), {
         status: 400,
-        headers,
+        headers: responseHeaders,
       });
     }
     const deleted = await deletePilotParticipant(body.participantId);
-    return new Response(JSON.stringify({ deleted }), { status: 200, headers });
+    return new Response(JSON.stringify({ deleted }), { status: 200, headers: responseHeaders });
   } catch {
     return new Response(JSON.stringify({ error: 'The deletion request is invalid.' }), {
       status: 400,
-      headers,
+      headers: responseHeaders,
     });
   }
 });
