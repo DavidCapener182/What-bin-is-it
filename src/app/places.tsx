@@ -20,6 +20,7 @@ import { appFonts } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { getDeviceCoordinates } from '@/lib/device-location';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
+import { councilIdsForResidentUse } from '@/lib/resident-adoption';
 import { shareSavedPlace } from '@/lib/schedule-tools';
 import { CouncilAddressOption, SavedAddress } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
@@ -135,6 +136,12 @@ export default function PlacesScreen() {
         context: 'manual',
         outcome: 'success',
       });
+      void analytics.syncCouncilLinks(councilIdsForResidentUse(
+        addresses.map((address) => address.providerId),
+        result.providerId,
+      )).catch(() => {
+        // Council adoption evidence is retried after the place is saved.
+      });
       await continueWithResolvedPlace(result);
     } catch (error) {
       analytics.track('postcode_lookup_failed', {
@@ -197,6 +204,12 @@ export default function PlacesScreen() {
         councilId: result.providerId,
         context: 'location',
         outcome: 'success',
+      });
+      void analytics.syncCouncilLinks(councilIdsForResidentUse(
+        addresses.map((address) => address.providerId),
+        result.providerId,
+      )).catch(() => {
+        // Council adoption evidence is retried after the place is saved.
       });
       await continueWithResolvedPlace(result);
     } catch (error) {

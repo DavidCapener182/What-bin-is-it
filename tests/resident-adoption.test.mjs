@@ -7,6 +7,7 @@ import {
   isAllowedPilotAnalyticsOrigin,
   pilotAnalyticsPreflight,
 } from '../server/lib/pilot-analytics-http.ts';
+import { councilIdsForResidentUse } from '../src/lib/resident-adoption.ts';
 
 const participantId = '9f660fd6-b416-4b43-915b-8df48f23626b';
 
@@ -86,4 +87,38 @@ test('allows only first-party and local-development analytics origins', () => {
     'POST',
   );
   assert.equal(blocked.status, 403);
+});
+
+test('a successful postcode resolution adds its council to the current anonymous links', () => {
+  assert.deepEqual(councilIdsForResidentUse(
+    ['lad-e08000011', 'lad-e08000014', 'lad-e08000011'],
+    'lad-e08000015',
+  ), [
+    'lad-e08000011',
+    'lad-e08000014',
+    'lad-e08000015',
+  ]);
+  assert.deepEqual(councilIdsForResidentUse(
+    ['unconnected', 'not a council'],
+    'lad-e08000011',
+  ), ['lad-e08000011']);
+});
+
+test('postcode and location success paths sync their resolved council immediately', async () => {
+  const onboarding = await readFile(
+    new URL('../src/app/onboarding.tsx', import.meta.url),
+    'utf8',
+  );
+  const places = await readFile(
+    new URL('../src/app/places.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    onboarding,
+    /syncCouncilLinks\(\s*councilIdsForResidentUse\(\[\], resolved\.providerId\),?\s*\)/,
+  );
+  assert.match(
+    places,
+    /syncCouncilLinks\(councilIdsForResidentUse\(\s*addresses\.map/,
+  );
 });

@@ -19,6 +19,7 @@ import { RouteHead } from '@/components/route-head';
 import { fetchCouncilAddresses, lookupPostcode, ResolvedPlace } from '@/lib/council-provider';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
+import { councilIdsForResidentUse } from '@/lib/resident-adoption';
 import { useAppTheme } from '@/lib/theme';
 import { CouncilAddressOption } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
@@ -68,6 +69,11 @@ export default function OnboardingScreen() {
         councilId: resolved.providerId,
         context: 'manual',
         outcome: 'success',
+      });
+      void analytics.syncCouncilLinks(
+        councilIdsForResidentUse([], resolved.providerId),
+      ).catch(() => {
+        // Council adoption evidence is retried after the place is saved.
       });
       analytics.track('address_options_loaded', {
         councilId: resolved.providerId,
