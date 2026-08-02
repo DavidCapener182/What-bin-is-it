@@ -95,3 +95,47 @@ test("council authentication uses a dedicated cookie namespace", async () => {
     assert.match(source, /sameSite: "lax"/);
   }
 });
+
+test("hosted authentication is time bounded and supports an authorised password sign-in", async () => {
+  const [actions, auth, callback, fetchSource, proxy] = await Promise.all([
+    readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/supabase/fetch.ts", import.meta.url), "utf8"),
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(actions, /export async function signInCouncilWithPassword/);
+  assert.match(actions, /signInWithPassword/);
+  assert.match(actions, /authorisedCouncilEmail\(email\)/);
+  assert.doesNotMatch(actions, /console\.(?:log|info|warn|error)\([^\n]*password/i);
+  assert.match(fetchSource, /AbortController/);
+  assert.match(fetchSource, /COUNCIL_AUTH_FETCH_TIMEOUT_MS/);
+  assert.match(proxy, /global:\s*\{\s*fetch: councilAuthFetch\s*\}/);
+  assert.match(proxy, /catch/);
+  assert.match(auth, /catch/);
+  assert.match(callback, /catch/);
+});
+
+test("the council console exposes an installable privacy-safe PWA", async () => {
+  const [manifest, layout, registration, worker, proxy, iconRoute] = await Promise.all([
+    readFile(new URL("../app/manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/pwa-registration.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/pwa-icon/[size]/route.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(manifest, /What Bin Council Console/);
+  assert.match(manifest, /display:\s*"standalone"/);
+  assert.match(manifest, /sizes:\s*"192x192"/);
+  assert.match(manifest, /sizes:\s*"512x512"/);
+  assert.match(layout, /appleWebApp/);
+  assert.match(layout, /<PwaRegistration/);
+  assert.match(registration, /navigator\.serviceWorker\.register\("\/sw\.js"\)/);
+  assert.doesNotMatch(worker, /caches\.(?:open|match)|addAll/);
+  assert.match(proxy, /manifest\.webmanifest/);
+  assert.match(proxy, /sw\.js/);
+  assert.match(iconRoute, /ImageResponse/);
+});

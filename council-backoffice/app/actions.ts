@@ -171,9 +171,14 @@ async function signInOrigin() {
   return url.origin;
 }
 
-async function allowSignInAttempt(email: string) {
+async function allowSignInAttempt(
+  email: string,
+  purpose: "magic-link" | "password",
+  minimumIntervalMs: number,
+  maximumAttempts: number,
+) {
   const sql = councilDatabase();
-  const emailHash = createHash("sha256").update(email).digest("hex");
+  const emailHash = createHash("sha256").update(`${purpose}:${email}`).digest("hex");
   return sql.begin(async (transaction) => {
     await transaction`
       DELETE FROM bin_council_auth_rate_limits
@@ -191,14 +196,14 @@ async function allowSignInAttempt(email: string) {
     `;
     const current = rows[0];
     const now = Date.now();
-    if (current?.last_requested_at && now - current.last_requested_at.getTime() < 60_000) {
+    if (current?.last_requested_at && now - current.last_requested_at.getTime() < minimumIntervalMs) {
       return false;
     }
     const windowIsCurrent = Boolean(
       current && now - current.window_started_at.getTime() < 60 * 60 * 1_000,
     );
     const nextCount = windowIsCurrent ? current.request_count + 1 : 1;
-    if (nextCount > 5) return false;
+    if (nextCount > maximumAttempts) return false;
     await transaction`
       INSERT INTO bin_council_auth_rate_limits (
         email_hash,
@@ -265,7 +270,7 @@ export async function requestCouncilSignIn(formData: FormData) {
   }
   if (developmentSessionStarted) redirect("/");
   try {
-    const permitted = await allowSignInAttempt(email);
+    const permitted = await allowSignInAttempt(email, "magic-link", 60_000, 5);
     const authorised = permitted && await authorisedCouncilEmail(email);
     if (authorised) {
       const supabase = await createCouncilSupabaseServerClient();
@@ -282,6 +287,35 @@ export async function requestCouncilSignIn(formData: FormData) {
     // The response remains generic to prevent email-account enumeration.
   }
   redirect("/login?sent=1");
+}
+
+export async function signInCouncilWithPassword(formData: FormData) {
+  const emailEntry = formData.get("email");
+  const passwordEntry = formData.get("password");
+  const email = typeof emailEntry === "string" ? emailEntry.trim().toLowerCase() : "";
+  const password = typeof passwordEntry === "string" ? passwordEntry : "";
+  const validInput = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+    && email.length <= 254
+    && password.length >= 8
+    && password.length <= 256;
+  let authenticated = false;
+
+  if (validInput) {
+    try {
+      const permitted = await allowSignInAttempt(email, "password", 1_500, 10);
+      const authorised = permitted && await authorisedCouncilEmail(email);
+      if (authorised) {
+        const supabase = await createCouncilSupabaseServerClient();
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        authenticated = !error;
+      }
+    } catch {
+      // Keep failures generic so staff records and authentication state are not disclosed.
+    }
+  }
+
+  if (authenticated) redirect("/");
+  redirect("/login?auth=invalid");
 }
 
 export async function signOutCouncil() {

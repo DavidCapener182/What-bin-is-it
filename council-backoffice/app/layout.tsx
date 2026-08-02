@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
+import { PwaRegistration } from "@/components/pwa-registration";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,6 +10,20 @@ export const metadata: Metadata = {
     template: "%s | What Bin Council Console",
   },
   description: "Private council operations console for resident waste-service communications.",
+  applicationName: "What Bin Council Console",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "What Bin Console",
+  },
+  icons: {
+    icon: "/pwa-icon/192",
+    apple: "/pwa-icon/192",
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
   robots: {
     index: false,
     follow: false,
@@ -30,7 +46,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en-GB">
-      <body>{children}</body>
+      <body>
+        {children}
+        <PwaRegistration />
+      </body>
     </html>
   );
 }

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ArrowRight, KeyRound, RadioTower, ShieldCheck } from "lucide-react";
 
-import { requestCouncilSignIn } from "@/app/actions";
+import { requestCouncilSignIn, signInCouncilWithPassword } from "@/app/actions";
 import { developmentSuperadminLoginAvailable, getCouncilSession } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Council staff sign in" };
@@ -36,7 +36,7 @@ export default async function LoginPage({
         </div>
         <div className="login-trust">
           <span><ShieldCheck aria-hidden="true" size={18} /> Council-scoped permissions</span>
-          <span><KeyRound aria-hidden="true" size={18} /> Password-free staff access</span>
+          <span><KeyRound aria-hidden="true" size={18} /> Password or secure-link access</span>
         </div>
       </section>
 
@@ -47,7 +47,7 @@ export default async function LoginPage({
           <p>
             {developmentLogin
               ? "Enter your assigned platform-superadmin email to open this local development console."
-              : "Use the email address already assigned by your What Bin administrator. We will send a one-time secure link."}
+              : "Use your authorised email and password, or request a one-time secure link."}
           </p>
           {params.sent && !developmentLogin ? (
             <div className="login-confirmation" role="status">
@@ -56,7 +56,44 @@ export default async function LoginPage({
             </div>
           ) : null}
           {params.signedOut ? <div className="login-note">You have been signed out safely.</div> : null}
-          {params.auth ? <div className="login-error" role="alert">That sign-in link is invalid or expired. Request another below.</div> : null}
+          {params.auth ? (
+            <div className="login-error" role="alert">
+              {params.auth === "unavailable"
+                ? "The secure sign-in service did not respond. Please try your password or request a fresh link."
+                : "Could not sign in. Check your details or request a fresh secure link."}
+            </div>
+          ) : null}
+          {developmentLogin ? null : (
+            <form action={signInCouncilWithPassword} className="stack-form">
+              <label htmlFor="password-email">Authorised email address</label>
+              <input
+                autoComplete="username"
+                id="password-email"
+                inputMode="email"
+                maxLength={254}
+                name="email"
+                placeholder="name@council.gov.uk"
+                required
+                type="email"
+              />
+              <label htmlFor="password">Password</label>
+              <input
+                autoComplete="current-password"
+                id="password"
+                maxLength={256}
+                minLength={8}
+                name="password"
+                placeholder="Your password"
+                required
+                type="password"
+              />
+              <button className="primary-button" type="submit">
+                Sign in
+                <ArrowRight aria-hidden="true" size={18} />
+              </button>
+            </form>
+          )}
+          {developmentLogin ? null : <div className="login-divider"><span>or use a secure link</span></div>}
           <form action={requestCouncilSignIn} className="stack-form">
             <label htmlFor="email">{developmentLogin ? "Superadmin email address" : "Council email address"}</label>
             <input
@@ -70,7 +107,7 @@ export default async function LoginPage({
               type="email"
             />
             <button className="primary-button" type="submit">
-              {developmentLogin ? "Open superadmin console" : "Email my secure link"}
+              {developmentLogin ? "Open superadmin console" : "Email secure link"}
               <ArrowRight aria-hidden="true" size={18} />
             </button>
           </form>

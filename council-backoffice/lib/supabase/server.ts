@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import { councilAuthFetch } from "./fetch";
+
 function configuration() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
@@ -12,6 +14,7 @@ export async function createCouncilSupabaseServerClient() {
   const cookieStore = await cookies();
   const { url, key } = configuration();
   return createServerClient(url, key, {
+    global: { fetch: councilAuthFetch },
     cookieOptions: {
       name: "what-bin-council-auth",
       httpOnly: true,

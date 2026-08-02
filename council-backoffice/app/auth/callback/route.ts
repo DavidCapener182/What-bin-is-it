@@ -10,10 +10,14 @@ export async function GET(request: Request) {
   if (!code || code.length > 2048) {
     return NextResponse.redirect(new URL("/login?auth=invalid", requestUrl.origin));
   }
-  const supabase = await createCouncilSupabaseServerClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error) {
-    return NextResponse.redirect(new URL("/login?auth=expired", requestUrl.origin));
+  try {
+    const supabase = await createCouncilSupabaseServerClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      return NextResponse.redirect(new URL("/login?auth=expired", requestUrl.origin));
+    }
+    return NextResponse.redirect(new URL(next, requestUrl.origin));
+  } catch {
+    return NextResponse.redirect(new URL("/login?auth=unavailable", requestUrl.origin));
   }
-  return NextResponse.redirect(new URL(next, requestUrl.origin));
 }

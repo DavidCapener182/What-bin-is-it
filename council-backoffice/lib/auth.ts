@@ -155,14 +155,18 @@ function organisationFromRow(row: StaffRow): CouncilOrganisation {
 export async function authenticatedCouncilIdentity() {
   const developmentIdentity = await developmentSuperadminIdentity();
   if (developmentIdentity) return developmentIdentity;
-  const supabase = await createCouncilSupabaseServerClient();
-  const { data, error } = await supabase.auth.getClaims();
-  const claims = data?.claims;
-  if (error || !claims || typeof claims.sub !== "string") return undefined;
-  return {
-    userId: claims.sub,
-    email: typeof claims.email === "string" ? claims.email : undefined,
-  };
+  try {
+    const supabase = await createCouncilSupabaseServerClient();
+    const { data, error } = await supabase.auth.getClaims();
+    const claims = data?.claims;
+    if (error || !claims || typeof claims.sub !== "string") return undefined;
+    return {
+      userId: claims.sub,
+      email: typeof claims.email === "string" ? claims.email : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function councilMemberships(userId: string) {

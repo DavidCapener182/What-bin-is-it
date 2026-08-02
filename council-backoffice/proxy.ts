@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { councilAuthFetch } from "@/lib/supabase/fetch";
+
 function cspFor(nonce: string, supabaseUrl: string) {
   const isDevelopment = process.env.NODE_ENV === "development";
   const supabaseOrigin = (() => {
@@ -21,7 +23,7 @@ function cspFor(nonce: string, supabaseUrl: string) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "worker-src 'none'",
+    "worker-src 'self'",
   ].join("; ");
 }
 
@@ -39,6 +41,7 @@ export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   if (supabaseUrl && supabaseKey && !localDevelopmentRequest) {
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      global: { fetch: councilAuthFetch },
       cookieOptions: {
         name: "what-bin-council-auth",
         httpOnly: true,
@@ -65,7 +68,12 @@ export async function proxy(request: NextRequest) {
         },
       },
     });
-    await supabase.auth.getClaims();
+    try {
+      await supabase.auth.getClaims();
+    } catch {
+      // A temporary auth/JWKS outage must not hold every console request open.
+      // Protected server pages still fail closed when they check the identity.
+    }
   }
 
   response.headers.set("content-security-policy", csp);
@@ -75,7 +83,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)",
+      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|robots.txt|manifest.webmanifest|sw.js|pwa-icon).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
