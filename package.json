@@ -57,7 +57,7 @@
     "eslint-config-expo": "~57.0.1",
     "nitro": "^3.0.260610-beta",
     "typescript": "~6.0.3",
-    "vite": "^7.3.6"
+    "vite": "^8.1.5"
   },
   "scripts": {
     "dev": "EXPO_PUBLIC_COUNCIL_API_BASE=https://what-bin-is-it-tonight.vercel.app/api expo start --web",
