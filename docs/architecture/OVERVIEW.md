@@ -43,6 +43,8 @@ Council service broadcasts use opaque, bounded audience attributes: council ID, 
 
 Partner conversion evidence distinguishes impressions, outbound actions and provider-confirmed bookings. Opening a website is never reported as a booking, and commercial placement cannot outrank a suitable free council or charity route.
 
+Bulky-waste bookings add a separate `bin_bulky_bookings` evidence ledger. Official council handoffs, external referrals and Stripe Connect checkouts share a pseudonymous `WB-` reference, but only provider-confirmed or signed-payment outcomes contribute to booking value or platform-fee totals. Stripe or the selected provider owns the fulfilment contact and collection address; those fields are deliberately absent from the What Bin ledger. Row-level security is enabled and resident roles have no table access.
+
 ## Deployment
 
 Vercel serves the exported web app, Nitro API and durable reminder workflows. EAS produces native development, preview and production builds. Apple/Google signing, physical-device tests and store review remain external account-holder gates.

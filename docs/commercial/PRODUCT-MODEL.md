@@ -77,3 +77,14 @@ Ordering must remain:
 4. clearly labelled licensed paid partner.
 
 Never use ordinary display advertising, unrelated sponsored notifications, full-screen advertising or the sale of address/location data.
+
+### Bulky-waste bookings
+
+The resident journey uses the same ordering rule: official council collection first, reuse or charity second, then a clearly-labelled council-approved paid partner. The official route can be measured as a handoff but is never included in What Bin revenue.
+
+Approved partners can use either:
+
+- a tracked external referral carrying a pseudonymous `WB-` reference, which remains unconfirmed until the provider supplies real booking evidence; or
+- a fixed-price Stripe Connect checkout where Stripe collects the name, phone, billing and collection address required for fulfilment and transfers the provider share to its connected account.
+
+What Bin records only the public booking reference, random installation ID, public council ID, selected partner, item type, quantity, amount, platform fee and outcome. It does not copy the resident's account, name, telephone, email, postcode or address into the booking ledger. A website open or checkout start is not revenue. The console includes booking value and platform fees only after a signed Stripe webhook or a provider confirmation reference.

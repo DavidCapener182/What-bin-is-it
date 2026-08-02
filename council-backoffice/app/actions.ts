@@ -30,6 +30,7 @@ import {
   createDisruption,
   createPartner,
   createSponsorshipProgramme,
+  confirmExternalBulkyBooking,
   saveCouncilFeatureFlags,
   saveCouncilPilotBaseline,
   saveCouncilOnboardingItem,
@@ -502,6 +503,18 @@ export async function savePartnerAction(formData: FormData) {
       commissionPence: optionalText(formData.get("commissionPence"), 12)
         ? integerValue(formData.get("commissionPence"), "Commission", 0, 100000)
         : undefined,
+      bookingMode: allowedValue(
+        formData.get("bookingMode"),
+        ["none", "external-referral", "stripe-connect"] as const,
+        "Booking mode",
+      ),
+      bookingPricePence: optionalText(formData.get("bookingPricePence"), 12)
+        ? integerValue(formData.get("bookingPricePence"), "Fixed price", 100, 1000000)
+        : undefined,
+      platformFeePence: optionalText(formData.get("platformFeePence"), 12)
+        ? integerValue(formData.get("platformFeePence"), "Platform fee", 0, 100000)
+        : undefined,
+      stripeAccountId: optionalText(formData.get("stripeAccountId"), 255),
       priority: integerValue(formData.get("priority"), "Priority", 1, 1000),
       licenceReference: optionalText(formData.get("licenceReference"), 120),
       supportedAreaLabels: splitValues(formData.get("supportedAreaLabels"), 40, 80),
@@ -593,6 +606,24 @@ export async function changePartnerStatusAction(formData: FormData) {
     redirect(errorPath(path, error));
   }
   redirect(successPath(path, "Partner status updated."));
+}
+
+export async function confirmExternalBulkyBookingAction(formData: FormData) {
+  const path = "/partners";
+  try {
+    const session = await requireCouncilAction("partners:approve");
+    const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
+    if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
+    await confirmExternalBulkyBooking(
+      session,
+      reference,
+      requiredText(formData.get("providerReference"), "Provider confirmation reference", 160),
+    );
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "The provider-confirmed booking is now included in the evidence ledger."));
 }
 
 export async function saveSponsorshipProgrammeAction(formData: FormData) {

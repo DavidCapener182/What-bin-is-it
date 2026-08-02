@@ -15,7 +15,7 @@ import { useCouncilProfile } from '@/lib/use-council-profile';
 import { useProductState } from '@/lib/use-product-state';
 
 type PrimaryRoute = '/' | '/schedule' | '/guide' | '/activity';
-type AppRoute = PrimaryRoute | '/reports' | '/settings' | '/places' | '/history' | '/support' | '/partners' | '/report-missed' | '/report-incorrect' | '/onboarding';
+type AppRoute = PrimaryRoute | '/reports' | '/settings' | '/places' | '/history' | '/support' | '/partners' | '/bulky-booking' | '/report-missed' | '/report-incorrect' | '/onboarding';
 
 const tabs: { route: PrimaryRoute; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },

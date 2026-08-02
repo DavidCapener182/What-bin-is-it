@@ -33,13 +33,13 @@ export const webSupporterPlans = {
 
 export type WebSupporterPlanId = keyof typeof webSupporterPlans;
 
-let stripeClient: Stripe | undefined;
+let stripeInstance: Stripe | undefined;
 
-function stripe() {
+export function stripeClient() {
   const secret = process.env.STRIPE_SECRET_KEY?.trim();
   if (!secret) throw new Error('Secure web checkout is not configured.');
-  if (!stripeClient) stripeClient = new Stripe(secret);
-  return stripeClient;
+  if (!stripeInstance) stripeInstance = new Stripe(secret);
+  return stripeInstance;
 }
 
 export function webBillingConfigured() {
@@ -102,7 +102,7 @@ export async function createWebCheckout(
       ? { interval: 'year' as const }
       : undefined;
   const metadata = { channel: 'web', planId, binUserId: user.id };
-  const session = await stripe().checkout.sessions.create({
+  const session = await stripeClient().checkout.sessions.create({
     mode: plan.mode,
     line_items: [{
       quantity: 1,
@@ -450,7 +450,7 @@ async function markSupporterStatus(
 export function constructStripeEvent(body: string, signature: string | null) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
   if (!webhookSecret || !signature) throw new Error('The Stripe webhook signature is missing.');
-  return stripe().webhooks.constructEvent(body, signature, webhookSecret);
+  return stripeClient().webhooks.constructEvent(body, signature, webhookSecret);
 }
 
 export async function processStripeEvent(event: Stripe.Event) {
@@ -482,6 +482,15 @@ export async function processStripeEvent(event: Stripe.Event) {
     eventId: event.id,
   };
   try {
+    const bulkyBookingEvent = await import('./bulky-bookings')
+      .then(({ processBulkyBookingStripeEvent }) => processBulkyBookingStripeEvent(event));
+    if (bulkyBookingEvent) {
+      await sql`
+        UPDATE bin_payment_events SET outcome = 'processed'
+        WHERE stripe_event_id = ${event.id}
+      `;
+      return true;
+    }
     if (
       event.type === 'checkout.session.completed'
       || event.type === 'checkout.session.async_payment_succeeded'
@@ -537,7 +546,7 @@ export async function confirmWebCheckout(sessionId: string, userId: string) {
   if (!/^cs_(?:test_|live_)?[A-Za-z0-9]{10,}$/.test(sessionId)) {
     throw new Error('The checkout session is invalid.');
   }
-  const session = await stripe().checkout.sessions.retrieve(sessionId);
+  const session = await stripeClient().checkout.sessions.retrieve(sessionId);
   const customer = customerId(session.customer);
   if (
     !customer
@@ -561,7 +570,7 @@ export async function createSupporterPortal(userId: string, origin: string) {
   `;
   const customer = rows[0]?.stripe_customer_id;
   if (!customer) throw new Error('No web supporter plan was found for this account.');
-  const session = await stripe().billingPortal.sessions.create({
+  const session = await stripeClient().billingPortal.sessions.create({
     customer,
     return_url: `${origin}/plus`,
   });

@@ -52,7 +52,7 @@ export default function PrivacyScreen() {
         },
         {
           title: 'Local and partner services',
-          body: 'The Guide lists an appropriate free council service before any relevant sponsored option. If you choose a partner listing, What Bin may record a pseudonymous event such as listing viewed, website opened, telephone tapped, directions requested or booking started. A booking is recorded as confirmed only after separate partner callback or referral evidence. Partner organisations do not receive your account identity, saved address or postcode through this tracking. Sponsored placements are labelled and can be hidden in Settings.',
+          body: 'The Guide lists an appropriate free council service before reuse and any relevant sponsored option. If you start a bulky collection, What Bin may record a random installation identifier, public council identifier, selected service, item type, quantity, amount, fee, a pseudonymous WB booking reference and its status. A website open or booking start is not counted as a completed booking. Confirmation requires a signed Stripe event or a provider confirmation reference. For in-app partner payment, Stripe collects the name, phone, billing and collection address needed to fulfil the booking; those details are not copied into the What Bin booking ledger. Partner organisations do not receive your What Bin account identity, saved app address or postcode through the tracking record. Sponsored placements are labelled and can be hidden in Settings.',
         },
         {
           title: 'Service providers',

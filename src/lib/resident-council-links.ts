@@ -15,7 +15,7 @@ const apiBase = configuredApiBase
 
 let installationIdPromise: Promise<string> | undefined;
 
-async function residentInstallationId() {
+export async function residentInstallationId() {
   installationIdPromise ??= AsyncStorage.getItem(storageKey).then(async (stored) => {
     if (stored && uuidPattern.test(stored)) return stored;
     const legacyAnalytics = await AsyncStorage.getItem(legacyAnalyticsStorageKey)

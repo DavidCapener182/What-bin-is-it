@@ -127,6 +127,8 @@ export type CouncilProfile = {
     serviceUrl: string;
     itemKeys: string[];
     disclosureLabel: string;
+    bookingMode?: 'external-referral' | 'stripe-connect';
+    bookingPricePence?: number;
   }[];
   reporting?: {
     enabled: boolean;
@@ -254,6 +256,8 @@ function validPlatformContent(profile: CouncilProfile) {
     typeof item.id !== 'string' || typeof item.name !== 'string'
     || typeof item.description !== 'string' || !isSafeHttps(item.serviceUrl)
     || !Array.isArray(item.itemKeys) || typeof item.disclosureLabel !== 'string'
+    || (item.bookingMode !== undefined && !['external-referral', 'stripe-connect'].includes(item.bookingMode))
+    || (item.bookingPricePence !== undefined && (!Number.isInteger(item.bookingPricePence) || item.bookingPricePence < 100 || item.bookingPricePence > 1000000))
   ))) return false;
   if (profile.reporting && (
     typeof profile.reporting.enabled !== 'boolean'

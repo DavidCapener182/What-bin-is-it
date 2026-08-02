@@ -39,6 +39,7 @@ export default function RootLayout() {
                   <Stack.Screen name="history" />
                   <Stack.Screen name="support" />
                   <Stack.Screen name="partners" />
+                  <Stack.Screen name="bulky-booking" />
                   <Stack.Screen name="plus" />
                   <Stack.Screen name="account" />
                   <Stack.Screen name="household" />

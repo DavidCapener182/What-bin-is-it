@@ -37,6 +37,8 @@ Do not submit until those values have been checked on the same production build.
 
 Saved addresses, schedules, preferences, local report history and collection outcomes are stored on the device. Postcode, council provider ID and selected opaque property reference are sent only for a requested live lookup. Optional accounts keep email identity and plan/grant records in Supabase. Opt-in household sharing stores a nickname, public council identifier, member display names and explicit bin actions without uploading the address or postcode. Account export and What Bin account-data removal are available from Account. There is no third-party advertising or behavioural-tracking SDK. Relevant sponsored service listings, when a council has approved and enabled them, are labelled and can be hidden; pseudonymous listing/open events are recorded by the first-party gateway.
 
+If a council has enabled and approved a bulky-waste partner, the app always shows the official council route and reuse guidance before that paid option. The first-party ledger stores a random installation ID, public council ID, partner, item, quantity, amount, platform fee, pseudonymous booking reference and status. Stripe Checkout or the selected provider collects the fulfilment contact and collection address. What Bin does not copy those details into its ledger and does not report a click or checkout start as revenue.
+
 The first Apple release is iPhone-only. `supportsTablet` remains disabled until adaptive iPad layouts pass testing.
 
 ## Missed collections

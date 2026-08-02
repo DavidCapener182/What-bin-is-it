@@ -116,6 +116,8 @@ export type CouncilProfile = {
     serviceUrl: string;
     itemKeys: string[];
     disclosureLabel: string;
+    bookingMode?: 'external-referral' | 'stripe-connect';
+    bookingPricePence?: number;
   }[];
   reporting?: {
     enabled: boolean;

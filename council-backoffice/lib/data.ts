@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type postgres from "postgres";
 
 import { councilDatabase } from "./database";
@@ -6,6 +8,7 @@ import type {
   CouncilAnnouncement,
   CouncilAudienceCriteria,
   CouncilBroadcastSummary,
+  CouncilBulkyBooking,
   CouncilDisruption,
   CouncilFeatureFlags,
   CouncilGuidanceItem,
@@ -1129,6 +1132,10 @@ export async function listPartners(session: CouncilStaffSession) {
     disclosure_label: string;
     referral_model: string;
     commission_pence: number | null;
+    booking_mode: "none" | "external-referral" | "stripe-connect";
+    booking_price_pence: number | null;
+    platform_fee_pence: number | null;
+    stripe_account_id: string | null;
     priority: number;
     licence_reference: string | null;
     supported_area_labels: string[];
@@ -1152,6 +1159,10 @@ export async function listPartners(session: CouncilStaffSession) {
       disclosure_label,
       referral_model,
       commission_pence,
+      booking_mode,
+      booking_price_pence,
+      platform_fee_pence,
+      stripe_account_id,
       priority,
       licence_reference,
       supported_area_labels,
@@ -1182,6 +1193,32 @@ export async function listPartners(session: CouncilStaffSession) {
     result[row.partner_id] = { ...(result[row.partner_id] ?? {}), [row.event_name]: row.event_count };
     return result;
   }, {});
+  const bookingRows = await sql<{
+    partner_id: string;
+    status: string;
+    booking_count: number;
+    confirmed_value_pence: number;
+    confirmed_fee_pence: number;
+  }[]>`
+    SELECT partner_id, status, count(*)::int AS booking_count,
+      coalesce(sum(amount_pence) FILTER (WHERE status IN ('confirmed', 'completed')), 0)::int AS confirmed_value_pence,
+      coalesce(sum(platform_fee_pence) FILTER (WHERE status IN ('confirmed', 'completed')), 0)::int AS confirmed_fee_pence
+    FROM bin_bulky_bookings
+    WHERE organisation_id = ${session.organisation.id}::uuid AND partner_id IS NOT NULL
+    GROUP BY partner_id, status
+  `;
+  const bookingEvidence = bookingRows.reduce<Record<string, {
+    counts: Record<string, number>;
+    valuePence: number;
+    feePence: number;
+  }>>((result, row) => {
+    const current = result[row.partner_id] ?? { counts: {}, valuePence: 0, feePence: 0 };
+    current.counts[row.status] = row.booking_count;
+    current.valuePence += row.confirmed_value_pence;
+    current.feePence += row.confirmed_fee_pence;
+    result[row.partner_id] = current;
+    return result;
+  }, {});
   return rows.map((row): CouncilPartner => ({
     id: row.id,
     name: row.name,
@@ -1192,6 +1229,10 @@ export async function listPartners(session: CouncilStaffSession) {
     disclosureLabel: row.disclosure_label,
     referralModel: row.referral_model,
     commissionPence: row.commission_pence ?? undefined,
+    bookingMode: row.booking_mode,
+    bookingPricePence: row.booking_price_pence ?? undefined,
+    platformFeePence: row.platform_fee_pence ?? undefined,
+    stripeAccountId: row.stripe_account_id ?? undefined,
     priority: row.priority,
     licenceReference: row.licence_reference ?? undefined,
     supportedAreaLabels: row.supported_area_labels,
@@ -1201,6 +1242,9 @@ export async function listPartners(session: CouncilStaffSession) {
     suspensionReason: row.immediate_suspension_reason ?? undefined,
     renewalReviewAt: row.renewal_review_at ?? undefined,
     conversionCounts: conversions[row.id] ?? {},
+    bookingCounts: bookingEvidence[row.id]?.counts ?? {},
+    confirmedBookingValuePence: bookingEvidence[row.id]?.valuePence ?? 0,
+    confirmedPlatformFeePence: bookingEvidence[row.id]?.feePence ?? 0,
     status: row.status,
     startsAt: row.starts_at?.toISOString(),
     endsAt: row.ends_at?.toISOString(),
@@ -1210,7 +1254,10 @@ export async function listPartners(session: CouncilStaffSession) {
 
 export async function createPartner(
   session: CouncilStaffSession,
-  input: Omit<CouncilPartner, "id" | "status" | "updatedAt" | "conversionCounts"> & { status: "draft" | "review" },
+  input: Omit<
+    CouncilPartner,
+    "id" | "status" | "updatedAt" | "conversionCounts" | "bookingCounts" | "confirmedBookingValuePence" | "confirmedPlatformFeePence"
+  > & { status: "draft" | "review" },
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
@@ -1225,6 +1272,10 @@ export async function createPartner(
         disclosure_label,
         referral_model,
         commission_pence,
+        booking_mode,
+        booking_price_pence,
+        platform_fee_pence,
+        stripe_account_id,
         priority,
         licence_reference,
         supported_area_labels,
@@ -1247,6 +1298,10 @@ export async function createPartner(
         ${input.disclosureLabel},
         ${input.referralModel},
         ${input.commissionPence ?? null},
+        ${input.bookingMode},
+        ${input.bookingPricePence ?? null},
+        ${input.platformFeePence ?? null},
+        ${input.stripeAccountId ?? null},
         ${input.priority},
         ${input.licenceReference ?? null},
         ${input.supportedAreaLabels},
@@ -1274,6 +1329,94 @@ export async function createPartner(
   });
 }
 
+export async function listBulkyBookings(session: CouncilStaffSession): Promise<CouncilBulkyBooking[]> {
+  const rows = await councilDatabase()<{
+    public_reference: string;
+    partner_id: string | null;
+    partner_name: string | null;
+    booking_channel: CouncilBulkyBooking["channel"];
+    item_key: string;
+    quantity: number;
+    amount_pence: number | null;
+    platform_fee_pence: number | null;
+    status: string;
+    partner_reference: string | null;
+    started_at: Date;
+    confirmed_at: Date | null;
+  }[]>`
+    SELECT booking.public_reference, booking.partner_id, partner.name AS partner_name,
+      booking.booking_channel, booking.item_key, booking.quantity, booking.amount_pence,
+      booking.platform_fee_pence, booking.status, booking.partner_reference,
+      booking.started_at, booking.confirmed_at
+    FROM bin_bulky_bookings booking
+    LEFT JOIN bin_council_partners partner ON partner.id = booking.partner_id
+    WHERE booking.organisation_id = ${session.organisation.id}::uuid
+    ORDER BY booking.started_at DESC
+    LIMIT 100
+  `;
+  return rows.map((row) => ({
+    reference: row.public_reference,
+    partnerId: row.partner_id ?? undefined,
+    partnerName: row.partner_name ?? undefined,
+    channel: row.booking_channel,
+    itemKey: row.item_key,
+    quantity: row.quantity,
+    amountPence: row.amount_pence ?? undefined,
+    platformFeePence: row.platform_fee_pence ?? undefined,
+    status: row.status,
+    providerReference: row.partner_reference ?? undefined,
+    startedAt: row.started_at.toISOString(),
+    confirmedAt: row.confirmed_at?.toISOString(),
+  }));
+}
+
+export async function confirmExternalBulkyBooking(
+  session: CouncilStaffSession,
+  reference: string,
+  providerReference: string,
+) {
+  const sql = councilDatabase();
+  return sql.begin(async (transaction) => {
+    const rows = await transaction<{
+      id: string;
+      partner_id: string;
+      installation_id: string;
+    }[]>`
+      UPDATE bin_bulky_bookings SET
+        status = 'confirmed',
+        partner_reference = ${providerReference},
+        confirmed_at = coalesce(confirmed_at, now()),
+        updated_at = now()
+      WHERE public_reference = ${reference}
+        AND organisation_id = ${session.organisation.id}::uuid
+        AND booking_channel = 'external-referral'
+        AND status = 'started'
+      RETURNING id, partner_id, installation_id
+    `;
+    const booking = rows[0];
+    if (!booking) throw new Error("The external booking is not awaiting provider confirmation.");
+    const referralTokenHash = createHash("sha256").update(reference, "utf8").digest("hex");
+    await transaction`
+      INSERT INTO bin_partner_conversion_events (
+        partner_id, organisation_id, installation_id, event_name, referral_token_hash
+      ) SELECT
+        ${booking.partner_id}::uuid, ${session.organisation.id}::uuid,
+        ${booking.installation_id}::uuid, 'booking-confirmed', ${referralTokenHash}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM bin_partner_conversion_events
+        WHERE partner_id = ${booking.partner_id}::uuid
+          AND event_name = 'booking-confirmed'
+          AND referral_token_hash = ${referralTokenHash}
+      )
+    `;
+    await appendAudit(transaction, session, "bulky-booking.confirmed", "bulky-booking", booking.id, {
+      reference,
+      providerReference,
+      evidence: "provider-confirmed",
+    });
+  });
+}
+
 export async function setPartnerStatus(
   session: CouncilStaffSession,
   id: string,
@@ -1284,8 +1427,10 @@ export async function setPartnerStatus(
   return sql.begin(async (transaction) => {
     const currentRows = await transaction<{
       name: string; complaint_contact: string | null; evidence_url: string | null; renewal_review_at: string | null;
+      booking_mode: string; booking_price_pence: number | null; platform_fee_pence: number | null; stripe_account_id: string | null;
     }[]>`
-      SELECT name, complaint_contact, evidence_url, renewal_review_at::text
+      SELECT name, complaint_contact, evidence_url, renewal_review_at::text,
+        booking_mode, booking_price_pence, platform_fee_pence, stripe_account_id
       FROM bin_council_partners
       WHERE id = ${id}::uuid AND organisation_id = ${session.organisation.id}::uuid
       LIMIT 1
@@ -1294,6 +1439,11 @@ export async function setPartnerStatus(
     if (!current) throw new Error("The partner was not found.");
     if (status === "active" && (!current.complaint_contact || !current.evidence_url || !current.renewal_review_at)) {
       throw new Error("Add an evidence link, complaint contact and renewal review date before activation.");
+    }
+    if (status === "active" && current.booking_mode === "stripe-connect" && (
+      !current.booking_price_pence || current.platform_fee_pence === null || !current.stripe_account_id
+    )) {
+      throw new Error("Add the fixed price, platform fee and Stripe connected account before activation.");
     }
     if (status === "paused" && !suspensionReason) {
       throw new Error("Record why the listing is being suspended.");

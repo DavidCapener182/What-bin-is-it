@@ -143,6 +143,10 @@ export type CouncilPartner = {
   disclosureLabel: string;
   referralModel: string;
   commissionPence?: number;
+  bookingMode: "none" | "external-referral" | "stripe-connect";
+  bookingPricePence?: number;
+  platformFeePence?: number;
+  stripeAccountId?: string;
   priority: number;
   licenceReference?: string;
   supportedAreaLabels: string[];
@@ -152,10 +156,28 @@ export type CouncilPartner = {
   suspensionReason?: string;
   renewalReviewAt?: string;
   conversionCounts: Record<string, number>;
+  bookingCounts: Record<string, number>;
+  confirmedBookingValuePence: number;
+  confirmedPlatformFeePence: number;
   status: string;
   startsAt?: string;
   endsAt?: string;
   updatedAt: string;
+};
+
+export type CouncilBulkyBooking = {
+  reference: string;
+  partnerId?: string;
+  partnerName?: string;
+  channel: "official-council" | "external-referral" | "stripe-connect";
+  itemKey: string;
+  quantity: number;
+  amountPence?: number;
+  platformFeePence?: number;
+  status: string;
+  providerReference?: string;
+  startedAt: string;
+  confirmedAt?: string;
 };
 
 export type CouncilSponsorshipProgramme = {

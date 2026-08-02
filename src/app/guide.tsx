@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +9,6 @@ import { CouncilNotices } from '@/components/council-notices';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta } from '@/lib/data';
 import { CouncilProfile, fetchNearbyServices } from '@/lib/council-provider';
-import { bulkyWasteServiceUrl } from '@/lib/council-reporting';
 import { appFonts } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { GuideDestination, GuideItem, guideItemCount, searchGuide } from '@/lib/household-guide';
@@ -430,7 +429,7 @@ export default function GuideScreen() {
               <View style={styles.servicesHero}><View style={styles.servicesMark}><Ionicons color="#F9FFF8" name="location" size={23} /></View><View style={styles.servicesCopy}><Text style={styles.servicesTitle}>Council tips & drop-offs</Text><Text style={styles.servicesText}>Find recycling sites and household-waste services near your saved place.</Text></View></View>
               {serviceItem ? <View style={styles.itemContext}><Ionicons color={theme.accent} name={serviceItem.icon as keyof typeof Ionicons.glyphMap} size={20} /><View style={styles.servicesCopy}><Text style={styles.itemContextTitle}>Looking for: {serviceItem.name}</Text><Text style={styles.itemContextText}>“Item accepted” only includes sites whose source explicitly lists a matching material.</Text></View><Pressable accessibilityLabel="Clear item filter" accessibilityRole="button" onPress={() => { setServiceItem(undefined); setServiceFilter('all'); }} style={styles.clearItem}><Ionicons color={theme.secondaryText} name="close" size={18} /></Pressable></View> : null}
               <View style={styles.locationLine}><Ionicons color={theme.accent} name="location-outline" size={18} /><View style={styles.locationCopy}><Text style={styles.locationLabel}>Searching around</Text><Text style={styles.locationName}>{activeAddress ? `${activeAddress.label} · ${activeAddress.postcode}` : 'Add a place first'}</Text></View></View>
-              <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(bulkyWasteServiceUrl)} style={styles.bulkyCard}><View style={styles.bulkyIcon}><Ionicons color="#FFFFFF" name="bed-outline" size={22} /></View><View style={styles.servicesCopy}><Text style={styles.bulkyTitle}>Book a bulky-waste collection</Text><Text style={styles.bulkyText}>Use the official service to find your council’s collection route for furniture and large items.</Text></View><Ionicons color="#FFFFFF" name="open-outline" size={18} /></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => router.push('/bulky-booking' as Href)} style={styles.bulkyCard}><View style={styles.bulkyIcon}><Ionicons color="#FFFFFF" name="bed-outline" size={22} /></View><View style={styles.servicesCopy}><Text style={styles.bulkyTitle}>Book a bulky-waste collection</Text><Text style={styles.bulkyText}>Compare the official council route, reuse options and any approved paid collection partner.</Text></View><Ionicons color="#FFFFFF" name="chevron-forward" size={18} /></Pressable>
               <Pressable accessibilityRole="button" accessibilityState={{ disabled: finding || !activeAddress }} disabled={finding || !activeAddress} onPress={findServices} style={({ pressed }) => [styles.findButton, pressed && styles.pressed, (finding || !activeAddress) && styles.disabled]}>{finding ? <ActivityIndicator color="#FFFFFF" /> : <><Ionicons color="#FFFFFF" name="locate" size={18} /><Text style={styles.findButtonText}>{services ? 'Search again' : 'Find nearby services'}</Text></>}</Pressable>
               <View style={styles.servicesNote}><Ionicons color={theme.secondaryText} name="information-circle-outline" size={16} /><Text style={styles.servicesNoteText}>The app searches only when you tap the button. Council listings are used where available, with nearby map results as a fallback. Check opening times and accepted waste before travelling.</Text></View>
               {services ? <><ScrollView horizontal contentContainerStyle={styles.filterRow} showsHorizontalScrollIndicator={false}>{([

@@ -18,6 +18,7 @@ These answers describe the current `proof` phase. Reassess them before every sub
 - Account export and removal of What Bin-owned plan/grant records are available in Account.
 - Support opens an external GitHub issue only after the user chooses it.
 - Native Plus builds use RevenueCat to read Apple/Google purchase status. RevenueCat receives an anonymous app user ID, product/transaction and entitlement status, and basic platform/app information. The app disables automatic device-identifier collection and does not send a postcode, street address or location to RevenueCat.
+- Council-approved bulky-waste services can record a random installation ID, public council ID, selected partner, item, quantity, amount, platform fee, pseudonymous booking reference and outcome. Stripe or the selected provider collects any contact and collection-address details needed for fulfilment; What Bin does not copy them into its booking ledger. A click or booking start is not treated as a confirmed booking or revenue.
 
 ## Apple App Privacy
 
@@ -42,6 +43,8 @@ For a Plus-enabled build, also declare conservatively:
 
 - **Purchases / Purchase History** — product, transaction and subscription status; App Functionality; not used for tracking.
 - **User ID** — RevenueCat anonymous app user ID; App Functionality; not used for tracking.
+
+If bulky-waste checkout is enabled in the submitted build, include **Purchases / Purchase History** for the first-party pseudonymous booking amount and outcome. Collection contact and address fields are entered into Stripe's hosted checkout for the chosen provider and are not retained in the What Bin booking ledger; confirm Stripe's then-current processor disclosures before submission.
 
 Do not declare precise location if the production design immediately converts it to a postcode and does not store coordinates. If coordinates are retained or logged, update the answer.
 

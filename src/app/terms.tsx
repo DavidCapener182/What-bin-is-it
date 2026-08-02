@@ -47,6 +47,10 @@ export default function TermsScreen() {
           body: 'Council alerts are operational messages for the selected authority. Delivery can depend on collection type, date or an approved opaque area label supplied by that authority. Do not rely on a push notification as the sole warning for an emergency. Relevant sponsored services are clearly labelled, remain below appropriate free council and reuse options, and can be hidden. Opening a listing is not a guarantee of availability, price or service quality.',
         },
         {
+          title: 'Bulky collection bookings',
+          body: 'The official council route is shown first and is provided under that council service’s own terms. Paid partner services are separate providers and are clearly labelled. Where in-app payment is available, Stripe shows the provider, item quantity, total price and payment terms before you confirm. The selected provider, not What Bin, is responsible for collection fulfilment, availability, waste-carrier compliance, cancellations and service complaints unless the checkout states otherwise. What Bin may receive a disclosed platform fee from a confirmed partner booking. A tracked referral is not treated as a booking until the provider supplies confirmation evidence.',
+        },
+        {
           title: 'External services',
           body: 'Council pages, map providers, email and GitHub are separate services with their own terms and privacy practices. A link does not mean the publisher controls or endorses every item on the external page.',
         },
