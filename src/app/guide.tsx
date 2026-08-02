@@ -17,8 +17,9 @@ import { recyclingMaterialsLabel } from '@/lib/recycling-materials';
 import { Collection, CouncilService } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
-import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 import { useCouncilProfile } from '@/lib/use-council-profile';
+import { useProductState } from '@/lib/use-product-state';
+import { recordPartnerConversion } from '@/lib/resident-council-links';
 
 type FindMode = 'guide' | 'services';
 type ServiceFilter = 'all' | 'nearest' | CouncilService['type'] | 'open' | 'item' | 'council' | 'accessible';
@@ -55,6 +56,8 @@ function GuideResult({
   partners,
   openPartner,
   query,
+  saved,
+  toggleSaved,
 }: {
   item: GuideItem;
   expanded: boolean;
@@ -65,6 +68,8 @@ function GuideResult({
   partners?: CouncilProfile['partners'];
   openPartner: (partner: NonNullable<CouncilProfile['partners']>[number], item: GuideItem) => void;
   query: string;
+  saved: boolean;
+  toggleSaved: () => void;
 }) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
@@ -87,6 +92,10 @@ function GuideResult({
         </Text>
         <Text style={[styles.destination, { color: colour.colour }]}>{destinationLabel[item.destination]}</Text>
         {expanded && <>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: saved }} onPress={(event) => { event.stopPropagation(); toggleSaved(); }} style={styles.saveItemButton}>
+            <Ionicons color={theme.accent} name={saved ? 'bookmark' : 'bookmark-outline'} size={17} />
+            <Text style={styles.inlineServiceText}>{saved ? 'Saved for later' : 'Save this item'}</Text>
+          </Pressable>
           <Text style={styles.guideHeading}>What to do</Text>
           <Text style={styles.guideDetail}>{item.heading}</Text>
           <Text style={styles.guideHeading}>Prepare it</Text>
@@ -171,7 +180,7 @@ export default function GuideScreen() {
   const styles = createStyles(theme);
   const { activeAddress, collections } = useAppData();
   const analytics = usePilotAnalytics();
-  const weeklyBin = useWeeklyBinPalette(collections);
+  const { savedGuideItemIds, showSponsoredServices, toggleSavedGuideItem } = useProductState();
   const [mode, setMode] = useState<FindMode>('guide');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | undefined>();
@@ -180,18 +189,22 @@ export default function GuideScreen() {
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>('all');
   const [serviceItem, setServiceItem] = useState<GuideItem | undefined>();
   const [recent, setRecent] = useState<string[]>([]);
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const modeRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
 
   const activeCouncilProfile = councilProfile?.providerId === activeAddress?.providerId
     ? councilProfile
     : undefined;
+  const localGuidanceEnabled = activeCouncilProfile?.featureFlags?.recyclingGuide !== false;
   const results = searchGuide(query).map((item) => {
-    const localRule = activeCouncilProfile?.guidance?.[item.id];
+    const localRule = localGuidanceEnabled ? activeCouncilProfile?.guidance?.[item.id] : undefined;
     return localRule ? { ...item, ...localRule } : item;
-  });
-  const councilGuidanceConnected = activeCouncilProfile?.capabilities.guidance === 'council-configured'
-    || activeCouncilProfile?.capabilities.guidance === 'partner-feed';
+  }).filter((item) => !showSavedOnly || savedGuideItemIds.includes(item.id));
+  const councilGuidanceConnected = localGuidanceEnabled && (
+    activeCouncilProfile?.capabilities.guidance === 'council-configured'
+    || activeCouncilProfile?.capabilities.guidance === 'partner-feed'
+  );
   const filteredServices = services?.filter((service) => {
     if (serviceFilter === 'all') return true;
     if (serviceFilter === 'nearest') return true;
@@ -201,9 +214,20 @@ export default function GuideScreen() {
     if (serviceFilter === 'accessible') return service.wheelchairAccessible === true;
     return service.type === serviceFilter;
   });
-  const visibleServices = serviceFilter === 'nearest'
-    ? filteredServices?.slice(0, 10)
-    : filteredServices;
+  const visibleServices = filteredServices
+    ?.slice()
+    .sort((left, right) => {
+      if (serviceFilter === 'nearest') return (left.distanceKm ?? Infinity) - (right.distanceKm ?? Infinity);
+      const rank = (service: CouncilService) => service.councilOperated
+        ? 0
+        : service.type === 'reuse'
+          ? 1
+          : service.source === 'council'
+            ? 2
+            : 3;
+      return rank(left) - rank(right) || (left.distanceKm ?? Infinity) - (right.distanceKm ?? Infinity);
+    })
+    .slice(0, serviceFilter === 'nearest' ? 10 : undefined);
 
   async function findServices() {
     if (!activeAddress) return;
@@ -244,6 +268,18 @@ export default function GuideScreen() {
       context: item.destination,
       outcome: 'success',
     });
+    if (selected !== item.id && showSponsoredServices) {
+      activeCouncilProfile?.partners
+        ?.filter((partner) => partner.itemKeys.includes(item.id))
+        .forEach((partner) => {
+          void recordPartnerConversion(partner.id, 'listing-viewed');
+          analytics.track('partner_listing_viewed', {
+            councilId: activeAddress?.providerId,
+            context: 'partner',
+            outcome: 'success',
+          });
+        });
+    }
   }
 
   function recordGuideSearch() {
@@ -264,13 +300,12 @@ export default function GuideScreen() {
 
   function openPartner(
     partner: NonNullable<CouncilProfile['partners']>[number],
-    item: GuideItem,
   ) {
-    analytics.track('guide_result_selected', {
+    void recordPartnerConversion(partner.id, 'website-opened');
+    analytics.track('partner_external_opened', {
       councilId: activeAddress?.providerId,
-      context: `partner-${partner.category}`,
+      context: 'partner',
       outcome: 'success',
-      reasonCode: item.id,
     });
     void Linking.openURL(partner.serviceUrl);
   }
@@ -285,16 +320,10 @@ export default function GuideScreen() {
       <View style={styles.page}>
         <SafeAreaView
           edges={['top']}
-          style={[
-            styles.safe,
-            {
-              backgroundColor: weeklyBin.background,
-              borderBottomColor: weeklyBin.accent ? weeklyBin.background : theme.separator,
-            },
-          ]}>
-          <Text style={[styles.kicker, { color: weeklyBin.foreground }]}>Guide</Text>
-          <Text style={[styles.title, { color: weeklyBin.foreground }]}>What are you throwing away?</Text>
-          <Text style={[styles.subtitle, { color: weeklyBin.secondary }]}>Search the recycling guide or find a verified local service.</Text>
+          style={styles.safe}>
+          <Text style={[styles.kicker, { color: theme.accent }]}>Guide</Text>
+          <Text style={styles.title}>What are you throwing away?</Text>
+          <Text style={styles.subtitle}>Search the recycling guide or find a verified local service.</Text>
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <CouncilNotices placement="guide" profile={activeCouncilProfile} />
@@ -365,6 +394,12 @@ export default function GuideScreen() {
               </View>
               {!query && <View style={styles.chips}><Text style={styles.chipsLabel}>Popular</Text>{['Batteries', 'Pizza box', 'Vapes', 'Mattress'].map((chip) => <Pressable accessibilityLabel={`Search for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></Pressable>)}</View>}
               {!query && recent.length ? <View style={styles.chips}><Text style={styles.chipsLabel}>Recent</Text>{recent.map((chip) => <Pressable accessibilityLabel={`Search again for ${chip}`} accessibilityRole="button" key={chip} onPress={() => setQuery(chip)} style={styles.recentChip}><Text style={styles.recentChipText}>{chip}</Text></Pressable>)}</View> : null}
+              <View style={styles.chips}>
+                <Text style={styles.chipsLabel}>View</Text>
+                <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: showSavedOnly }} onPress={() => setShowSavedOnly((current) => !current)} style={[styles.recentChip, showSavedOnly && styles.savedChipActive]}>
+                  <Text style={[styles.recentChipText, showSavedOnly && styles.savedChipText]}>Saved · {savedGuideItemIds.length}</Text>
+                </Pressable>
+              </View>
               <View accessibilityLiveRegion="polite" style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : `${guideItemCount} items`}</Text><Text style={styles.sectionTitle}>{query ? 'Best route' : 'Common household items'}</Text></View><View style={styles.checkPill}><Ionicons color={theme.warning} name="alert-circle-outline" size={14} /><Text style={styles.checkText}>Check locally</Text></View></View>
               <View style={styles.guideList}>{results.map((item) => (
                 <GuideResult
@@ -376,8 +411,12 @@ export default function GuideScreen() {
                   key={item.id}
                   onPress={() => selectGuideItem(item)}
                   openPartner={openPartner}
-                  partners={activeCouncilProfile?.partners?.filter((partner) => partner.itemKeys.includes(item.id))}
+                  partners={showSponsoredServices && activeCouncilProfile?.featureFlags?.partnerServices
+                    ? activeCouncilProfile.partners?.filter((partner) => partner.itemKeys.includes(item.id))
+                    : undefined}
                   query={query}
+                  saved={savedGuideItemIds.includes(item.id)}
+                  toggleSaved={() => toggleSavedGuideItem(item.id)}
                 />
               ))}</View>
               {results.length === 0 && <View style={styles.empty}><Ionicons color={theme.tertiaryText} name="search-outline" size={28} /><Text style={styles.emptyTitle}>We don’t know that one yet</Text><Text style={styles.emptyText}>Try a shorter name, or use Local services for unusual, hazardous or bulky items.</Text></View>}
@@ -442,6 +481,8 @@ function createStyles(theme: AppTheme) {
   chipText: { color: theme.accent, fontSize: 12, fontWeight: '800' },
   recentChip: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, backgroundColor: theme.surface },
   recentChipText: { color: theme.text, fontSize: 12, fontWeight: '700' },
+  savedChipActive: { borderColor: theme.accent, backgroundColor: theme.accentSoft },
+  savedChipText: { color: theme.accent },
   guideHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 4 },
   sectionKicker: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.85, fontWeight: '700' },
   sectionTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 20, lineHeight: 25, fontWeight: '700', letterSpacing: -0.45, marginTop: 2 },
@@ -460,6 +501,7 @@ function createStyles(theme: AppTheme) {
   localNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 9, backgroundColor: theme.groupedBackground, borderRadius: 8, padding: 7 },
   localNoteText: { color: theme.secondaryText, fontSize: 12, lineHeight: 16, flex: 1, fontWeight: '600' },
   inlineServiceButton: { minHeight: 44, marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
+  saveItemButton: { minHeight: 44, marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   inlineServiceText: { color: theme.accent, fontSize: 13, fontWeight: '700' },
   partnerGroup: { marginTop: 7, gap: 7 },
   partnerPolicy: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, fontWeight: '600' },

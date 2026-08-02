@@ -31,12 +31,17 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
             <div className="field"><label htmlFor="description">Resident-facing description</label><textarea id="description" maxLength={400} name="description" required /></div>
             <div className="field"><label htmlFor="serviceUrl">Booking/service URL</label><input id="serviceUrl" name="serviceUrl" required type="url" /></div>
             <div className="field"><label htmlFor="itemKeys">Relevant item keys, one per line</label><textarea id="itemKeys" name="itemKeys" placeholder={"mattress\nbed-frame"} required /></div>
+            <div className="field"><label htmlFor="supportedAreaLabels">Supported wards, rounds or area labels</label><textarea id="supportedAreaLabels" name="supportedAreaLabels" placeholder={"Huyton North\nRound A12"} /></div>
             <div className="field-grid">
               <div className="field"><label htmlFor="disclosureLabel">Disclosure</label><input defaultValue="Sponsored partner" id="disclosureLabel" name="disclosureLabel" required /></div>
               <div className="field"><label htmlFor="referralModel">Commercial model</label><select id="referralModel" name="referralModel">{["none", "flat-fee", "commission", "sponsored-placement"].map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
               <div className="field"><label htmlFor="commissionPence">Commission (pence)</label><input id="commissionPence" min={0} name="commissionPence" type="number" /></div>
               <div className="field"><label htmlFor="priority">Order after council options</label><input defaultValue={100} id="priority" max={1000} min={1} name="priority" required type="number" /></div>
               <div className="field field-span"><label htmlFor="licenceReference">Waste-carrier/licence reference</label><input id="licenceReference" maxLength={120} name="licenceReference" /></div>
+              <div className="field"><label htmlFor="evidenceUrl">Licence/evidence link</label><input id="evidenceUrl" name="evidenceUrl" type="url" /></div>
+              <div className="field"><label htmlFor="complaintContact">Complaint contact</label><input id="complaintContact" maxLength={160} name="complaintContact" /></div>
+              <div className="field"><label htmlFor="budgetPence">Campaign budget (pence)</label><input id="budgetPence" min={0} name="budgetPence" type="number" /></div>
+              <div className="field"><label htmlFor="renewalReviewAt">Renewal review</label><input id="renewalReviewAt" name="renewalReviewAt" type="date" /></div>
               <div className="field"><label htmlFor="startsAt">Starts</label><input id="startsAt" name="startsAt" type="datetime-local" /></div>
               <div className="field"><label htmlFor="endsAt">Ends</label><input id="endsAt" name="endsAt" type="datetime-local" /></div>
             </div>
@@ -46,8 +51,15 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         <section className="data-list">
           {items.length ? items.map((item) => <article className="data-card" key={item.id}>
             <div className="data-card-top"><div><h2>{item.name}</h2><div className="data-meta"><span>{humanise(item.category)}</span><span>{humanise(item.referralModel)}</span><span>Priority {item.priority}</span></div></div><StatusPill status={item.status} /></div>
-            <p>{item.description}</p><div className="tag-list"><span className="tag">{item.disclosureLabel}</span>{item.itemKeys.map((key) => <span className="tag" key={key}>{key}</span>)}</div>
-            {canApprove && item.status !== "ended" ? <div className="data-card-actions"><form action={changePartnerStatusAction} className="inline-form"><input name="id" type="hidden" value={item.id} />{item.status !== "active" ? <button className="primary-button button-small" name="status" value="active">Approve & activate</button> : <button className="secondary-button button-small" name="status" value="paused">Pause</button>}<button className="secondary-button button-small" name="status" value="ended">End</button></form></div> : null}
+            <p>{item.description}</p><div className="tag-list"><span className="tag">{item.disclosureLabel}</span>{item.itemKeys.map((key) => <span className="tag" key={key}>{key}</span>)}{item.supportedAreaLabels.map((area) => <span className="tag" key={area}>{area}</span>)}</div>
+            <div className="partner-evidence-grid">
+              <span><strong>{item.conversionCounts['listing-viewed'] ?? 0}</strong> views</span>
+              <span><strong>{item.conversionCounts['website-opened'] ?? 0}</strong> website opens</span>
+              <span><strong>{item.conversionCounts['booking-initiated'] ?? 0}</strong> booking starts</span>
+              <span><strong>{item.conversionCounts['booking-confirmed'] ?? 0}</strong> confirmed referrals</span>
+            </div>
+            <p className="data-meta">{item.renewalReviewAt ? `Review ${item.renewalReviewAt}` : 'No renewal review set'} · {item.complaintContact ? `Complaints: ${item.complaintContact}` : 'Complaint route not supplied'}</p>
+            {canApprove && item.status !== "ended" ? <div className="data-card-actions"><form action={changePartnerStatusAction} className="stack-form"><input name="id" type="hidden" value={item.id} />{item.status === "active" ? <div className="field"><label htmlFor={`suspension-${item.id}`}>Immediate suspension reason</label><input id={`suspension-${item.id}`} maxLength={500} name="suspensionReason" placeholder="Required when pausing an active listing" /></div> : null}<div className="inline-form">{item.status !== "active" ? <button className="primary-button button-small" name="status" value="active">Approve & activate</button> : <button className="secondary-button button-small" name="status" value="paused">Suspend now</button>}<button className="secondary-button button-small" name="status" value="ended">End</button></div></form></div> : null}
           </article>) : <div className="empty-state"><BadgePoundSterling aria-hidden="true" size={32} /><h2>No partners configured</h2><p>No commercial option will appear in the resident app until a task-relevant service is reviewed and approved.</p></div>}
         </section>
       </div>

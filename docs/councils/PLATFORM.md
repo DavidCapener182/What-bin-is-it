@@ -28,9 +28,9 @@ Platform owner
     v
 Private Platform Console (separate Vercel deployment)
     |
-    +-- cross-council estate overview
-    +-- relationship CRM for councils, sponsors and partners
-    +-- professional contacts and correspondence
+    +-- Commercial workspace: CRM, pipeline, demand, sponsorship
+    +-- Operations workspace: councils, support, alerts, incidents
+    +-- Governance workspace: staff, permissions, audit, retention
     +-- explicit "Enter council portal" boundary
     |
     v
@@ -44,7 +44,7 @@ Selected Council Portal
     v
 Council gateway (published, time-bounded records only)
     |
-    +-- resident Home / Schedule / Guide
+    +-- resident Today / Schedule / Guide / Activity
     +-- local guidance and reporting policy
     +-- approved partner results after official options
     |
@@ -74,15 +74,19 @@ It must not store resident addresses, missed-bin case detail, sensitive personal
 
 `draft -> published -> archived`
 
-Partner services use an additional approval boundary:
+Partner campaigns use an additional approval boundary:
 
 `draft -> review -> active -> paused/ended`
 
 An editor can submit a partner, but only an owner or admin can activate it.
 
+Every campaign also has an area, guide-item relevance, time window, disclosure, commercial model, evidence-review date and immediate suspension control. Free council and reuse routes retain priority. Listing views and outbound actions are distinct from a confirmed referral; the latter requires partner callback or referral proof.
+
 ## Honest channel readiness
 
-Home, Schedule and Guide publishing is connected. The console can also queue a tenant-scoped web/native push broadcast for the same published announcement or disruption. The resident service selects only current, consented registrations whose council provider ID matches the signed-in council. Provider acceptance and failure counts are recorded; the console does not claim that acceptance proves a handset displayed the message.
+Today, Schedule, Guide and Activity publishing is connected. Before publishing, council staff see surface and push previews, truncation/source/expiry/duplicate warnings, an estimated recipient count and a final audience confirmation. The console can queue a tenant-scoped web/native push broadcast for the same announcement or disruption. The resident service selects only current, consented registrations whose council provider ID and bounded collection type/date/approved opaque label match the audience. Provider acceptance and failure counts are recorded; the console does not claim that acceptance proves a handset displayed the message.
+
+Council onboarding is explicit rather than inferred. The console checks identity, staff access, collection source, address lookup, bin labels/colours, guidance, missed-bin policy, alerts, partner approvals and pilot baseline. Per-council flags hide unsupported resident actions rather than presenting controls that cannot complete.
 
 Web delivery is operational when production VAPID credentials and the shared server-only broadcast secret are configured. Native delivery uses Expo push tickets and still requires Apple/Google notification credentials plus physical-device delivery, revocation and receipt testing before a store-release claim. Widget broadcasts are not yet live. Each council must agree content governance, emergency escalation and who is authorised to publish.
 

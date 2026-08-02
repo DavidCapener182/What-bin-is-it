@@ -16,6 +16,7 @@ The repository also contains a disabled Plus purchase path. The submitted `proof
 6. Open **Settings** and enable reminders.
 7. Open **Guide** to search household items and nearby services.
 8. After a due collection window, use **Today → No, it was missed** to review eligibility, official council handoff and report tracking.
+9. Open **Activity** to see collection outcomes, council alerts, missed-report progress and support replies in one destination.
 
 Before submission, replace this section with a verified, publication-safe review address:
 
@@ -34,7 +35,7 @@ Do not submit until those values have been checked on the same production build.
 
 ## Data
 
-Saved addresses, schedules, preferences, local report history and collection outcomes are stored on the device. Postcode, council provider ID and selected opaque property reference are sent only for a requested live lookup. Optional accounts keep email identity and plan/grant records in Supabase. Account export and What Bin account-data removal are available from Account. There is no advertising or tracking SDK.
+Saved addresses, schedules, preferences, local report history and collection outcomes are stored on the device. Postcode, council provider ID and selected opaque property reference are sent only for a requested live lookup. Optional accounts keep email identity and plan/grant records in Supabase. Opt-in household sharing stores a nickname, public council identifier, member display names and explicit bin actions without uploading the address or postcode. Account export and What Bin account-data removal are available from Account. There is no third-party advertising or behavioural-tracking SDK. Relevant sponsored service listings, when a council has approved and enabled them, are labelled and can be hidden; pseudonymous listing/open events are recorded by the first-party gateway.
 
 The first Apple release is iPhone-only. `supportsTablet` remains disabled until adaptive iPad layouts pass testing.
 

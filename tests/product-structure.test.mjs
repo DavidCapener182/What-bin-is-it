@@ -11,6 +11,7 @@ test('uses four primary destinations and keeps place management out of the tab b
   const shell = read('src/components/app-shell.tsx');
   assert.match(shell, /route: '\/schedule', label: 'Schedule'/);
   assert.match(shell, /route: '\/guide', label: 'Guide'/);
+  assert.match(shell, /route: '\/activity', label: 'Activity'/);
   assert.doesNotMatch(shell, /route: '\/places', label: 'Places'/);
   assert.equal((shell.match(/^\s+\{ route:/gm) ?? []).length, 4);
 });
@@ -86,6 +87,7 @@ test('all main routes provide route-specific metadata', () => {
     ['src/app/index.tsx', 'title="Today"'],
     ['src/app/schedule.tsx', 'title="Collection Schedule"'],
     ['src/app/guide.tsx', 'title="Recycling Guide"'],
+    ['src/app/activity.tsx', 'title="Activity"'],
     ['src/app/places.tsx', 'title="Manage Places"'],
     ['src/app/settings.tsx', 'title="Settings"'],
     ['src/app/reports.tsx', 'title="Missed Collection Reports"'],
@@ -100,6 +102,16 @@ test('all main routes provide route-specific metadata', () => {
     const source = read(path);
     assert.match(source, /<RouteHead/);
     assert.ok(source.includes(title), `${path} is missing ${title}`);
+  }
+});
+
+test('keeps weekly bin colour on collection meaning rather than utility headers', () => {
+  const schedule = read('src/app/schedule.tsx');
+  const guide = read('src/app/guide.tsx');
+  const activity = read('src/app/activity.tsx');
+  for (const source of [schedule, guide, activity]) {
+    assert.doesNotMatch(source, /useWeeklyBinPalette/);
+    assert.doesNotMatch(source, /weeklyBin\.background/);
   }
 });
 
@@ -129,4 +141,16 @@ test('keeps the installed PWA on the neutral Apple palette and current routes', 
     manifest.shortcuts.map((shortcut) => shortcut.url),
     ['/', '/schedule', '/guide'],
   );
+});
+
+test('consolidates resident activity and keeps the collection cycle compact', () => {
+  const schedule = read('src/app/schedule.tsx');
+  const guide = read('src/app/guide.tsx');
+  const settings = read('src/app/settings.tsx');
+  const layout = read('src/app/_layout.tsx');
+  assert.match(schedule, /slice\(0, 4\)/);
+  assert.match(schedule, /All places/);
+  assert.match(guide, /Saved · \{savedGuideItemIds\.length\}/);
+  assert.match(settings, /Household sharing/);
+  assert.match(layout, /name="household"/);
 });

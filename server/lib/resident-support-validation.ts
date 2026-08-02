@@ -11,7 +11,13 @@ export const residentSupportTopics = [
 ] as const;
 
 export type ResidentSupportTopic = (typeof residentSupportTopics)[number];
-export type ResidentSupportStatus = 'waiting-support' | 'waiting-resident' | 'closed';
+export type ResidentSupportStatus =
+  | 'new'
+  | 'in-progress'
+  | 'waiting-resident'
+  | 'waiting-operations'
+  | 'resolved'
+  | 'closed';
 
 export type NewResidentSupportThreadInput = {
   topic: ResidentSupportTopic;
@@ -25,6 +31,11 @@ export type ResidentSupportReplyInput = {
   threadId: string;
   detail: string;
   clientMessageId: string;
+};
+
+export type ResidentSupportSatisfactionInput = {
+  threadId: string;
+  score: 1 | 2 | 3 | 4 | 5;
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -108,5 +119,20 @@ export function parseResidentSupportReply(value: unknown): ResidentSupportReplyI
     threadId: requiredUuid(input.threadId, 'Conversation'),
     detail: requiredText(input.detail, 'Reply', 5_000),
     clientMessageId: requiredUuid(input.clientMessageId, 'Message reference'),
+  };
+}
+
+export function parseResidentSupportSatisfaction(value: unknown): ResidentSupportSatisfactionInput {
+  if (!value || typeof value !== 'object') throw new Error('The satisfaction response is invalid.');
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some((key) => !['threadId', 'score'].includes(key))) {
+    throw new Error('The satisfaction response contains an invalid field.');
+  }
+  if (typeof input.score !== 'number' || !Number.isInteger(input.score) || input.score < 1 || input.score > 5) {
+    throw new Error('Choose a satisfaction score from 1 to 5.');
+  }
+  return {
+    threadId: requiredUuid(input.threadId, 'Conversation'),
+    score: input.score as 1 | 2 | 3 | 4 | 5,
   };
 }

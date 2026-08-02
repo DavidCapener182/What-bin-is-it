@@ -2,7 +2,7 @@
 
 ## Resident clients
 
-One Expo 57 codebase produces the iPhone, Android and installable web apps. The four persistent destinations are Today, Schedule, Guide and Reports. Settings contains addresses, account, reminders, privacy and application controls.
+One Expo 57 codebase produces the iPhone, Android and installable web apps. The four persistent destinations are Today, Schedule, Guide and Activity. Activity combines collection history, missed-bin state, council messages and support replies. Settings contains addresses, account, reminders, privacy and application controls.
 
 Verified schedules and saved addresses are local-first. Native notifications are scheduled on device; installed-web reminders use Web Push and Vercel Workflow. Native widgets read the selected address and verified schedule from the app’s shared widget state.
 
@@ -29,12 +29,42 @@ Supabase provides optional password-free identity. Household addresses remain on
 
 Provider events are stored separately in `bin_entitlement_grants`. A server transaction rejects older provider events and reconciles them into one `bin_user_entitlements` record. Only that server record unlocks Plus.
 
+Council and housing sponsorship programmes issue the same server-authoritative Plus entitlement with a bounded provider, start and end window. The resident app recalculates sponsorship against the selected council and does not display a consumer paywall where that council is actively funding access.
+
+Opt-in household coordination stores only a household nickname, public council provider ID, member display names and explicit date/bin actions. The place address, postcode, property reference and collection-round token stay on each member’s device.
+
 ## Operational data
 
 Council resident reach is counted automatically with a separate random installation identifier and only the public provider IDs represented by locally saved places. This supports aggregate active, currently linked and all-time installation measures without uploading a postcode, address, property reference, account or email.
 
 Pilot app-improvement analytics remain opt-in, pseudonymous, minimised, retained for a bounded period and erasable separately from the resident count. Tables owned by this product use the `bin_` prefix.
 
+Council service broadcasts use opaque, bounded audience attributes: council ID, collection type/date and optional council-issued round or ward labels. The console sees estimated recipient counts, not resident or address lists. Support messages are separate case records: council staff are server-scoped to their authority and internal notes are never returned to resident clients.
+
+Partner conversion evidence distinguishes impressions, outbound actions and provider-confirmed bookings. Opening a website is never reported as a booking, and commercial placement cannot outrank a suitable free council or charity route.
+
 ## Deployment
 
 Vercel serves the exported web app, Nitro API and durable reminder workflows. EAS produces native development, preview and production builds. Apple/Google signing, physical-device tests and store review remain external account-holder gates.
+
+## Platform topology
+
+```text
+Resident app (local addresses and verified schedules)
+  |-- collection gateway requests --------------------------+
+  |-- pseudonymous council/audience registration --------+  |
+  |-- optional account, support and household actions ---|--|----> Bin Supabase
+  |-- Activity receives published council content <------|--+
+  |                                                       |
+Council back office                                       |
+  |-- Commercial: CRM, pipeline, sponsorship and demand   |
+  |-- Operations: tenants, support, alerts, reports ------+
+  |-- Governance: staff, permissions, audit and retention
+  |-- selected council portal enforces organisation scope
+  |
+  +--> Vercel/Nitro gateway --> approved council/public sources
+  +--> Expo/Web Push providers (opaque device delivery only)
+  +--> public status and coverage evidence
+```
+
+The resident, council and commercial products share bounded identifiers and audited server actions, not a general-purpose resident profile. Council staff cannot traverse into another authority; partners cannot see residents; platform commercial contacts never enter resident-service records.

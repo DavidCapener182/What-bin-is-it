@@ -6,14 +6,14 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 
 ## What is already built
 
-- iPhone, Android, and installable web application with four persistent destinations: Today, Schedule, Guide, and Reports. Address management, account, reminders, privacy, and app controls live in Settings.
+- iPhone, Android, and installable web application with four persistent destinations: Today, Schedule, Guide, and Activity. Activity consolidates collection history, open missed-bin reports, council notices and support replies; address management, account, reminders, privacy, and app controls live in Settings.
 - Private in-app support conversations let signed-in residents message their selected council and the What Bin platform team without leaving the app or exposing a saved address or postcode. Council staff are server-scoped to their own authority; the platform superadmin can see the complete cross-council inbox.
 - A local-first saved-place store, with UK postcode validation and a postcode lookup through the public Postcodes.io service.
 - Privacy-minimised council reach metrics: every saved place automatically links a random installation ID to its public council provider ID so the authority can see aggregate active, currently linked and all-time reach. The count never receives the resident’s postcode, address, property reference, account or email and is separate from optional app-improvement analytics.
-- A searchable, plain-English guide for common household items, with local-rule caveats built in rather than misleading universal answers.
+- A searchable, plain-English guide for common household items, with saved and recent items, preparation instructions, route confidence, council-local rules where published, and honest general-guidance caveats everywhere else.
 - A local-services finder for recycling points and household-waste sites. It uses a council adapter when one exists and otherwise offers clearly-labelled OpenStreetMap nearby-place results.
 - A normalised `CouncilProvider` client contract for collection dates; no screen code is coupled to a specific council website.
-- Collection reminders for every saved address, with per-bin choices and a configurable evening reminder time. Native builds use Expo local notifications; the PWA uses standards-based Web Push. Councils can also publish tenant-scoped in-app service alerts and optionally push them to residents who enabled alerts for that authority.
+- Collection reminders for every saved address, with per-bin choices and a configurable evening reminder time. Native builds use Expo local notifications; the PWA uses standards-based Web Push. Councils can publish in-app service alerts and optionally push them to consented installations by privacy-safe council, collection type, scheduled date, round/ward token, or open-report audience. The console shows an estimated audience and exact resident-surface previews before queueing a broadcast.
 - A server-side council gateway packaged with Nitro, with a companion Cloudflare Worker entry under `services/council-gateway`, designed to keep council-specific logic off users’ phones.
 - A generated web manifest, branded icons, offline service worker, install controls, notification status, and a push test action in Settings.
 - Durable reminder scheduling on Vercel Workflow. A workflow sleeps until each verified reminder time and then delivers a push notification to that app installation.
@@ -22,13 +22,16 @@ What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its 
 - A council partner connector registry that can switch an authority to an approved HTTPS feed without exposing credentials to the app or waiting for a new mobile release.
 - A server-driven council profile registry for coverage status, capability labels, local links, bin names, colours, accepted items, rejected items, and preparation guidance.
 - A complete resident collection lifecycle: “I’ve put it out”, “Was it collected?”, council eligibility and delay checks, official missed-bin handoff, report references, local history, expected recollection dates, and recollection reminders.
-- Optional password-free resident accounts that store only identity and plan access. Saved household addresses remain on the resident’s device.
+- Optional password-free resident accounts that store only identity and plan access. Saved household addresses remain on the resident’s device. Plus households can opt into a council-scoped shared household nickname, member display names, bin responsibility and collection outcomes; no address, postcode or council property reference is copied into the shared record.
 - Native Apple/Google subscription foundations through RevenueCat and web billing foundations through Stripe. Provider events reconcile into one server-authoritative entitlement; proof builds keep payment prompts disabled.
-- Native iOS and Android Home Screen widgets driven by the selected address and verified collection dates.
+- Native iOS and Android Home Screen widgets driven by the selected address and verified collection dates, plus an optional bin-night iOS Live Activity and Android collection-status notification that exists only around a verified collection.
 - A generated 361-council outreach pipeline, pilot offer, integration contract, assurance pack, success measures and property pilot.
 - App Store and Google Play listing copy, privacy declarations, review notes, screenshot plan and automated repository-readiness checks.
 - A free-first commercial stage with stable future Plus product IDs and tested guardrails that keep essential council services outside a paywall.
-- A separately deployed private council console with tenant-scoped staff roles, announcements, disruption alerts, consented council-scoped push broadcasts, local guidance, missed-collection policy, partner approvals, aggregate evidence exports and an immutable audit trail.
+- A separately deployed private council console with tenant-scoped staff roles, privacy-safe targeted announcements and disruption alerts, message previews, local guidance, missed-collection policy, partner campaigns, aggregate outcome evidence, onboarding checklist, per-council feature flags and an immutable audit trail.
+- A platform-superadmin layer split into Commercial, Operations and Governance workspaces: relationship CRM, council-demand funnel, support case management, sponsorship programmes, connector/status oversight, permissions and audit. A council user never receives the cross-council view.
+- Server-authoritative resident entitlement states for Free, Trial, Plus, council-sponsored, housing-sponsored and Lifetime access. Sponsorship is recalculated for the selected council and suppresses a consumer paywall when the active authority provides Plus.
+- A public status and coverage route backed by real gateway checks and explicitly recorded incidents. It reports missing feeds as missing rather than manufacturing availability.
 - A published-content bridge through the council gateway. The resident app never connects to the back-office database and the back-office has no resident route or navigation entry.
 
 ## Run the app
@@ -103,7 +106,7 @@ The PWA keeps its last loaded shell available offline. Live council-date refresh
 
 ## Notifications
 
-Native iOS and Android builds schedule local reminders through `expo-notifications`. The installed PWA uses Web Push plus Vercel Workflow so future reminders still arrive after the browser has closed. Published council announcements and disruptions appear in-app without notification permission. When a resident has enabled reminders and service alerts, the app privately registers only an opaque installation ID, its saved council provider IDs and the provider delivery token. A council broadcast can target only registrations for the signed-in council.
+Native iOS and Android builds schedule local reminders through `expo-notifications`. The installed PWA uses Web Push plus Vercel Workflow so future reminders still arrive after the browser has closed. Published council announcements and disruptions appear in Activity without notification permission. When a resident has enabled reminders and service alerts, the app privately registers only an opaque installation ID, saved council provider IDs, bounded collection types/dates, optional council-issued opaque area labels and the provider delivery token. It does not register the address, postcode, property reference, account or email. A council broadcast can target only consented registrations for that signed-in council and requires a final audience confirmation.
 
 Create one VAPID key pair for the production app and set both values as Vercel environment variables:
 

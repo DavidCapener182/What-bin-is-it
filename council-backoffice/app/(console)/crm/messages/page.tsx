@@ -1,8 +1,12 @@
 import Link from "next/link";
 import {
+  AlarmClock,
   CheckCircle2,
+  CircleAlert,
+  ClipboardList,
   Inbox,
   MessageCircle,
+  NotebookPen,
   RotateCcw,
   Search,
   Send,
@@ -11,8 +15,11 @@ import {
 } from "lucide-react";
 
 import {
+  addResidentSupportInternalNoteAction,
   changeResidentSupportStatusAction,
+  createResidentSupportSavedResponseAction,
   replyToResidentSupportAction,
+  updateResidentSupportCaseAction,
 } from "@/app/actions";
 import { FeedbackBanner } from "@/components/feedback-banner";
 import { PageHeader } from "@/components/page-header";
@@ -20,176 +27,192 @@ import { StatusPill } from "@/components/status-pill";
 import { requireCouncilSession } from "@/lib/auth";
 import { formatDateTime, humanise } from "@/lib/format";
 import {
+  listResidentSupportSavedResponses,
+  listResidentSupportStaff,
   listResidentSupportThreads,
+  residentSupportEscalations,
+  residentSupportMetrics,
+  residentSupportPriorities,
+  residentSupportStatuses,
   residentSupportThread,
   type ResidentSupportStatus,
 } from "@/lib/resident-support";
 
-const statuses = ["waiting-support", "waiting-resident", "closed"] as const;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function allowedStatus(value?: string): ResidentSupportStatus | undefined {
-  return value && statuses.includes(value as ResidentSupportStatus)
+  return value && residentSupportStatuses.includes(value as ResidentSupportStatus)
     ? value as ResidentSupportStatus
     : undefined;
 }
 
 function threadStatus(status: ResidentSupportStatus) {
-  if (status === "waiting-support") return "Needs reply";
-  if (status === "waiting-resident") return "Waiting for resident";
-  return "Closed";
+  const labels: Record<ResidentSupportStatus, string> = {
+    new: "New",
+    "in-progress": "In progress",
+    "waiting-resident": "Waiting for resident",
+    "waiting-operations": "Waiting for operations",
+    resolved: "Resolved",
+    closed: "Closed",
+  };
+  return labels[status];
+}
+
+function duration(value?: number) {
+  if (value === undefined) return "No data yet";
+  if (value < 1) return `${Math.max(1, Math.round(value * 60))}m`;
+  if (value < 24) return `${value.toFixed(value < 10 ? 1 : 0)}h`;
+  return `${(value / 24).toFixed(1)}d`;
+}
+
+function localDateTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return adjusted.toISOString().slice(0, 16);
 }
 
 export default async function ResidentInboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    error?: string;
-    q?: string;
-    saved?: string;
-    status?: string;
-    thread?: string;
-  }>;
+  searchParams: Promise<{ error?: string; q?: string; saved?: string; status?: string; thread?: string }>;
 }) {
   const session = await requireCouncilSession("support:view");
   const params = await searchParams;
   const status = allowedStatus(params.status);
-  const [allThreads, threads] = await Promise.all([
+  const [allThreads, threads, staff, savedResponses] = await Promise.all([
     listResidentSupportThreads(session),
     listResidentSupportThreads(session, { query: params.q, status }),
+    listResidentSupportStaff(session),
+    listResidentSupportSavedResponses(session),
   ]);
   const requestedThreadId = typeof params.thread === "string" && uuidPattern.test(params.thread)
     ? params.thread
     : undefined;
   const selectedThreadId = requestedThreadId ?? threads[0]?.id;
-  const selectedThread = selectedThreadId
-    ? await residentSupportThread(session, selectedThreadId)
-    : undefined;
-  const needsReply = allThreads.filter((thread) => thread.status === "waiting-support").length;
-  const waitingResident = allThreads.filter((thread) => thread.status === "waiting-resident").length;
-  const closed = allThreads.filter((thread) => thread.status === "closed").length;
+  const selectedThread = selectedThreadId ? await residentSupportThread(session, selectedThreadId) : undefined;
+  const metrics = residentSupportMetrics(allThreads);
 
   return (
     <>
       <PageHeader
         eyebrow="Resident services"
-        title="In-app support inbox"
+        title="Support cases"
         description={session.platformAdmin
-          ? "Messages sent by residents across every council from the What Bin web or mobile app. Replies are delivered inside the app."
-          : `Messages sent through the app by residents linked to ${session.organisation.name}. Other councils' conversations are not available in this portal.`}
-        action={session.platformAdmin
-          ? <Link className="secondary-button" href="/crm">Relationship CRM</Link>
-          : undefined}
+          ? "Manage app conversations across every council, with council scope, assignment, SLAs and a complete audited case history."
+          : `Manage app conversations linked to ${session.organisation.name}. Other councils' cases remain inaccessible.`}
+        action={session.platformAdmin ? <Link className="secondary-button" href="/crm">Relationship CRM</Link> : undefined}
       />
       <FeedbackBanner error={params.error} saved={params.saved} />
 
-      <section aria-label="Resident support metrics" className="metric-grid correspondence-metrics">
+      <section aria-label="Resident support outcomes" className="metric-grid support-metric-grid">
         <article className="metric-card tone-blue">
-          <span className="metric-label">Conversations</span>
-          <strong className="metric-value">{allThreads.length}</strong>
-          <span className="metric-detail">All in-app support threads</span>
+          <span className="metric-label">New cases</span><strong className="metric-value">{metrics.newCount}</strong>
+          <span className="metric-detail">Waiting for first triage</span>
         </article>
         <article className="metric-card tone-red">
-          <span className="metric-label">Needs reply</span>
-          <strong className="metric-value">{needsReply}</strong>
-          <span className="metric-detail">A resident sent the latest message</span>
+          <span className="metric-label">Overdue</span><strong className="metric-value">{metrics.overdueCount}</strong>
+          <span className="metric-detail">Open cases past their SLA</span>
         </article>
         <article className="metric-card tone-teal">
-          <span className="metric-label">Waiting for resident</span>
-          <strong className="metric-value">{waitingResident}</strong>
-          <span className="metric-detail">Support has replied in the app</span>
+          <span className="metric-label">Median first reply</span><strong className="metric-value">{duration(metrics.medianFirstResponseHours)}</strong>
+          <span className="metric-detail">Measured from real support replies</span>
         </article>
         <article className="metric-card tone-amber">
-          <span className="metric-label">Closed</span>
-          <strong className="metric-value">{closed}</strong>
-          <span className="metric-detail">Resolved support conversations</span>
+          <span className="metric-label">Median resolution</span><strong className="metric-value">{duration(metrics.medianResolutionHours)}</strong>
+          <span className="metric-detail">{metrics.reopenedCount} reopened case{metrics.reopenedCount === 1 ? "" : "s"}</span>
         </article>
       </section>
 
-      <section className="panel resident-inbox-intro space-bottom-lg">
-        <div className="resident-inbox-mark"><MessageCircle aria-hidden="true" size={24} /></div>
-        <div>
-          <span className="eyebrow">One private channel</span>
-          <h2>Resident app ↔ What Bin back office</h2>
-          <p>
-            {session.platformAdmin
-              ? "Residents open Help and support, choose a topic and send a message. This platform view includes every council-tagged conversation and messages without a selected council."
-              : `This inbox includes only conversations created while ${session.organisation.name} was the resident's selected council. Replies appear inside the resident app.`}
-          </p>
+      <section className="panel support-theme-panel space-bottom-lg">
+        <div><span className="eyebrow">Top themes</span><h2>What residents need help with</h2></div>
+        <div className="support-theme-list">
+          {metrics.topThemes.length ? metrics.topThemes.map(([theme, count]) => (
+            <span className="support-theme-chip" key={theme}>{humanise(theme)} <strong>{count}</strong></span>
+          )) : <span className="help-text">Themes appear after real cases are recorded.</span>}
         </div>
       </section>
 
       <form action="/crm/messages" className="correspondence-filters resident-inbox-filters" method="get">
         <div className="field correspondence-search">
-          <label className="sr-only" htmlFor="q">Search resident conversations</label>
+          <label className="sr-only" htmlFor="q">Search resident cases</label>
           <span className="search-field-icon"><Search aria-hidden="true" size={18} /></span>
-          <input defaultValue={params.q} id="q" name="q" placeholder="Search topic, council or conversation reference" />
+          <input defaultValue={params.q} id="q" name="q" placeholder="Search topic, tag, council or case reference" />
         </div>
         <div className="field">
-          <label className="sr-only" htmlFor="status">Conversation status</label>
+          <label className="sr-only" htmlFor="status">Case status</label>
           <select defaultValue={status ?? ""} id="status" name="status">
             <option value="">All statuses</option>
-            {statuses.map((value) => <option key={value} value={value}>{threadStatus(value)}</option>)}
+            {residentSupportStatuses.map((value) => <option key={value} value={value}>{threadStatus(value)}</option>)}
           </select>
         </div>
         <button className="primary-button" type="submit">Filter</button>
       </form>
 
       <div className="resident-inbox-layout">
-        <section aria-label="Resident support conversations" className="resident-thread-list">
-          {threads.length ? threads.map((thread) => (
-            <Link
-              className={`resident-thread-card${selectedThread?.id === thread.id ? " resident-thread-selected" : ""}`}
-              href={`/crm/messages?thread=${thread.id}`}
-              key={thread.id}
-            >
-              <div className="resident-thread-icon"><UserRound aria-hidden="true" size={20} /></div>
-              <div className="resident-thread-copy">
-                <div className="resident-thread-top">
-                  <strong>{thread.subject}</strong>
-                  <time dateTime={thread.lastMessageAt}>{formatDateTime(thread.lastMessageAt)}</time>
+        <section aria-label="Resident support cases" className="resident-thread-list">
+          {threads.length ? threads.map((thread) => {
+            const overdue = thread.slaDueAt
+              && !["resolved", "closed"].includes(thread.status)
+              && new Date(thread.slaDueAt) < new Date();
+            return (
+              <Link
+                className={`resident-thread-card${selectedThread?.id === thread.id ? " resident-thread-selected" : ""}`}
+                href={`/crm/messages?thread=${thread.id}`}
+                key={thread.id}
+              >
+                <div className="resident-thread-icon"><UserRound aria-hidden="true" size={20} /></div>
+                <div className="resident-thread-copy">
+                  <div className="resident-thread-top"><strong>{thread.subject}</strong><time dateTime={thread.lastMessageAt}>{formatDateTime(thread.lastMessageAt)}</time></div>
+                  <span>{thread.residentReference}{thread.councilName ? ` · ${thread.councilName}` : ""}</span>
+                  <div className="resident-thread-footer">
+                    <StatusPill status={thread.status} />
+                    <span>{humanise(thread.priority)}</span>
+                    {overdue ? <span className="case-overdue"><AlarmClock aria-hidden="true" size={12} /> Overdue</span> : null}
+                    {thread.assignedStaffLabel ? <span>{thread.assignedStaffLabel}</span> : <span>Unassigned</span>}
+                  </div>
                 </div>
-                <span>{thread.residentReference}{thread.councilName ? ` · ${thread.councilName}` : ""}</span>
-                <div className="resident-thread-footer">
-                  <StatusPill status={thread.status} />
-                  <span>{thread.lastSender === "resident" ? "Resident replied" : "Support replied"}</span>
-                </div>
-              </div>
-            </Link>
-          )) : (
-            <div className="empty-state resident-inbox-empty">
-              <Inbox aria-hidden="true" size={34} />
-              <h2>No resident conversations</h2>
-              <p>Messages sent from Help and support in the resident app will appear here.</p>
-            </div>
+              </Link>
+            );
+          }) : (
+            <div className="empty-state resident-inbox-empty"><Inbox aria-hidden="true" size={34} /><h2>No resident cases</h2><p>Messages sent from Activity or Help and support will appear here.</p></div>
           )}
         </section>
 
-        <section aria-label="Selected resident conversation" className="panel resident-conversation">
+        <section aria-label="Selected resident case" className="panel resident-conversation">
           {selectedThread ? (
             <>
               <div className="resident-conversation-head">
                 <div>
-                  <span className="eyebrow">{humanise(selectedThread.topic)}</span>
+                  <span className="eyebrow">{humanise(selectedThread.topic)} · {selectedThread.residentReference}</span>
                   <h2>{selectedThread.subject}</h2>
-                  <p>
-                    {selectedThread.residentReference}
-                    {selectedThread.councilName ? ` · ${selectedThread.councilName}` : " · No council selected"}
-                  </p>
+                  <p>{selectedThread.councilName ?? "No selected council"} · Case {selectedThread.id.slice(0, 8).toUpperCase()}</p>
                 </div>
                 <StatusPill status={selectedThread.status} />
               </div>
+
+              <form action={updateResidentSupportCaseAction} className="support-case-controls">
+                <input name="threadId" type="hidden" value={selectedThread.id} />
+                <div className="field"><label htmlFor="caseStatus">Status</label><select defaultValue={selectedThread.status} id="caseStatus" name="status">{residentSupportStatuses.map((value) => <option key={value} value={value}>{threadStatus(value)}</option>)}</select></div>
+                <div className="field"><label htmlFor="casePriority">Priority</label><select defaultValue={selectedThread.priority} id="casePriority" name="priority">{residentSupportPriorities.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
+                <div className="field"><label htmlFor="caseAssignee">Assigned staff</label><select defaultValue={selectedThread.assignedStaffId ?? ""} id="caseAssignee" name="assignedStaffId"><option value="">Unassigned</option>{staff.map((option) => <option key={option.userId} value={option.userId}>{option.label} · {humanise(option.role)}</option>)}</select></div>
+                <div className="field"><label htmlFor="caseSla">SLA deadline</label><input defaultValue={localDateTime(selectedThread.slaDueAt)} id="caseSla" name="slaDueAt" type="datetime-local" /></div>
+                <div className="field"><label htmlFor="caseEscalation">Escalation</label><select defaultValue={selectedThread.escalationStatus} id="caseEscalation" name="escalationStatus">{residentSupportEscalations.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
+                <div className="field"><label htmlFor="caseTags">Topic tags</label><input defaultValue={selectedThread.topicTags.join(", ")} id="caseTags" name="topicTags" placeholder="missed-bin, access, urgent" /></div>
+                <div className="field"><label htmlFor="caseReport">Missed-report tracking ID</label><input defaultValue={selectedThread.linkedReportTrackingId} id="caseReport" name="linkedReportTrackingId" placeholder="Optional UUID" /></div>
+                <div className="field"><label htmlFor="caseAnnouncement">Council announcement ID</label><input defaultValue={selectedThread.linkedAnnouncementId} id="caseAnnouncement" name="linkedAnnouncementId" placeholder="Optional UUID" /></div>
+                <div className="field support-case-wide"><label htmlFor="caseReopenReason">Reopen reason</label><input defaultValue={selectedThread.reopenReason} id="caseReopenReason" name="reopenReason" placeholder="Required only when reopening a resolved or closed case" /></div>
+                <button className="secondary-button support-case-wide" type="submit"><ClipboardList aria-hidden="true" size={17} /> Save case details</button>
+              </form>
 
               <div className="resident-message-stack">
                 {selectedThread.messages.map((message) => (
                   <article className={`resident-message resident-message-${message.sender}`} key={message.id}>
                     <div className="resident-message-bubble">
+                      {message.visibility === "internal" ? <strong className="internal-note-label"><NotebookPen aria-hidden="true" size={14} /> Internal note</strong> : null}
                       <p>{message.body}</p>
-                      <span>
-                        {message.sender === "resident" ? "Resident" : "What Bin support"}
-                        {" · "}
-                        <time dateTime={message.createdAt}>{formatDateTime(message.createdAt)}</time>
-                      </span>
+                      <span>{message.sender === "resident" ? "Resident" : message.sender === "support" ? "What Bin support" : "Staff only"} · <time dateTime={message.createdAt}>{formatDateTime(message.createdAt)}</time></span>
                     </div>
                   </article>
                 ))}
@@ -197,52 +220,65 @@ export default async function ResidentInboxPage({
 
               {selectedThread.status !== "closed" ? (
                 <div className="resident-reply-area">
+                  {savedResponses.length ? (
+                    <details className="support-saved-responses">
+                      <summary>Use a saved response</summary>
+                      <div className="support-saved-response-list">
+                        {savedResponses.map((response) => (
+                          <form action={replyToResidentSupportAction} key={response.id}>
+                            <input name="threadId" type="hidden" value={selectedThread.id} />
+                            <input name="body" type="hidden" value={response.body} />
+                            <button className="secondary-button" type="submit"><Send aria-hidden="true" size={15} /> {response.title}</button>
+                          </form>
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
                   <form action={replyToResidentSupportAction} className="resident-reply-form">
                     <input name="threadId" type="hidden" value={selectedThread.id} />
-                    <div className="field">
-                      <label htmlFor="residentReply">Reply in the app</label>
-                      <textarea
-                        id="residentReply"
-                        maxLength={5_000}
-                        name="body"
-                        placeholder="Write a clear support reply. The resident will see this in What Bin."
-                        required
-                        rows={5}
-                      />
-                      <span className="help-text">Do not ask the resident to email. Keep the whole conversation in the app.</span>
-                    </div>
+                    <div className="field"><label htmlFor="residentReply">Reply in the app</label><textarea id="residentReply" maxLength={5_000} name="body" placeholder="Write a clear reply. The resident will see this in Activity." required rows={5} /><span className="help-text">Resident-visible. Keep internal operational discussion in an internal note.</span></div>
                     <button className="primary-button" type="submit"><Send aria-hidden="true" size={17} /> Send reply</button>
                   </form>
-                  <form action={changeResidentSupportStatusAction}>
+                  <form action={addResidentSupportInternalNoteAction} className="resident-note-form">
                     <input name="threadId" type="hidden" value={selectedThread.id} />
-                    <input name="status" type="hidden" value="closed" />
-                    <button className="secondary-button" type="submit">
-                      <CheckCircle2 aria-hidden="true" size={17} /> Close conversation
-                    </button>
+                    <div className="field"><label htmlFor="internalNote">Internal note</label><textarea id="internalNote" maxLength={5_000} name="body" placeholder="Visible to authorised council or platform staff only." required rows={3} /></div>
+                    <button className="secondary-button" type="submit"><NotebookPen aria-hidden="true" size={17} /> Add internal note</button>
+                  </form>
+                  <form action={changeResidentSupportStatusAction}>
+                    <input name="threadId" type="hidden" value={selectedThread.id} /><input name="status" type="hidden" value="resolved" />
+                    <button className="secondary-button" type="submit"><CheckCircle2 aria-hidden="true" size={17} /> Resolve case</button>
                   </form>
                 </div>
               ) : (
                 <form action={changeResidentSupportStatusAction} className="resident-closed-actions">
-                  <input name="threadId" type="hidden" value={selectedThread.id} />
-                  <input name="status" type="hidden" value="waiting-support" />
-                  <button className="secondary-button" type="submit"><RotateCcw aria-hidden="true" size={17} /> Reopen conversation</button>
+                  <input name="threadId" type="hidden" value={selectedThread.id} /><input name="status" type="hidden" value="in-progress" />
+                  <div className="field"><label htmlFor="reopenReason">Reopen reason</label><input id="reopenReason" name="reopenReason" required /></div>
+                  <button className="secondary-button" type="submit"><RotateCcw aria-hidden="true" size={17} /> Reopen case</button>
                 </form>
               )}
+
+              {selectedThread.escalationStatus !== "none" ? <div className="case-escalation"><CircleAlert aria-hidden="true" size={17} /> Escalated to {humanise(selectedThread.escalationStatus)}</div> : null}
             </>
           ) : (
-            <div className="empty-state resident-inbox-empty">
-              <MessageCircle aria-hidden="true" size={34} />
-              <h2>Select a conversation</h2>
-              <p>Choose a resident thread to read it and reply inside the app.</p>
-            </div>
+            <div className="empty-state resident-inbox-empty"><MessageCircle aria-hidden="true" size={34} /><h2>Select a case</h2><p>Choose a resident case to read it, triage it and reply inside the app.</p></div>
           )}
         </section>
       </div>
 
+      <section className="panel support-saved-response-builder space-top-lg">
+        <div><span className="eyebrow">Team consistency</span><h2>Saved responses</h2><p>Create reusable wording for common questions. Staff can send one directly from an open case.</p></div>
+        <form action={createResidentSupportSavedResponseAction} className="support-response-form">
+          <div className="field"><label htmlFor="responseTitle">Title</label><input id="responseTitle" maxLength={120} name="title" required /></div>
+          <div className="field"><label htmlFor="responseTags">Tags</label><input id="responseTags" name="topicTags" placeholder="notifications, missed-bin" /></div>
+          <div className="field support-case-wide"><label htmlFor="responseBody">Resident-visible response</label><textarea id="responseBody" maxLength={5_000} name="body" required rows={4} /></div>
+          <button className="secondary-button support-case-wide" type="submit">Save response</button>
+        </form>
+      </section>
+
       <div className="truth-note space-top-lg">
         <ShieldCheck aria-hidden="true" size={17} /> {session.platformAdmin
-          ? "Platform superadmin view: all in-app resident conversations are available."
-          : `Council-scoped view: only ${session.organisation.name} conversations are available.`} The inbox stores the account reference, message text and optional council identifier—not the resident&apos;s saved address, postcode or email.
+          ? "Platform superadmin view: all council-tagged cases are available."
+          : `Council-scoped view: only ${session.organisation.name} cases are available.`} Internal notes never appear to residents. Saved address, postcode and email are not copied into support cases.
       </div>
     </>
   );

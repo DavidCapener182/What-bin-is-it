@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Redirect, router } from 'expo-router';
-import { useState } from 'react';
+import { Href, Redirect, router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -20,11 +20,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { BinGlyph, WasteIcon } from '@/components/bin-glyph';
-import { CouncilNotices } from '@/components/council-notices';
 import { RouteHead } from '@/components/route-head';
 import { isUkPostcode } from '@/lib/council-provider';
 import { deriveCollectionLifecycle } from '@/lib/collection-lifecycle';
-import { evaluateMissedReportEligibility } from '@/lib/council-reporting';
+import { evaluateMissedReportEligibility, residentReportingRule } from '@/lib/council-reporting';
 import {
   collectionDisplayMeta,
   contrastTextForColour,
@@ -37,12 +36,16 @@ import {
 import { appFonts } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
-import { shareCollectionReminder } from '@/lib/schedule-tools';
+import { residentAlertsForProfile } from '@/lib/resident-alerts';
 import { Collection } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useOnlineStatus } from '@/lib/use-online-status';
 import { useProductState } from '@/lib/use-product-state';
 import { useCouncilProfile } from '@/lib/use-council-profile';
+import { requestCouncilConnection, requestedCouncilConnections } from '@/lib/resident-council-links';
+import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
+import { useHouseholdSharing } from '@/lib/use-household-sharing';
+import { useSubscription } from '@/lib/use-subscription';
 
 function collectionAnswer(collections: Collection[]) {
   const labels = collections.map((collection) => collectionDisplayMeta(collection).label);
@@ -76,14 +79,34 @@ export default function HomeScreen() {
     reminderPreferencesFor,
     outcomeFor,
     markCollection,
-    updatePlaceReminders,
+    councilNotices,
   } = useProductState();
   const online = useOnlineStatus();
+  const analytics = usePilotAnalytics();
+  const subscription = useSubscription();
+  const householdState = useHouseholdSharing();
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
+  const reportingRule = residentReportingRule(councilProfile);
+  const missedCollectionEnabled = councilProfile?.featureFlags?.missedCollection !== false;
+  const residentAlerts = residentAlertsForProfile(councilProfile)
+    .filter((alert) => !councilNotices.archivedAtById[alert.id]);
+  const unreadAlertCount = residentAlerts.filter((alert) => !councilNotices.readAtById[alert.id]).length;
   const [postcode, setPostcode] = useState('');
   const [postcodeError, setPostcodeError] = useState('');
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [reportReferenceCopied, setReportReferenceCopied] = useState(false);
+  const [councilRequested, setCouncilRequested] = useState(false);
+  const [requestingCouncil, setRequestingCouncil] = useState(false);
+  const [councilRequestError, setCouncilRequestError] = useState<string>();
+  const shownCollectionAnswer = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    void requestedCouncilConnections().then((requests) => {
+      if (active) setCouncilRequested(Boolean(activeAddress?.providerId && requests[activeAddress.providerId]));
+    });
+    return () => { active = false; };
+  }, [activeAddress?.providerId]);
 
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
   const todayCollections = upcoming.filter((collection) => dayDifference(collection.date) === 0);
@@ -136,6 +159,17 @@ export default function HomeScreen() {
     ? requiresExactCouncilAddress(activeAddress.providerId, activeAddress.councilAddressId)
     : false;
   const actionOutcomes = actionCollections.map((collection) => outcomeFor(activeAddress?.id, collection));
+  const activeHousehold = subscription.isPlus
+    ? householdState.households.find((household) => household.councilProviderId === activeAddress?.providerId)
+    : undefined;
+  const householdAssignment = activeHousehold && actionCollections[0]
+    ? activeHousehold.actions.find((action) => (
+        action.action === 'assigned'
+        && action.collectionDate === actionCollections[0].date
+        && action.wasteType === actionCollections[0].wasteType
+      ))
+    : undefined;
+  const assignedMember = activeHousehold?.members.find((member) => member.id === householdAssignment?.responsibleUserId);
   const placeReminders = reminderPreferencesFor(activeAddress?.id);
   const actionReport = reports.find((report) => (
     report.addressId === activeAddress?.id
@@ -155,7 +189,7 @@ export default function HomeScreen() {
     )
   );
   const actionEligibility = activeAddress && actionCollections[0]
-    ? evaluateMissedReportEligibility(activeAddress, actionCollections[0], new Date(), councilProfile?.reporting)
+    ? evaluateMissedReportEligibility(activeAddress, actionCollections[0], new Date(), reportingRule)
     : undefined;
   const lifecycle = actionCollections[0]
     ? deriveCollectionLifecycle(
@@ -168,6 +202,18 @@ export default function HomeScreen() {
           : undefined,
       )
     : undefined;
+
+  useEffect(() => {
+    if (!activeAddress?.providerId || !next) return;
+    const key = `${activeAddress.id}:${next.id}`;
+    if (shownCollectionAnswer.current === key) return;
+    shownCollectionAnswer.current = key;
+    analytics.track('collection_answer_shown', {
+      councilId: activeAddress.providerId,
+      outcome: 'success',
+      context: next.wasteType,
+    });
+  }, [activeAddress, analytics, next]);
 
   function continueWithPostcode() {
     if (!isUkPostcode(postcode)) {
@@ -190,45 +236,85 @@ export default function HomeScreen() {
     if (!actionDate || !activeAddress) return;
     markCollectionDateComplete(actionDate);
     actionCollections.forEach((collection) => markCollection(activeAddress, collection, 'put-out'));
+    if (activeHousehold) {
+      void Promise.all(actionCollections.map((collection) => householdState.recordAction({
+        householdId: activeHousehold.id,
+        collectionDate: collection.date,
+        wasteType: collection.wasteType,
+        action: 'put-out',
+      }))).catch(() => undefined);
+    }
+    analytics.track('bin_marked_out', {
+      councilId: activeAddress.providerId,
+      outcome: 'confirmed',
+      context: actionCollections[0]?.wasteType,
+      metricValue: actionCollections.length,
+    });
     if (Platform.OS !== 'web') await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   async function confirmCollected() {
     if (!activeAddress) return;
     actionCollections.forEach((collection) => markCollection(activeAddress, collection, 'collected'));
+    if (activeHousehold) {
+      void Promise.all(actionCollections.map((collection) => householdState.recordAction({
+        householdId: activeHousehold.id,
+        collectionDate: collection.date,
+        wasteType: collection.wasteType,
+        action: 'collected',
+      }))).catch(() => undefined);
+    }
+    analytics.track('collection_outcome_confirmed', {
+      councilId: activeAddress.providerId,
+      outcome: 'confirmed',
+      context: actionCollections[0]?.wasteType,
+      metricValue: actionCollections.length,
+    });
     if (Platform.OS !== 'web') await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   function reportMissed() {
     const collection = actionCollections[0];
     if (!collection) return;
+    analytics.track('missed_report_started', {
+      councilId: activeAddress?.providerId,
+      outcome: 'opened',
+      context: collection.wasteType,
+    });
     router.push({ pathname: '/report-missed', params: { collectionId: collection.id } });
   }
 
   function markBroughtIn() {
     if (!activeAddress) return;
     actionCollections.forEach((collection) => markCollection(activeAddress, collection, 'brought-in'));
-  }
-
-  async function shareActionCollection() {
-    if (!activeAddress || !actionCollections.length) return;
-    await shareCollectionReminder(actionCollections, activeAddress);
-  }
-
-  function remindMeLater() {
-    if (!activeAddress) return;
-    const nextHour = Math.min(new Date().getHours() + 1, 23);
-    updatePlaceReminders(activeAddress.id, {
-      enabled: true,
-      secondReminder: true,
-      secondReminderHour: nextHour,
-    });
+    if (activeHousehold) {
+      void Promise.all(actionCollections.map((collection) => householdState.recordAction({
+        householdId: activeHousehold.id,
+        collectionDate: collection.date,
+        wasteType: collection.wasteType,
+        action: 'brought-in',
+      }))).catch(() => undefined);
+    }
   }
 
   async function copyActionReportReference() {
     if (!actionReport) return;
     await Clipboard.setStringAsync(actionReport.councilReference || actionReport.localTrackingId);
     setReportReferenceCopied(true);
+  }
+
+  async function requestCouncil() {
+    if (!activeAddress?.providerId || councilRequested) return;
+    setRequestingCouncil(true);
+    setCouncilRequestError(undefined);
+    try {
+      await requestCouncilConnection(activeAddress.providerId, true);
+      setCouncilRequested(true);
+    } catch (caught) {
+      setCouncilRequestError(caught instanceof Error ? caught.message : 'Your council request could not be saved.');
+    } finally {
+      setRequestingCouncil(false);
+    }
   }
 
   function sourceSummary() {
@@ -371,11 +457,12 @@ export default function HomeScreen() {
                     <Ionicons color={heroForeground} name="location-outline" size={21} />
                   </Pressable>
                   <Pressable
-                    accessibilityLabel="Open settings"
+                    accessibilityLabel={unreadAlertCount ? `Open Activity, ${unreadAlertCount} unread alert${unreadAlertCount === 1 ? '' : 's'}` : 'Open Activity'}
                     accessibilityRole="button"
-                    onPress={() => router.push('/settings')}
+                    onPress={() => router.push('/activity' as Href)}
                     style={({ pressed }) => [styles.addressButton, { backgroundColor: heroControl }, pressed && styles.pressed]}>
-                    <Ionicons color={heroForeground} name="settings-outline" size={21} />
+                    <Ionicons color={heroForeground} name="notifications-outline" size={21} />
+                    {unreadAlertCount ? <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>{Math.min(99, unreadAlertCount)}</Text></View> : null}
                   </Pressable>
                 </View>
               </View>
@@ -407,7 +494,6 @@ export default function HomeScreen() {
           </LinearGradient>
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            <CouncilNotices placement="home" profile={councilProfile} />
             {exactAddressRequired ? (
               <Pressable accessibilityRole="button" onPress={() => router.push('/places')} style={({ pressed }) => [styles.setupRequiredCard, pressed && styles.pressed]}>
                 <View style={styles.actionIcon}><Ionicons color="#FFFFFF" name="home-outline" size={23} /></View>
@@ -440,6 +526,12 @@ export default function HomeScreen() {
                     );
                   })}
                 </View>
+                {activeHousehold ? (
+                  <Pressable accessibilityRole="button" onPress={() => router.push('/household' as Href)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+                    <Ionicons color={theme.accent} name="people-outline" size={19} />
+                    <Text style={styles.secondaryActionText}>{assignedMember ? `${assignedMember.displayName} is putting it out` : 'Choose who is putting it out'}</Text>
+                  </Pressable>
+                ) : null}
                 {lifecycle?.canMarkPutOut || completed ? (
                   <Pressable
                     accessibilityRole="button"
@@ -454,34 +546,11 @@ export default function HomeScreen() {
                   </Pressable>
                 ) : null}
                 {lifecycle?.stage === 'before' ? (
-                  <>
-                    {!placeReminders.enabled ? (
-                      <Pressable accessibilityRole="button" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
-                        <Ionicons color={theme.accent} name="notifications-outline" size={19} />
-                        <Text style={styles.secondaryActionText}>Enable reminder</Text>
-                      </Pressable>
-                    ) : null}
-                    <View style={styles.quickActions}>
-                      {tonightCollections.length ? (
-                        <Pressable accessibilityRole="button" onPress={remindMeLater} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
-                          <Ionicons color={theme.accent} name="alarm-outline" size={18} />
-                          <Text style={styles.quickActionText}>Remind me later</Text>
-                        </Pressable>
-                      ) : null}
-                      <Pressable accessibilityRole="button" onPress={() => router.push('/schedule')} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
-                        <Ionicons color={theme.accent} name="calendar-outline" size={18} />
-                        <Text style={styles.quickActionText}>Schedule</Text>
-                      </Pressable>
-                      <Pressable accessibilityRole="button" onPress={() => void shareActionCollection()} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
-                        <Ionicons color={theme.accent} name="share-outline" size={18} />
-                        <Text style={styles.quickActionText}>Share</Text>
-                      </Pressable>
-                      <Pressable accessibilityRole="button" onPress={() => router.push('/guide')} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
-                        <Ionicons color={theme.accent} name="search-outline" size={18} />
-                        <Text style={styles.quickActionText}>Bin guide</Text>
-                      </Pressable>
-                    </View>
-                  </>
+                  <Pressable accessibilityRole="button" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.reminderStatus, pressed && styles.pressed]}>
+                    <Ionicons color={placeReminders.enabled ? theme.success : theme.secondaryText} name={placeReminders.enabled ? 'notifications' : 'notifications-off-outline'} size={17} />
+                    <Text style={styles.reminderStatusText}>{placeReminders.enabled ? 'Bin-night reminder is on' : 'Bin-night reminder is off'}</Text>
+                    <Ionicons color={theme.tertiaryText} name="chevron-forward" size={16} />
+                  </Pressable>
                 ) : null}
                 {lifecycle?.stage === 'collected' && actionOutcomes[0]?.status !== 'brought-in' ? (
                   <Pressable accessibilityRole="button" onPress={markBroughtIn} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
@@ -497,9 +566,9 @@ export default function HomeScreen() {
                 ) : null}
                 {lifecycle?.stage === 'missed' ? (
                   <View style={styles.quickActions}>
-                    <Pressable accessibilityRole="button" onPress={() => router.push('/reports')} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+                    <Pressable accessibilityRole="button" onPress={() => router.push('/activity' as Href)} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
                       <Ionicons color={theme.accent} name="document-text-outline" size={18} />
-                      <Text style={styles.quickActionText}>{actionReport ? 'View report' : 'Reports'}</Text>
+                      <Text style={styles.quickActionText}>{actionReport ? 'View report' : 'Activity'}</Text>
                     </Pressable>
                     {actionReport ? (
                       <Pressable accessibilityRole="button" onPress={() => void copyActionReportReference()} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
@@ -524,7 +593,7 @@ export default function HomeScreen() {
                       <Ionicons color="#FFFFFF" name="checkmark-circle-outline" size={19} />
                       <Text style={styles.completeButtonText}>It was collected</Text>
                     </Pressable>
-                    <Pressable
+                    {missedCollectionEnabled ? <Pressable
                       accessibilityRole="button"
                       accessibilityState={{ disabled: !lifecycle.canReportMissed }}
                       disabled={!lifecycle.canReportMissed}
@@ -532,7 +601,7 @@ export default function HomeScreen() {
                       style={({ pressed }) => [styles.missedButton, !lifecycle.canReportMissed && styles.actionDisabled, pressed && styles.pressed]}>
                       <Ionicons color={theme.danger} name="alert-circle-outline" size={19} />
                       <Text style={styles.missedButtonText}>No, it was missed</Text>
-                    </Pressable>
+                    </Pressable> : null}
                   </View>
                 ) : null}
                 {lifecycle?.blockedReason ? <Text style={styles.blockedReason}>{lifecycle.blockedReason}</Text> : null}
@@ -574,18 +643,41 @@ export default function HomeScreen() {
                 <Ionicons color={usesCouncilBinColour ? nextCardForeground : theme.tertiaryText} name="chevron-forward" size={20} />
               </Pressable>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                disabled={refreshing || !online}
-                onPress={refreshOrChooseAddress}
-                style={({ pressed }) => [styles.emptySchedule, pressed && styles.pressed]}>
-                <Ionicons color={online ? theme.accent : theme.secondaryText} name={online ? 'calendar-outline' : 'cloud-offline-outline'} size={26} />
-                <View style={styles.emptyScheduleCopy}>
-                  <Text style={styles.emptyScheduleTitle}>{collectionDataState === 'error' ? 'Council check unavailable' : 'No verified dates for this place'}</Text>
-                  <Text style={styles.emptyScheduleBody}>{online ? 'Tap to check the live council source again.' : 'Reconnect to check for collection dates.'}</Text>
-                </View>
-                <Ionicons color={theme.tertiaryText} name="arrow-forward" size={19} />
-              </Pressable>
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={refreshing || !online}
+                  onPress={refreshOrChooseAddress}
+                  style={({ pressed }) => [styles.emptySchedule, pressed && styles.pressed]}>
+                  <Ionicons color={online ? theme.accent : theme.secondaryText} name={online ? 'calendar-outline' : 'cloud-offline-outline'} size={26} />
+                  <View style={styles.emptyScheduleCopy}>
+                    <Text style={styles.emptyScheduleTitle}>{collectionDataState === 'error' ? 'Council check unavailable' : 'No verified dates for this place'}</Text>
+                    <Text style={styles.emptyScheduleBody}>{online ? 'Tap to check the live council source again.' : 'Reconnect to check for collection dates.'}</Text>
+                  </View>
+                  <Ionicons color={theme.tertiaryText} name="arrow-forward" size={19} />
+                </Pressable>
+                {councilProfile && ['unsupported', 'council-link-only'].includes(councilProfile.coverageStatus) ? (
+                  <View style={styles.councilDemandCard}>
+                    <View style={styles.councilDemandIcon}><Ionicons color={theme.accent} name="people-outline" size={22} /></View>
+                    <View style={styles.councilDemandCopy}>
+                      <Text style={styles.councilDemandKicker}>COUNCIL CONNECTION</Text>
+                      <Text style={styles.councilDemandTitle}>Ask {activeAddress.councilName} to connect</Text>
+                      <Text style={styles.councilDemandBody}>Your postcode already counts once in its anonymous resident total. This request tells us you want live official dates and an availability alert.</Text>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: councilRequested || requestingCouncil }}
+                      disabled={councilRequested || requestingCouncil}
+                      onPress={() => void requestCouncil()}
+                      style={({ pressed }) => [styles.councilDemandButton, councilRequested && styles.councilDemandButtonDone, pressed && styles.pressed]}
+                    >
+                      {requestingCouncil ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons color={councilRequested ? theme.success : '#FFFFFF'} name={councilRequested ? 'checkmark-circle' : 'megaphone-outline'} size={18} />}
+                      <Text style={[styles.councilDemandButtonText, councilRequested && { color: theme.success }]}>{councilRequested ? 'Request saved' : 'Request my council'}</Text>
+                    </Pressable>
+                    {councilRequestError ? <Text accessibilityRole="alert" style={styles.errorText}>{councilRequestError}</Text> : null}
+                  </View>
+                ) : null}
+              </>
             )}
 
             <Pressable
@@ -650,14 +742,6 @@ export default function HomeScreen() {
               </>
             ) : null}
 
-            <Pressable accessibilityRole="button" onPress={() => router.push('/guide')} style={({ pressed }) => [styles.guideShortcut, pressed && styles.pressed]}>
-              <View style={styles.guideIcon}><Ionicons color={theme.heroText} name="search" size={22} /></View>
-              <View style={styles.guideCopy}>
-                <Text style={styles.guideTitle}>Where does this item go?</Text>
-                <Text style={styles.guideBody}>Search the recycling guide or find a nearby drop-off.</Text>
-              </View>
-              <Ionicons color={theme.heroSecondary} name="arrow-forward" size={20} />
-            </Pressable>
           </ScrollView>
         </View>
       </AppShell>
@@ -745,6 +829,8 @@ function createStyles(theme: AppTheme) {
   eyebrow: { color: '#64B5FF', fontFamily: appFonts.text, fontSize: 12, letterSpacing: 0.45, fontWeight: '700' },
   greeting: { color: theme.heroText, fontFamily: appFonts.display, fontSize: 32, lineHeight: 37, fontWeight: '700', letterSpacing: -0.95, marginTop: 2 },
   addressButton: { height: 44, width: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
+  heroBadge: { position: 'absolute', top: -2, right: -2, minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 9, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center' },
+  heroBadgeText: { color: '#FFFFFF', fontSize: 9.5, lineHeight: 12, fontWeight: '800' },
   heroInfoRow: { marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 14 },
   heroInfoCopy: { flex: 1, minWidth: 0 },
   addressLine: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', maxWidth: '100%' },
@@ -774,6 +860,8 @@ function createStyles(theme: AppTheme) {
   quickActionText: { color: theme.accent, fontSize: 12, fontWeight: '700' },
   secondaryAction: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   secondaryActionText: { color: theme.accent, fontSize: 14, fontWeight: '700' },
+  reminderStatus: { minHeight: 44, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reminderStatusText: { flex: 1, color: theme.secondaryText, fontSize: 12.5, fontWeight: '600' },
   collectedButton: { minHeight: 50, backgroundColor: theme.accent, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   missedButton: { minHeight: 50, backgroundColor: theme.surface, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.danger, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   missedButtonText: { color: theme.danger, fontSize: 16, fontWeight: '700' },
@@ -790,6 +878,15 @@ function createStyles(theme: AppTheme) {
   emptyScheduleCopy: { flex: 1 },
   emptyScheduleTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
   emptyScheduleBody: { color: theme.secondaryText, fontSize: 13, lineHeight: 18, marginTop: 3 },
+  councilDemandCard: { padding: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, backgroundColor: theme.surface, gap: 12 },
+  councilDemandIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.accentSoft },
+  councilDemandCopy: { gap: 3 },
+  councilDemandKicker: { color: theme.accent, fontSize: 11, lineHeight: 15, fontWeight: '700', letterSpacing: 1 },
+  councilDemandTitle: { color: theme.text, fontSize: 17, lineHeight: 22, fontWeight: '700' },
+  councilDemandBody: { color: theme.secondaryText, fontSize: 13, lineHeight: 19 },
+  councilDemandButton: { minHeight: 48, borderRadius: 13, backgroundColor: theme.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  councilDemandButtonDone: { backgroundColor: theme.accentSoft },
+  councilDemandButtonText: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '700' },
   sourceLine: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
   sourceText: { flex: 1, color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
   changeNotice: { borderRadius: 14, backgroundColor: `${theme.warning}14`, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: `${theme.warning}45` },
@@ -813,11 +910,6 @@ function createStyles(theme: AppTheme) {
   rowTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
   rowBody: { color: theme.secondaryText, fontSize: 12.5, fontWeight: '500', marginTop: 2 },
   dot: { height: 8, width: 8, borderRadius: 4 },
-  guideShortcut: { backgroundColor: theme.hero, borderRadius: 16, minHeight: 82, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  guideIcon: { height: 42, width: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.accent },
-  guideCopy: { flex: 1 },
-  guideTitle: { color: theme.heroText, fontSize: 15, fontWeight: '700' },
-  guideBody: { color: theme.heroSecondary, fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   pickerPage: { flex: 1, backgroundColor: theme.background },
   pickerHeader: { backgroundColor: theme.surface, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },

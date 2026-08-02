@@ -4,10 +4,16 @@ import { councilDatabase } from "./database";
 import type {
   AuditEvent,
   CouncilAnnouncement,
+  CouncilAudienceCriteria,
   CouncilBroadcastSummary,
   CouncilDisruption,
+  CouncilFeatureFlags,
   CouncilGuidanceItem,
   CouncilPartner,
+  CouncilOnboardingItem,
+  CouncilOutcomeFunnels,
+  CouncilPilotBaseline,
+  CouncilSponsorshipProgramme,
   CouncilStaffSession,
   DashboardMetric,
   ReportingRule,
@@ -67,25 +73,81 @@ async function queueCouncilBroadcast(
   session: CouncilStaffSession,
   target: { announcementId: string } | { disruptionId: string },
 ) {
+  const audienceRows = await sql<{ audience_criteria: CouncilAudienceCriteria }[]>`
+    SELECT audience_criteria
+    FROM (
+      SELECT audience_criteria FROM bin_council_announcements
+      WHERE id = ${"announcementId" in target ? target.announcementId : null}::uuid
+        AND organisation_id = ${session.organisation.id}::uuid
+      UNION ALL
+      SELECT audience_criteria FROM bin_council_disruptions
+      WHERE id = ${"disruptionId" in target ? target.disruptionId : null}::uuid
+        AND organisation_id = ${session.organisation.id}::uuid
+    ) AS content
+    LIMIT 1
+  `;
+  const audience = audienceRows[0]?.audience_criteria ?? {
+    scope: "council",
+    collectionTypes: [],
+    collectionDates: [],
+    audienceLabels: [],
+  };
+  const estimatedRecipientCount = await estimateCouncilAudienceWithSql(sql, session, audience);
   const rows = await sql<{ id: string }[]>`
     INSERT INTO bin_council_broadcast_jobs (
       organisation_id,
       announcement_id,
       disruption_id,
       channels,
-      requested_by
+      requested_by,
+      audience_criteria,
+      estimated_recipient_count,
+      audience_confirmed_at
     ) VALUES (
       ${session.organisation.id}::uuid,
       ${"announcementId" in target ? target.announcementId : null}::uuid,
       ${"disruptionId" in target ? target.disruptionId : null}::uuid,
       ${["web-push", "native-push"]},
-      ${session.userId}::uuid
+      ${session.userId}::uuid,
+      ${sql.json(audience)},
+      ${estimatedRecipientCount},
+      now()
     )
     RETURNING id
   `;
   const id = rows[0]?.id;
   if (!id) throw new Error("The resident push broadcast could not be queued.");
   return id;
+}
+
+async function estimateCouncilAudienceWithSql(
+  sql: postgres.Sql | postgres.TransactionSql,
+  session: CouncilStaffSession,
+  audience: CouncilAudienceCriteria,
+) {
+  const reachRows = await sql<{ count: number }[]>`
+    SELECT count(DISTINCT installation_id)::int AS count
+    FROM bin_council_push_registrations
+    WHERE council_id = ${session.organisation.providerId}
+      AND enabled
+      AND last_seen_at >= now() - interval '180 days'
+      AND (
+        ${audience.scope === "council"}
+        OR (
+          (${audience.collectionTypes.length === 0} OR collection_types && ${audience.collectionTypes}::varchar[])
+          AND (${audience.collectionDates.length === 0} OR collection_dates && ${audience.collectionDates}::date[])
+          AND (${audience.audienceLabels.length === 0} OR audience_labels && ${audience.audienceLabels}::varchar[])
+        )
+      )
+  `;
+  return reachRows[0]?.count ?? 0;
+}
+
+export async function estimateCouncilAudience(
+  session: CouncilStaffSession,
+  audience: CouncilAudienceCriteria,
+) {
+  return estimateCouncilAudienceWithSql(councilDatabase(), session, audience);
 }
 
 export async function listCouncilBroadcasts(session: CouncilStaffSession) {
@@ -96,6 +158,8 @@ export async function listCouncilBroadcasts(session: CouncilStaffSession) {
     status: string;
     delivered_count: number;
     failed_count: number;
+    estimated_recipient_count: number;
+    audience_criteria: CouncilAudienceCriteria;
     requested_at: Date;
     completed_at: Date | null;
   }[]>`
@@ -105,6 +169,8 @@ export async function listCouncilBroadcasts(session: CouncilStaffSession) {
       status,
       delivered_count,
       failed_count,
+      estimated_recipient_count,
+      audience_criteria,
       requested_at,
       completed_at
     FROM bin_council_broadcast_jobs
@@ -118,9 +184,267 @@ export async function listCouncilBroadcasts(session: CouncilStaffSession) {
     status: row.status,
     acceptedCount: row.delivered_count,
     failedCount: row.failed_count,
+    estimatedRecipientCount: row.estimated_recipient_count,
+    audience: row.audience_criteria,
     requestedAt: row.requested_at.toISOString(),
     completedAt: row.completed_at?.toISOString(),
   }));
+}
+
+export async function listSponsorshipProgrammes(session: CouncilStaffSession) {
+  const sql = councilDatabase();
+  const rows = await sql<{
+    id: string; sponsor_type: CouncilSponsorshipProgramme["sponsorType"];
+    status: CouncilSponsorshipProgramme["status"]; resident_label: string; features: string[];
+    starts_at: Date; ends_at: Date | null; renewal_at: Date | null; created_at: Date;
+  }[]>`
+    SELECT id, sponsor_type, status, resident_label, features, starts_at, ends_at, renewal_at, created_at
+    FROM bin_sponsorship_programmes
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,
+      starts_at DESC
+    LIMIT 100
+  `;
+  return rows.map((row): CouncilSponsorshipProgramme => ({
+    id: row.id,
+    sponsorType: row.sponsor_type,
+    status: row.status,
+    residentLabel: row.resident_label,
+    features: row.features,
+    startsAt: row.starts_at.toISOString(),
+    endsAt: row.ends_at?.toISOString(),
+    renewalAt: row.renewal_at?.toISOString().slice(0, 10),
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+
+export async function createSponsorshipProgramme(
+  session: CouncilStaffSession,
+  input: Omit<CouncilSponsorshipProgramme, "id" | "createdAt" | "status"> & { status: "draft" | "active" },
+) {
+  const sql = councilDatabase();
+  return sql.begin(async (transaction) => {
+    if (input.status === "active") {
+      await transaction`
+        UPDATE bin_sponsorship_programmes
+        SET status = 'paused', updated_at = now()
+        WHERE organisation_id = ${session.organisation.id}::uuid AND status = 'active'
+      `;
+    }
+    const rows = await transaction<{ id: string }[]>`
+      INSERT INTO bin_sponsorship_programmes (
+        organisation_id, sponsor_type, status, resident_label, features,
+        starts_at, ends_at, renewal_at, created_by
+      ) VALUES (
+        ${session.organisation.id}::uuid,
+        ${input.sponsorType},
+        ${input.status},
+        ${input.residentLabel},
+        ${input.features},
+        ${input.startsAt}::timestamptz,
+        ${input.endsAt ?? null}::timestamptz,
+        ${input.renewalAt ?? null}::date,
+        ${session.userId}::uuid
+      )
+      RETURNING id
+    `;
+    const id = rows[0]?.id;
+    if (!id) throw new Error("The sponsorship programme could not be saved.");
+    await transaction`
+      INSERT INTO bin_council_feature_flags (organisation_id, sponsored_plus, updated_by, updated_at)
+      VALUES (${session.organisation.id}::uuid, ${input.status === "active"}, ${session.userId}::uuid, now())
+      ON CONFLICT (organisation_id) DO UPDATE SET
+        sponsored_plus = excluded.sponsored_plus,
+        updated_by = excluded.updated_by,
+        updated_at = now()
+    `;
+    await appendAudit(transaction, session, `sponsorship.${input.status}`, "sponsorship-programme", id, {
+      sponsorType: input.sponsorType,
+      featureCount: input.features.length,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt ?? null,
+    });
+    return id;
+  });
+}
+
+export async function setSponsorshipProgrammeStatus(
+  session: CouncilStaffSession,
+  id: string,
+  status: "active" | "paused" | "ended",
+) {
+  const sql = councilDatabase();
+  return sql.begin(async (transaction) => {
+    if (status === "active") {
+      await transaction`
+        UPDATE bin_sponsorship_programmes SET status = 'paused', updated_at = now()
+        WHERE organisation_id = ${session.organisation.id}::uuid AND status = 'active' AND id <> ${id}::uuid
+      `;
+    }
+    const rows = await transaction<{ resident_label: string }[]>`
+      UPDATE bin_sponsorship_programmes
+      SET status = ${status}, updated_at = now()
+      WHERE id = ${id}::uuid AND organisation_id = ${session.organisation.id}::uuid
+      RETURNING resident_label
+    `;
+    if (!rows[0]) throw new Error("The sponsorship programme was not found.");
+    const activeRows = await transaction<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM bin_sponsorship_programmes
+      WHERE organisation_id = ${session.organisation.id}::uuid
+        AND status = 'active' AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now())
+    `;
+    await transaction`
+      INSERT INTO bin_council_feature_flags (organisation_id, sponsored_plus, updated_by, updated_at)
+      VALUES (${session.organisation.id}::uuid, ${(activeRows[0]?.count ?? 0) > 0}, ${session.userId}::uuid, now())
+      ON CONFLICT (organisation_id) DO UPDATE SET
+        sponsored_plus = excluded.sponsored_plus,
+        updated_by = excluded.updated_by,
+        updated_at = now()
+    `;
+    await appendAudit(transaction, session, `sponsorship.${status}`, "sponsorship-programme", id, {
+      label: rows[0].resident_label,
+      status,
+    });
+  });
+}
+
+export async function getCouncilFeatureFlags(session: CouncilStaffSession): Promise<CouncilFeatureFlags> {
+  const sql = councilDatabase();
+  const rows = await sql<{
+    collection_dates: boolean; council_branding: boolean; push_alerts: boolean;
+    missed_collection: boolean; direct_reporting: boolean; recycling_guide: boolean;
+    partner_services: boolean; support_inbox: boolean; sponsored_plus: boolean;
+    analytics_exports: boolean; bulky_waste_booking: boolean;
+  }[]>`
+    SELECT collection_dates, council_branding, push_alerts, missed_collection,
+      direct_reporting, recycling_guide, partner_services, support_inbox,
+      sponsored_plus, analytics_exports, bulky_waste_booking
+    FROM bin_council_feature_flags
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    LIMIT 1
+  `;
+  const row = rows[0];
+  return row ? {
+    collectionDates: row.collection_dates,
+    councilBranding: row.council_branding,
+    pushAlerts: row.push_alerts,
+    missedCollection: row.missed_collection,
+    directReporting: row.direct_reporting,
+    recyclingGuide: row.recycling_guide,
+    partnerServices: row.partner_services,
+    supportInbox: row.support_inbox,
+    sponsoredPlus: row.sponsored_plus,
+    analyticsExports: row.analytics_exports,
+    bulkyWasteBooking: row.bulky_waste_booking,
+  } : {
+    collectionDates: true,
+    councilBranding: true,
+    pushAlerts: false,
+    missedCollection: true,
+    directReporting: false,
+    recyclingGuide: true,
+    partnerServices: false,
+    supportInbox: false,
+    sponsoredPlus: false,
+    analyticsExports: false,
+    bulkyWasteBooking: false,
+  };
+}
+
+export async function saveCouncilFeatureFlags(
+  session: CouncilStaffSession,
+  flags: CouncilFeatureFlags,
+) {
+  const sql = councilDatabase();
+  return sql.begin(async (transaction) => {
+    await transaction`
+      INSERT INTO bin_council_feature_flags (
+        organisation_id, collection_dates, council_branding, push_alerts,
+        missed_collection, direct_reporting, recycling_guide, partner_services,
+        support_inbox, sponsored_plus, analytics_exports, bulky_waste_booking,
+        updated_by, updated_at
+      ) VALUES (
+        ${session.organisation.id}::uuid, ${flags.collectionDates}, ${flags.councilBranding},
+        ${flags.pushAlerts}, ${flags.missedCollection}, ${flags.directReporting},
+        ${flags.recyclingGuide}, ${flags.partnerServices}, ${flags.supportInbox},
+        ${flags.sponsoredPlus}, ${flags.analyticsExports}, ${flags.bulkyWasteBooking},
+        ${session.userId}::uuid, now()
+      )
+      ON CONFLICT (organisation_id) DO UPDATE SET
+        collection_dates = excluded.collection_dates,
+        council_branding = excluded.council_branding,
+        push_alerts = excluded.push_alerts,
+        missed_collection = excluded.missed_collection,
+        direct_reporting = excluded.direct_reporting,
+        recycling_guide = excluded.recycling_guide,
+        partner_services = excluded.partner_services,
+        support_inbox = excluded.support_inbox,
+        sponsored_plus = excluded.sponsored_plus,
+        analytics_exports = excluded.analytics_exports,
+        bulky_waste_booking = excluded.bulky_waste_booking,
+        updated_by = excluded.updated_by,
+        updated_at = now()
+    `;
+    await appendAudit(transaction, session, "features.updated", "organisation", session.organisation.id, {
+      enabledCount: Object.values(flags).filter(Boolean).length,
+    });
+  });
+}
+
+const onboardingItemKeys = [
+  "identity", "staff-access", "collection-source", "address-lookup", "bin-names-colours",
+  "recycling-guidance", "missed-bin-policy", "service-alerts", "partner-approvals", "pilot-baseline",
+] as const;
+
+export async function listCouncilOnboardingItems(session: CouncilStaffSession): Promise<CouncilOnboardingItem[]> {
+  const sql = councilDatabase();
+  const rows = await sql<{
+    item_key: string; status: CouncilOnboardingItem["status"]; evidence_note: string | null; completed_at: Date | null;
+  }[]>`
+    SELECT keys.item_key, coalesce(items.status, 'not-started') AS status,
+      items.evidence_note, items.completed_at
+    FROM unnest(${[...onboardingItemKeys]}::varchar[]) WITH ORDINALITY AS keys(item_key, sort_order)
+    LEFT JOIN bin_council_onboarding_items AS items
+      ON items.organisation_id = ${session.organisation.id}::uuid
+      AND items.item_key = keys.item_key
+    ORDER BY keys.sort_order
+  `;
+  return rows.map((row) => ({
+    itemKey: row.item_key,
+    status: row.status,
+    evidenceNote: row.evidence_note ?? undefined,
+    completedAt: row.completed_at?.toISOString(),
+  }));
+}
+
+export async function saveCouncilOnboardingItem(
+  session: CouncilStaffSession,
+  input: Pick<CouncilOnboardingItem, "itemKey" | "status" | "evidenceNote">,
+) {
+  if (!(onboardingItemKeys as readonly string[]).includes(input.itemKey)) throw new Error("The setup item is invalid.");
+  const sql = councilDatabase();
+  return sql.begin(async (transaction) => {
+    await transaction`
+      INSERT INTO bin_council_onboarding_items (
+        organisation_id, item_key, status, evidence_note, completed_by, completed_at, updated_at
+      ) VALUES (
+        ${session.organisation.id}::uuid, ${input.itemKey}, ${input.status}, ${input.evidenceNote ?? null},
+        ${input.status === "complete" ? session.userId : null}::uuid,
+        ${input.status === "complete" ? new Date() : null}::timestamptz,
+        now()
+      )
+      ON CONFLICT (organisation_id, item_key) DO UPDATE SET
+        status = excluded.status,
+        evidence_note = excluded.evidence_note,
+        completed_by = excluded.completed_by,
+        completed_at = excluded.completed_at,
+        updated_at = now()
+    `;
+    await appendAudit(transaction, session, `onboarding.${input.status}`, "organisation", session.organisation.id, {
+      itemKey: input.itemKey,
+      status: input.status,
+    });
+  });
 }
 
 function percentage(numerator: number, denominator: number) {
@@ -129,6 +453,7 @@ function percentage(numerator: number, denominator: number) {
 
 export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
   metrics: DashboardMetric[];
+  outcomeFunnels: CouncilOutcomeFunnels;
   gatewayAvailability?: number;
   averageGatewayResponseMs?: number;
   dataPeriodDays: number;
@@ -155,6 +480,13 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
     FROM bin_analytics_events
     WHERE council_id = ${providerId}
       AND occurred_at >= now() - make_interval(days => ${periodDays})
+  `;
+  const outcomeRows = await sql<{ event_name: string; event_count: number }[]>`
+    SELECT event_name, count(*)::int AS event_count
+    FROM bin_analytics_events
+    WHERE council_id = ${providerId}
+      AND occurred_at >= now() - make_interval(days => ${periodDays})
+    GROUP BY event_name
   `;
   const residentAdoptionRows = await sql<ResidentAdoptionRow[]>`
     SELECT
@@ -210,6 +542,12 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
   const reminderRate = percentage(analytics.reminders, analytics.participants);
   const guideSuccess = percentage(analytics.guide_matches, analytics.guide_searches);
   const gatewayAvailability = percentage(gateway.successes, gateway.checks);
+  const outcomeCounts = new Map(outcomeRows.map((row) => [row.event_name, row.event_count]));
+  const stage = (label: string, eventName: string, detail: string) => ({
+    label,
+    value: outcomeCounts.get(eventName) ?? 0,
+    detail,
+  });
   return {
     metrics: [
       {
@@ -259,7 +597,7 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
       {
         label: "Live resident notices",
         value: String(publishedRows[0]?.count ?? 0),
-        detail: "Currently published home, schedule or guide messages",
+        detail: "Currently published Today, Schedule, Guide or Activity messages",
         state: "available",
         tone: "blue",
       },
@@ -277,10 +615,96 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
         state: "not-connected",
       },
     ],
+    outcomeFunnels: {
+      collection: [
+        stage("Collections shown", "collection_answer_shown", "A verified Today answer was displayed"),
+        stage("Reminder enabled", "reminders_enabled", "A resident enabled a verified reminder"),
+        stage("Marked as out", "bin_marked_out", "A household recorded that its bin was put out"),
+        stage("Outcome confirmed", "collection_outcome_confirmed", "Collected or missed was confirmed"),
+        stage("Missed report started", "missed_report_started", "The official missed-bin journey was started"),
+        stage("Official handoff opened", "missed_report_route_opened", "The council route or direct service was opened"),
+        stage("Submission confirmed", "council_submission_confirmed", "The resident confirmed an official submission"),
+      ],
+      guide: [
+        stage("Guide searches", "guide_search_matched", "Searches returning a structured result"),
+        stage("No useful result", "guide_search_no_match", "Searches without a structured result"),
+        stage("Answer selected", "guide_result_selected", "A resident opened a disposal answer"),
+        stage("Partner listing viewed", "partner_listing_viewed", "A relevant labelled partner was shown"),
+        stage("External service opened", "partner_external_opened", "A resident chose to leave for a service"),
+      ],
+      communications: [
+        {
+          label: "Active announcements",
+          value: publishedRows[0]?.count ?? 0,
+          detail: "Currently published council messages",
+        },
+        stage("In-app reach", "council_alert_shown", "Alert cards displayed in Activity"),
+        stage("Alert opened", "council_alert_opened", "Residents opening council detail"),
+        stage("Muted", "council_alert_muted", "Residents muting a council notice type"),
+      ],
+    },
     gatewayAvailability,
     averageGatewayResponseMs: gateway.average_duration_ms ?? undefined,
     dataPeriodDays: periodDays,
   };
+}
+
+export async function getCouncilPilotBaseline(session: CouncilStaffSession): Promise<CouncilPilotBaseline | undefined> {
+  const sql = councilDatabase();
+  const rows = await sql<{
+    period_starts_on: string; period_ends_on: string; agreed_contact_cost_pence: number | null;
+    resident_contacts: number | null; missed_collection_contacts: number | null;
+    notes: string | null; updated_at: Date;
+  }[]>`
+    SELECT period_starts_on::text, period_ends_on::text, agreed_contact_cost_pence,
+      resident_contacts, missed_collection_contacts, notes, updated_at
+    FROM bin_council_pilot_baselines
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    LIMIT 1
+  `;
+  const row = rows[0];
+  return row ? {
+    periodStartsOn: row.period_starts_on,
+    periodEndsOn: row.period_ends_on,
+    agreedContactCostPence: row.agreed_contact_cost_pence ?? undefined,
+    residentContacts: row.resident_contacts ?? undefined,
+    missedCollectionContacts: row.missed_collection_contacts ?? undefined,
+    notes: row.notes ?? undefined,
+    updatedAt: row.updated_at.toISOString(),
+  } : undefined;
+}
+
+export async function saveCouncilPilotBaseline(
+  session: CouncilStaffSession,
+  input: Omit<CouncilPilotBaseline, "updatedAt">,
+) {
+  const sql = councilDatabase();
+  await sql.begin(async (transaction) => {
+    await transaction`
+      INSERT INTO bin_council_pilot_baselines (
+        organisation_id, period_starts_on, period_ends_on, agreed_contact_cost_pence,
+        resident_contacts, missed_collection_contacts, notes, updated_by, updated_at
+      ) VALUES (
+        ${session.organisation.id}::uuid, ${input.periodStartsOn}::date, ${input.periodEndsOn}::date,
+        ${input.agreedContactCostPence ?? null}, ${input.residentContacts ?? null},
+        ${input.missedCollectionContacts ?? null}, ${input.notes ?? null}, ${session.userId}::uuid, now()
+      )
+      ON CONFLICT (organisation_id) DO UPDATE SET
+        period_starts_on = excluded.period_starts_on,
+        period_ends_on = excluded.period_ends_on,
+        agreed_contact_cost_pence = excluded.agreed_contact_cost_pence,
+        resident_contacts = excluded.resident_contacts,
+        missed_collection_contacts = excluded.missed_collection_contacts,
+        notes = excluded.notes,
+        updated_by = excluded.updated_by,
+        updated_at = now()
+    `;
+    await appendAudit(transaction, session, "pilot-baseline.updated", "organisation", session.organisation.id, {
+      periodStartsOn: input.periodStartsOn,
+      periodEndsOn: input.periodEndsOn,
+      contactCostConfigured: input.agreedContactCostPence !== undefined,
+    });
+  });
 }
 
 export async function listAnnouncements(session: CouncilStaffSession) {
@@ -296,6 +720,7 @@ export async function listAnnouncements(session: CouncilStaffSession) {
     starts_at: Date | null;
     ends_at: Date | null;
     source_url: string | null;
+    audience_criteria: CouncilAudienceCriteria;
     updated_at: Date;
   }[]>`
     SELECT
@@ -309,6 +734,7 @@ export async function listAnnouncements(session: CouncilStaffSession) {
       starts_at,
       ends_at,
       source_url,
+      audience_criteria,
       updated_at
     FROM bin_council_announcements
     WHERE organisation_id = ${session.organisation.id}::uuid
@@ -328,6 +754,7 @@ export async function listAnnouncements(session: CouncilStaffSession) {
     startsAt: row.starts_at?.toISOString(),
     endsAt: row.ends_at?.toISOString(),
     sourceUrl: row.source_url ?? undefined,
+    audience: row.audience_criteria,
     updatedAt: row.updated_at.toISOString(),
   }));
 }
@@ -353,6 +780,7 @@ export async function createAnnouncement(
         starts_at,
         ends_at,
         source_url,
+        audience_criteria,
         created_by,
         published_by,
         published_at
@@ -367,6 +795,7 @@ export async function createAnnouncement(
         ${input.startsAt ?? null}::timestamptz,
         ${input.endsAt ?? null}::timestamptz,
         ${input.sourceUrl ?? null},
+        ${transaction.json(input.audience)},
         ${session.userId}::uuid,
         ${input.status === "published" ? session.userId : null}::uuid,
         ${input.status === "published" ? new Date().toISOString() : null}::timestamptz
@@ -380,6 +809,7 @@ export async function createAnnouncement(
       severity: input.severity,
       placements: input.placements.join(","),
       pushRequested: input.sendPush,
+      audienceScope: input.audience.scope,
     });
     const broadcastJobId = input.status === "published" && input.sendPush
       ? await queueCouncilBroadcast(transaction, session, { announcementId: id })
@@ -396,7 +826,7 @@ export async function setAnnouncementStatus(
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
-    const rows = await transaction<{ title: string; starts_at: Date | null }[]>`
+    const rows = await transaction<{ title: string; starts_at: Date | null; audience_criteria: CouncilAudienceCriteria }[]>`
       UPDATE bin_council_announcements
       SET
         status = ${status},
@@ -405,7 +835,7 @@ export async function setAnnouncementStatus(
         updated_at = now()
       WHERE id = ${id}::uuid
         AND organisation_id = ${session.organisation.id}::uuid
-      RETURNING title, starts_at
+      RETURNING title, starts_at, audience_criteria
     `;
     if (!rows[0]) throw new Error("The announcement was not found.");
     if (status === "published" && sendPush && rows[0].starts_at && rows[0].starts_at > new Date()) {
@@ -437,6 +867,7 @@ export async function listDisruptions(session: CouncilStaffSession) {
     expected_resume_at: Date | null;
     ends_at: Date | null;
     source_url: string | null;
+    audience_criteria: CouncilAudienceCriteria;
     updated_at: Date;
   }[]>`
     SELECT
@@ -452,6 +883,7 @@ export async function listDisruptions(session: CouncilStaffSession) {
       expected_resume_at,
       ends_at,
       source_url,
+      audience_criteria,
       updated_at
     FROM bin_council_disruptions
     WHERE organisation_id = ${session.organisation.id}::uuid
@@ -473,6 +905,7 @@ export async function listDisruptions(session: CouncilStaffSession) {
     expectedResumeAt: row.expected_resume_at?.toISOString(),
     endsAt: row.ends_at?.toISOString(),
     sourceUrl: row.source_url ?? undefined,
+    audience: row.audience_criteria,
     updatedAt: row.updated_at.toISOString(),
   }));
 }
@@ -500,6 +933,7 @@ export async function createDisruption(
         expected_resume_at,
         ends_at,
         source_url,
+        audience_criteria,
         created_by,
         published_by,
         published_at
@@ -516,6 +950,7 @@ export async function createDisruption(
         ${input.expectedResumeAt ?? null}::timestamptz,
         ${input.endsAt ?? null}::timestamptz,
         ${input.sourceUrl ?? null},
+        ${transaction.json(input.audience)},
         ${session.userId}::uuid,
         ${input.status === "published" ? session.userId : null}::uuid,
         ${input.status === "published" ? new Date().toISOString() : null}::timestamptz
@@ -530,6 +965,7 @@ export async function createDisruption(
       collectionTypes: input.collectionTypes.join(","),
       affectedAreaCount: input.areaLabels.length,
       pushRequested: input.sendPush,
+      audienceScope: input.audience.scope,
     });
     const broadcastJobId = input.status === "published" && input.sendPush
       ? await queueCouncilBroadcast(transaction, session, { disruptionId: id })
@@ -546,7 +982,7 @@ export async function setDisruptionStatus(
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
-    const rows = await transaction<{ title: string; starts_at: Date }[]>`
+    const rows = await transaction<{ title: string; starts_at: Date; audience_criteria: CouncilAudienceCriteria }[]>`
       UPDATE bin_council_disruptions
       SET
         status = ${status},
@@ -556,7 +992,7 @@ export async function setDisruptionStatus(
         updated_at = now()
       WHERE id = ${id}::uuid
         AND organisation_id = ${session.organisation.id}::uuid
-      RETURNING title, starts_at
+      RETURNING title, starts_at, audience_criteria
     `;
     if (!rows[0]) throw new Error("The disruption was not found.");
     if (status === "published" && sendPush && rows[0].starts_at > new Date()) {
@@ -695,6 +1131,12 @@ export async function listPartners(session: CouncilStaffSession) {
     commission_pence: number | null;
     priority: number;
     licence_reference: string | null;
+    supported_area_labels: string[];
+    complaint_contact: string | null;
+    evidence_url: string | null;
+    budget_pence: number | null;
+    immediate_suspension_reason: string | null;
+    renewal_review_at: string | null;
     status: string;
     starts_at: Date | null;
     ends_at: Date | null;
@@ -712,6 +1154,12 @@ export async function listPartners(session: CouncilStaffSession) {
       commission_pence,
       priority,
       licence_reference,
+      supported_area_labels,
+      complaint_contact,
+      evidence_url,
+      budget_pence,
+      immediate_suspension_reason,
+      renewal_review_at::text,
       status,
       starts_at,
       ends_at,
@@ -724,6 +1172,16 @@ export async function listPartners(session: CouncilStaffSession) {
       name
     LIMIT 200
   `;
+  const conversionRows = await sql<{ partner_id: string; event_name: string; event_count: number }[]>`
+    SELECT partner_id, event_name, count(*)::int AS event_count
+    FROM bin_partner_conversion_events
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    GROUP BY partner_id, event_name
+  `;
+  const conversions = conversionRows.reduce<Record<string, Record<string, number>>>((result, row) => {
+    result[row.partner_id] = { ...(result[row.partner_id] ?? {}), [row.event_name]: row.event_count };
+    return result;
+  }, {});
   return rows.map((row): CouncilPartner => ({
     id: row.id,
     name: row.name,
@@ -736,6 +1194,13 @@ export async function listPartners(session: CouncilStaffSession) {
     commissionPence: row.commission_pence ?? undefined,
     priority: row.priority,
     licenceReference: row.licence_reference ?? undefined,
+    supportedAreaLabels: row.supported_area_labels,
+    complaintContact: row.complaint_contact ?? undefined,
+    evidenceUrl: row.evidence_url ?? undefined,
+    budgetPence: row.budget_pence ?? undefined,
+    suspensionReason: row.immediate_suspension_reason ?? undefined,
+    renewalReviewAt: row.renewal_review_at ?? undefined,
+    conversionCounts: conversions[row.id] ?? {},
     status: row.status,
     startsAt: row.starts_at?.toISOString(),
     endsAt: row.ends_at?.toISOString(),
@@ -745,7 +1210,7 @@ export async function listPartners(session: CouncilStaffSession) {
 
 export async function createPartner(
   session: CouncilStaffSession,
-  input: Omit<CouncilPartner, "id" | "status" | "updatedAt"> & { status: "draft" | "review" },
+  input: Omit<CouncilPartner, "id" | "status" | "updatedAt" | "conversionCounts"> & { status: "draft" | "review" },
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
@@ -762,6 +1227,12 @@ export async function createPartner(
         commission_pence,
         priority,
         licence_reference,
+        supported_area_labels,
+        complaint_contact,
+        evidence_url,
+        budget_pence,
+        immediate_suspension_reason,
+        renewal_review_at,
         status,
         starts_at,
         ends_at,
@@ -778,6 +1249,12 @@ export async function createPartner(
         ${input.commissionPence ?? null},
         ${input.priority},
         ${input.licenceReference ?? null},
+        ${input.supportedAreaLabels},
+        ${input.complaintContact ?? null},
+        ${input.evidenceUrl ?? null},
+        ${input.budgetPence ?? null},
+        ${input.suspensionReason ?? null},
+        ${input.renewalReviewAt ?? null}::date,
         ${input.status},
         ${input.startsAt ?? null}::timestamptz,
         ${input.endsAt ?? null}::timestamptz,
@@ -801,14 +1278,32 @@ export async function setPartnerStatus(
   session: CouncilStaffSession,
   id: string,
   status: "active" | "paused" | "ended",
+  suspensionReason?: string,
 ) {
   const sql = councilDatabase();
   return sql.begin(async (transaction) => {
+    const currentRows = await transaction<{
+      name: string; complaint_contact: string | null; evidence_url: string | null; renewal_review_at: string | null;
+    }[]>`
+      SELECT name, complaint_contact, evidence_url, renewal_review_at::text
+      FROM bin_council_partners
+      WHERE id = ${id}::uuid AND organisation_id = ${session.organisation.id}::uuid
+      LIMIT 1
+    `;
+    const current = currentRows[0];
+    if (!current) throw new Error("The partner was not found.");
+    if (status === "active" && (!current.complaint_contact || !current.evidence_url || !current.renewal_review_at)) {
+      throw new Error("Add an evidence link, complaint contact and renewal review date before activation.");
+    }
+    if (status === "paused" && !suspensionReason) {
+      throw new Error("Record why the listing is being suspended.");
+    }
     const rows = await transaction<{ name: string }[]>`
       UPDATE bin_council_partners
       SET
         status = ${status},
         approved_by = CASE WHEN ${status} = 'active' THEN ${session.userId}::uuid ELSE approved_by END,
+        immediate_suspension_reason = CASE WHEN ${status} = 'paused' THEN ${suspensionReason ?? null} ELSE NULL END,
         updated_at = now()
       WHERE id = ${id}::uuid
         AND organisation_id = ${session.organisation.id}::uuid
@@ -818,6 +1313,7 @@ export async function setPartnerStatus(
     await appendAudit(transaction, session, `partner.${status}`, "partner", id, {
       name: rows[0].name,
       status,
+      suspensionReason: suspensionReason ?? null,
     });
   });
 }

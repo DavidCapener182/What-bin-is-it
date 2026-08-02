@@ -58,6 +58,7 @@ export default defineHandler(async (event) => {
         INNER JOIN bin_resident_support_threads AS thread
           ON thread.id = message.thread_id
         WHERE thread.resident_user_id = ${user.id}
+          AND message.visibility = 'resident'
         ORDER BY message.created_at
         LIMIT 5000
       `,

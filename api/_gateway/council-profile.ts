@@ -26,6 +26,13 @@ export type CouncilGuidanceDestination =
   | 'service'
   | 'check';
 
+export type CouncilAudienceCriteria = {
+  scope: 'council' | 'targeted';
+  collectionTypes: string[];
+  collectionDates: string[];
+  audienceLabels: string[];
+};
+
 export type CouncilProfile = {
   providerId: string;
   councilName?: string;
@@ -53,6 +60,28 @@ export type CouncilProfile = {
     secondaryColour: string;
     sponsorshipLabel?: string;
   };
+  sponsorship?: {
+    id: string;
+    sponsorType: 'council' | 'housing';
+    residentLabel: string;
+    features: string[];
+    startsAt: string;
+    endsAt?: string;
+    renewalAt?: string;
+  };
+  featureFlags?: {
+    collectionDates: boolean;
+    councilBranding: boolean;
+    pushAlerts: boolean;
+    missedCollection: boolean;
+    directReporting: boolean;
+    recyclingGuide: boolean;
+    partnerServices: boolean;
+    supportInbox: boolean;
+    sponsoredPlus: boolean;
+    analyticsExports: boolean;
+    bulkyWasteBooking: boolean;
+  };
   announcements?: {
     id: string;
     kind: string;
@@ -63,6 +92,7 @@ export type CouncilProfile = {
     startsAt?: string;
     endsAt?: string;
     sourceUrl?: string;
+    audience?: CouncilAudienceCriteria;
   }[];
   disruptions?: {
     id: string;
@@ -76,6 +106,7 @@ export type CouncilProfile = {
     expectedResumeAt?: string;
     endsAt?: string;
     sourceUrl?: string;
+    audience?: CouncilAudienceCriteria;
   }[];
   partners?: {
     id: string;

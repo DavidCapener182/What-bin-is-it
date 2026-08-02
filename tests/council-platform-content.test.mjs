@@ -13,17 +13,19 @@ test('keeps the verified static council profile when the private database is not
 });
 
 test('resident surfaces consume published council messages through the gateway profile only', async () => {
-  const [gateway, home, schedule, guide] = await Promise.all([
+  const [gateway, home, schedule, guide, activity] = await Promise.all([
     readFile(new URL('../api/_gateway/index.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/index.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/schedule.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/guide.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/activity.tsx', import.meta.url), 'utf8'),
   ]);
   assert.match(gateway, /councilPlatformProfile/);
-  assert.match(home, /CouncilNotices placement="home"/);
+  assert.match(home, /residentAlertsForProfile\(councilProfile\)/);
   assert.match(schedule, /CouncilNotices placement="schedule"/);
   assert.match(guide, /CouncilNotices placement="guide"/);
-  for (const source of [home, schedule, guide]) {
+  assert.match(activity, /residentAlertsForProfile\(profile, collections\)/);
+  for (const source of [home, schedule, guide, activity]) {
     assert.doesNotMatch(source, /bin_council_/);
     assert.doesNotMatch(source, /BIN_DATABASE_URL/);
   }

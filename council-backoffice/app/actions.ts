@@ -29,19 +29,29 @@ import {
   createAnnouncement,
   createDisruption,
   createPartner,
+  createSponsorshipProgramme,
+  saveCouncilFeatureFlags,
+  saveCouncilPilotBaseline,
+  saveCouncilOnboardingItem,
   saveReportingRule,
   setAnnouncementStatus,
   setDisruptionStatus,
   setPartnerStatus,
+  setSponsorshipProgrammeStatus,
   updateOrganisationBrand,
   upsertGuidance,
 } from "@/lib/data";
 import { assertCouncilPermission } from "@/lib/permissions";
 import {
+  addResidentSupportInternalNote,
+  createResidentSupportSavedResponse,
   replyToResidentSupportThread,
   setResidentSupportThreadStatus,
+  updateResidentSupportCase,
 } from "@/lib/resident-support";
 import { createCouncilSupabaseServerClient } from "@/lib/supabase/server";
+import type { CouncilAudienceCriteria } from "@/lib/types";
+import { createPlatformIncident, updatePlatformIncidentStatus } from "@/lib/platform-status";
 import {
   assertUuid,
   integerValue,
@@ -88,6 +98,36 @@ function allowedValue<T extends string>(
 
 function checked(formData: FormData, name: string) {
   return formData.get(name) === "yes";
+}
+
+function broadcastAudience(
+  formData: FormData,
+  defaultCollectionTypes: string[] = [],
+): CouncilAudienceCriteria {
+  const scope = allowedValue(formData.get("audienceScope"), ["council", "targeted"] as const, "Audience");
+  const collectionTypes = selectedValues(formData, "audienceCollectionTypes");
+  const types = collectionTypes.length ? collectionTypes : defaultCollectionTypes.filter((type) => type !== "all");
+  if (types.some((type) => !["general", "recycling", "garden", "food", "other"].includes(type))) {
+    throw new Error("Choose supported collection types for the audience.");
+  }
+  const collectionDates = splitValues(formData.get("audienceCollectionDates"), 24, 10);
+  collectionDates.forEach((date) => isoDate(date, true));
+  const audienceLabels = splitValues(formData.get("audienceLabels"), 24, 80);
+  if (scope === "targeted" && !types.length && !collectionDates.length && !audienceLabels.length) {
+    throw new Error("A targeted alert needs a collection type, collection date or approved audience label.");
+  }
+  return {
+    scope,
+    collectionTypes: scope === "targeted" ? types : [],
+    collectionDates: scope === "targeted" ? collectionDates : [],
+    audienceLabels: scope === "targeted" ? audienceLabels : [],
+  };
+}
+
+function assertAudienceConfirmed(formData: FormData, sendPush: boolean) {
+  if (sendPush && !checked(formData, "confirmAudience")) {
+    throw new Error("Confirm the audience preview before sending a push alert.");
+  }
 }
 
 async function broadcastMessage(jobId: string | undefined, fallback: string) {
@@ -282,7 +322,7 @@ export async function saveAnnouncementAction(formData: FormData) {
     if (status === "published") assertCouncilPermission(session.role, "content:publish");
     const placements = selectedValues(formData, "placements");
     const supportedPlacements = placements.filter((placement) => (
-      placement === "home" || placement === "schedule" || placement === "guide"
+      placement === "home" || placement === "schedule" || placement === "guide" || placement === "activity"
     ));
     if (!supportedPlacements.length || supportedPlacements.length !== placements.length) {
       throw new Error("Choose at least one currently supported resident surface.");
@@ -291,6 +331,7 @@ export async function saveAnnouncementAction(formData: FormData) {
     if (sendPush && startsAt && new Date(startsAt) > new Date()) {
       throw new Error("A push alert must start now. Remove its future start time or save a draft.");
     }
+    assertAudienceConfirmed(formData, sendPush);
     const result = await createAnnouncement(session, {
       kind: allowedValue(formData.get("kind"), ["service", "education", "emergency", "seasonal"] as const, "Message type"),
       severity: allowedValue(formData.get("severity"), ["information", "advice", "warning", "critical"] as const, "Severity"),
@@ -300,6 +341,7 @@ export async function saveAnnouncementAction(formData: FormData) {
       startsAt,
       endsAt: isoDateTime(formData.get("endsAt")),
       sourceUrl: safeHttpsUrl(formData.get("sourceUrl")),
+      audience: broadcastAudience(formData),
       status,
       sendPush,
     });
@@ -317,11 +359,13 @@ export async function changeAnnouncementStatusAction(formData: FormData) {
   try {
     const status = allowedValue(formData.get("status"), ["published", "archived"] as const, "Status");
     const session = await requireCouncilAction("content:publish");
+    const sendPush = status === "published" && checked(formData, "sendPush");
+    assertAudienceConfirmed(formData, sendPush);
     const jobId = await setAnnouncementStatus(
       session,
       assertUuid(requiredText(formData.get("id"), "Announcement", 36)),
       status,
-      status === "published" && checked(formData, "sendPush"),
+      sendPush,
     );
     savedMessage = await broadcastMessage(jobId, "Announcement status updated.");
     revalidatePath(path);
@@ -352,6 +396,7 @@ export async function saveDisruptionAction(formData: FormData) {
     if (sendPush && new Date(startsAt) > new Date()) {
       throw new Error("A push alert must start now. Change its start time or save a draft.");
     }
+    assertAudienceConfirmed(formData, sendPush);
     const result = await createDisruption(session, {
       title: requiredText(formData.get("title"), "Title", 120),
       detail: requiredText(formData.get("detail"), "Details", 600),
@@ -367,6 +412,7 @@ export async function saveDisruptionAction(formData: FormData) {
       expectedResumeAt: isoDateTime(formData.get("expectedResumeAt")),
       endsAt: isoDateTime(formData.get("endsAt")),
       sourceUrl: safeHttpsUrl(formData.get("sourceUrl")),
+      audience: broadcastAudience(formData, collectionTypes.includes("all") ? [] : collectionTypes),
       status,
       sendPush,
     });
@@ -384,11 +430,13 @@ export async function changeDisruptionStatusAction(formData: FormData) {
   try {
     const status = allowedValue(formData.get("status"), ["published", "resolved", "archived"] as const, "Status");
     const session = await requireCouncilAction("content:publish");
+    const sendPush = status === "published" && checked(formData, "sendPush");
+    assertAudienceConfirmed(formData, sendPush);
     const jobId = await setDisruptionStatus(
       session,
       assertUuid(requiredText(formData.get("id"), "Disruption", 36)),
       status,
-      status === "published" && checked(formData, "sendPush"),
+      sendPush,
     );
     savedMessage = await broadcastMessage(jobId, "Disruption status updated.");
     revalidatePath(path);
@@ -456,6 +504,14 @@ export async function savePartnerAction(formData: FormData) {
         : undefined,
       priority: integerValue(formData.get("priority"), "Priority", 1, 1000),
       licenceReference: optionalText(formData.get("licenceReference"), 120),
+      supportedAreaLabels: splitValues(formData.get("supportedAreaLabels"), 40, 80),
+      complaintContact: optionalText(formData.get("complaintContact"), 160),
+      evidenceUrl: safeHttpsUrl(formData.get("evidenceUrl")),
+      budgetPence: optionalText(formData.get("budgetPence"), 12)
+        ? integerValue(formData.get("budgetPence"), "Campaign budget", 0, 100000000)
+        : undefined,
+      suspensionReason: undefined,
+      renewalReviewAt: isoDate(formData.get("renewalReviewAt")),
       startsAt: isoDateTime(formData.get("startsAt")),
       endsAt: isoDateTime(formData.get("endsAt")),
       status,
@@ -467,6 +523,61 @@ export async function savePartnerAction(formData: FormData) {
   redirect(successPath(path, "Partner service saved for review."));
 }
 
+export async function savePilotBaselineAction(formData: FormData) {
+  const path = "/analytics";
+  try {
+    const session = await requireCouncilAction("analytics:view");
+    const optionalInteger = (key: string, label: string, max: number) => (
+      optionalText(formData.get(key), 12)
+        ? integerValue(formData.get(key), label, 0, max)
+        : undefined
+    );
+    await saveCouncilPilotBaseline(session, {
+      periodStartsOn: isoDate(formData.get("periodStartsOn"), true)!,
+      periodEndsOn: isoDate(formData.get("periodEndsOn"), true)!,
+      agreedContactCostPence: optionalInteger("agreedContactCostPence", "Agreed contact cost", 100000),
+      residentContacts: optionalInteger("residentContacts", "Resident contacts", 100000000),
+      missedCollectionContacts: optionalInteger("missedCollectionContacts", "Missed-collection contacts", 100000000),
+      notes: optionalText(formData.get("notes"), 1000),
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Pilot baseline saved."));
+}
+
+export async function createPlatformIncidentAction(formData: FormData) {
+  const path = "/status-admin";
+  try {
+    const session = await requirePlatformAdminAction();
+    await createPlatformIncident(session, {
+      component: allowedValue(formData.get("component"), ["resident-app", "council-gateway", "push", "accounts", "council-console", "partner-feeds"] as const, "Component"),
+      status: allowedValue(formData.get("status"), ["investigating", "identified", "monitoring"] as const, "Status"),
+      title: requiredText(formData.get("title"), "Title", 160),
+      detail: requiredText(formData.get("detail"), "Detail", 1000),
+      councilProviderIds: splitValues(formData.get("councilProviderIds"), 100, 120),
+      startsAt: isoDateTime(formData.get("startsAt"), true)!,
+    });
+    revalidatePath(path);
+  } catch (error) { redirect(errorPath(path, error)); }
+  redirect(successPath(path, "Incident published to the status source."));
+}
+
+export async function updatePlatformIncidentAction(formData: FormData) {
+  const path = "/status-admin";
+  try {
+    const session = await requirePlatformAdminAction();
+    await updatePlatformIncidentStatus(
+      session,
+      assertUuid(requiredText(formData.get("id"), "Incident", 36)),
+      allowedValue(formData.get("status"), ["investigating", "identified", "monitoring", "resolved"] as const, "Status"),
+    );
+    revalidatePath(path);
+  } catch (error) { redirect(errorPath(path, error)); }
+  redirect(successPath(path, "Incident status updated."));
+}
+
 export async function changePartnerStatusAction(formData: FormData) {
   const path = "/partners";
   try {
@@ -475,12 +586,103 @@ export async function changePartnerStatusAction(formData: FormData) {
       session,
       assertUuid(requiredText(formData.get("id"), "Partner", 36)),
       allowedValue(formData.get("status"), ["active", "paused", "ended"] as const, "Status"),
+      optionalText(formData.get("suspensionReason"), 500),
     );
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
   }
   redirect(successPath(path, "Partner status updated."));
+}
+
+export async function saveSponsorshipProgrammeAction(formData: FormData) {
+  const path = "/sponsorship";
+  try {
+    const session = await requireCouncilAction("organisation:manage");
+    const features = selectedValues(formData, "features");
+    const allowedFeatures = ["plus", "household-sharing", "extra-reminders", "collection-history", "calendar-tools"];
+    if (!features.length || features.some((feature) => !allowedFeatures.includes(feature))) {
+      throw new Error("Choose at least one supported sponsored feature.");
+    }
+    const startsAt = isoDateTime(formData.get("startsAt"), true)!;
+    const endsAt = isoDateTime(formData.get("endsAt"));
+    if (endsAt && new Date(endsAt) <= new Date(startsAt)) throw new Error("The sponsorship end must be after its start.");
+    await createSponsorshipProgramme(session, {
+      sponsorType: allowedValue(formData.get("sponsorType"), ["council", "housing"] as const, "Sponsor type"),
+      status: allowedValue(formData.get("status"), ["draft", "active"] as const, "Status"),
+      residentLabel: requiredText(formData.get("residentLabel"), "Resident wording", 160),
+      features,
+      startsAt,
+      endsAt,
+      renewalAt: isoDate(formData.get("renewalAt")),
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Sponsorship programme saved."));
+}
+
+export async function changeSponsorshipProgrammeStatusAction(formData: FormData) {
+  const path = "/sponsorship";
+  try {
+    const session = await requireCouncilAction("organisation:manage");
+    await setSponsorshipProgrammeStatus(
+      session,
+      assertUuid(requiredText(formData.get("id"), "Sponsorship programme", 36)),
+      allowedValue(formData.get("status"), ["active", "paused", "ended"] as const, "Status"),
+    );
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Sponsorship status updated."));
+}
+
+export async function saveCouncilFeaturesAction(formData: FormData) {
+  const path = "/setup";
+  try {
+    const session = await requireCouncilAction("organisation:manage");
+    const enabled = new Set(selectedValues(formData, "features"));
+    const known = new Set([
+      "collectionDates", "councilBranding", "pushAlerts", "missedCollection", "directReporting",
+      "recyclingGuide", "partnerServices", "supportInbox", "sponsoredPlus", "analyticsExports", "bulkyWasteBooking",
+    ]);
+    if ([...enabled].some((feature) => !known.has(feature))) throw new Error("A selected feature is invalid.");
+    await saveCouncilFeatureFlags(session, {
+      collectionDates: enabled.has("collectionDates"),
+      councilBranding: enabled.has("councilBranding"),
+      pushAlerts: enabled.has("pushAlerts"),
+      missedCollection: enabled.has("missedCollection"),
+      directReporting: enabled.has("directReporting"),
+      recyclingGuide: enabled.has("recyclingGuide"),
+      partnerServices: enabled.has("partnerServices"),
+      supportInbox: enabled.has("supportInbox"),
+      sponsoredPlus: enabled.has("sponsoredPlus"),
+      analyticsExports: enabled.has("analyticsExports"),
+      bulkyWasteBooking: enabled.has("bulkyWasteBooking"),
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Council features updated."));
+}
+
+export async function saveCouncilOnboardingItemAction(formData: FormData) {
+  const path = "/setup";
+  try {
+    const session = await requireCouncilAction("organisation:manage");
+    await saveCouncilOnboardingItem(session, {
+      itemKey: requiredText(formData.get("itemKey"), "Setup item", 40),
+      status: allowedValue(formData.get("status"), ["not-started", "in-progress", "complete", "blocked"] as const, "Setup status"),
+      evidenceNote: optionalText(formData.get("evidenceNote"), 500),
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Council setup updated."));
 }
 
 export async function saveReportingRuleAction(formData: FormData) {
@@ -787,13 +989,90 @@ export async function changeResidentSupportStatusAction(formData: FormData) {
     const session = await requireCouncilAction("support:reply");
     const status = allowedValue(
       formData.get("status"),
-      ["waiting-support", "closed"] as const,
+      ["new", "in-progress", "waiting-resident", "waiting-operations", "resolved", "closed"] as const,
       "Conversation status",
     );
-    await setResidentSupportThreadStatus(session, threadId, status);
+    await setResidentSupportThreadStatus(
+      session,
+      threadId,
+      status,
+      optionalText(formData.get("reopenReason"), 500),
+    );
     revalidatePath("/crm/messages");
   } catch (error) {
     redirect(errorPath(path, error));
   }
   redirect(successPath(path, "Conversation updated."));
+}
+
+export async function updateResidentSupportCaseAction(formData: FormData) {
+  let path = "/crm/messages";
+  try {
+    const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
+    path = `/crm/messages?thread=${threadId}`;
+    const session = await requireCouncilAction("support:reply");
+    await updateResidentSupportCase(session, threadId, {
+      status: allowedValue(
+        formData.get("status"),
+        ["new", "in-progress", "waiting-resident", "waiting-operations", "resolved", "closed"] as const,
+        "Conversation status",
+      ),
+      priority: allowedValue(formData.get("priority"), ["low", "normal", "high", "urgent"] as const, "Priority"),
+      escalationStatus: allowedValue(
+        formData.get("escalationStatus"),
+        ["none", "operations", "platform", "safeguarding"] as const,
+        "Escalation",
+      ),
+      assignedStaffId: optionalText(formData.get("assignedStaffId"), 36)
+        ? assertUuid(optionalText(formData.get("assignedStaffId"), 36)!)
+        : undefined,
+      slaDueAt: isoDateTime(formData.get("slaDueAt")),
+      topicTags: splitValues(formData.get("topicTags"), 20, 40),
+      linkedReportTrackingId: optionalText(formData.get("linkedReportTrackingId"), 36)
+        ? assertUuid(optionalText(formData.get("linkedReportTrackingId"), 36)!)
+        : undefined,
+      linkedAnnouncementId: optionalText(formData.get("linkedAnnouncementId"), 36)
+        ? assertUuid(optionalText(formData.get("linkedAnnouncementId"), 36)!)
+        : undefined,
+      reopenReason: optionalText(formData.get("reopenReason"), 500),
+    });
+    revalidatePath("/crm/messages");
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Case details updated."));
+}
+
+export async function addResidentSupportInternalNoteAction(formData: FormData) {
+  let path = "/crm/messages";
+  try {
+    const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
+    path = `/crm/messages?thread=${threadId}`;
+    const session = await requireCouncilAction("support:reply");
+    await addResidentSupportInternalNote(
+      session,
+      threadId,
+      requiredText(formData.get("body"), "Internal note", 5_000),
+    );
+    revalidatePath("/crm/messages");
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Internal note saved."));
+}
+
+export async function createResidentSupportSavedResponseAction(formData: FormData) {
+  const path = "/crm/messages";
+  try {
+    const session = await requireCouncilAction("support:reply");
+    await createResidentSupportSavedResponse(session, {
+      title: requiredText(formData.get("title"), "Saved response title", 120),
+      body: requiredText(formData.get("body"), "Saved response", 5_000),
+      topicTags: splitValues(formData.get("topicTags"), 20, 40),
+    });
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Saved response added."));
 }

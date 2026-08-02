@@ -18,7 +18,12 @@ type CouncilAlertChannel = 'web-push' | 'expo-push';
 
 export type CouncilAlertRegistration = {
   installationId: string;
-  councilIds: string[];
+  subscriptions: {
+    councilId: string;
+    collectionTypes: string[];
+    collectionDates: string[];
+    audienceLabels: string[];
+  }[];
   channel: CouncilAlertChannel;
   delivery?: CouncilAlertDelivery;
   enabled: boolean;
@@ -42,6 +47,12 @@ type BroadcastJobRow = {
   body: string;
   content_status: string;
   content_active: boolean;
+  audience_criteria: {
+    scope?: unknown;
+    collectionTypes?: unknown;
+    collectionDates?: unknown;
+    audienceLabels?: unknown;
+  };
 };
 
 type ExpoTicket = {
@@ -64,15 +75,54 @@ function parseInstallationId(value: unknown) {
   return value.toLowerCase();
 }
 
-function parseCouncilIds(value: unknown) {
+function parseSubscriptions(value: unknown) {
   if (!Array.isArray(value) || value.length > 10) {
     throw new Error('Up to 10 councils can receive service alerts.');
   }
-  const councilIds = [...new Set(value)];
-  if (councilIds.some((id) => typeof id !== 'string' || !councilPattern.test(id))) {
-    throw new Error('A council alert destination is invalid.');
-  }
-  return councilIds as string[];
+  const subscriptions = value.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('A council alert destination is invalid.');
+    }
+    assertExactKeys(
+      item,
+      ['councilId', 'collectionTypes', 'collectionDates', 'audienceLabels'],
+      'A council alert destination',
+    );
+    const input = item as Record<string, unknown>;
+    if (typeof input.councilId !== 'string' || !councilPattern.test(input.councilId)) {
+      throw new Error('A council alert destination is invalid.');
+    }
+    const values = (field: unknown, maximum: number, label: string, valid: (item: string) => boolean) => {
+      if (!Array.isArray(field) || field.length > maximum) throw new Error(`${label} are invalid.`);
+      const unique = [...new Set(field)];
+      if (unique.some((entry) => typeof entry !== 'string' || entry.length > 80 || !valid(entry))) {
+        throw new Error(`${label} are invalid.`);
+      }
+      return unique as string[];
+    };
+    return {
+      councilId: input.councilId,
+      collectionTypes: values(
+        input.collectionTypes,
+        6,
+        'Collection types',
+        (entry) => ['general', 'recycling', 'garden', 'food', 'other'].includes(entry),
+      ),
+      collectionDates: values(
+        input.collectionDates,
+        24,
+        'Collection dates',
+        (entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry),
+      ),
+      audienceLabels: values(
+        input.audienceLabels ?? [],
+        24,
+        'Council audience labels',
+        (entry) => /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$/.test(entry),
+      ),
+    };
+  });
+  return [...new Map(subscriptions.map((item) => [item.councilId, item])).values()];
 }
 
 export function parseExpoPushToken(value: unknown) {
@@ -105,7 +155,7 @@ export function parseCouncilAlertRegistration(value: unknown): CouncilAlertRegis
   }
   assertExactKeys(
     value,
-    ['installationId', 'councilIds', 'channel', 'delivery', 'enabled'],
+    ['installationId', 'subscriptions', 'channel', 'delivery', 'enabled'],
     'The council alert registration',
   );
   const input = value as Record<string, unknown>;
@@ -117,7 +167,7 @@ export function parseCouncilAlertRegistration(value: unknown): CouncilAlertRegis
   }
   const registration: CouncilAlertRegistration = {
     installationId: parseInstallationId(input.installationId),
-    councilIds: parseCouncilIds(input.councilIds),
+    subscriptions: parseSubscriptions(input.subscriptions),
     channel: input.channel as CouncilAlertChannel,
     enabled: input.enabled,
   };
@@ -155,7 +205,8 @@ function deliveryIdentity(channel: CouncilAlertChannel, delivery: CouncilAlertDe
 
 export async function syncCouncilAlertRegistration(registration: CouncilAlertRegistration) {
   const sql = binDatabase();
-  const requestedCouncils = registration.enabled ? registration.councilIds : [];
+  const requestedSubscriptions = registration.enabled ? registration.subscriptions : [];
+  const requestedCouncils = requestedSubscriptions.map((subscription) => subscription.councilId);
   await sql.begin(async (transaction) => {
     await transaction`
       UPDATE bin_council_push_registrations
@@ -168,11 +219,11 @@ export async function syncCouncilAlertRegistration(registration: CouncilAlertReg
         AND enabled
         AND NOT (council_id = ANY(${requestedCouncils}::varchar[]))
     `;
-    if (!registration.enabled || !registration.delivery || !requestedCouncils.length) return;
+    if (!registration.enabled || !registration.delivery || !requestedSubscriptions.length) return;
     const tokenHash = createHash('sha256')
       .update(deliveryIdentity(registration.channel, registration.delivery))
       .digest('hex');
-    for (const councilId of requestedCouncils) {
+    for (const subscription of requestedSubscriptions) {
       await transaction`
         INSERT INTO bin_council_push_registrations (
           installation_id,
@@ -183,17 +234,23 @@ export async function syncCouncilAlertRegistration(registration: CouncilAlertReg
           enabled,
           disabled_at,
           last_seen_at,
-          last_error_code
+          last_error_code,
+          collection_types,
+          collection_dates,
+          audience_labels
         ) VALUES (
           ${registration.installationId}::uuid,
-          ${councilId},
+          ${subscription.councilId},
           ${registration.channel},
           ${tokenHash},
           ${transaction.json(registration.delivery)},
           true,
           null,
           now(),
-          null
+          null,
+          ${subscription.collectionTypes},
+          ${subscription.collectionDates}::date[],
+          ${subscription.audienceLabels}
         )
         ON CONFLICT (installation_id, council_id, channel) DO UPDATE
         SET
@@ -202,11 +259,14 @@ export async function syncCouncilAlertRegistration(registration: CouncilAlertReg
           enabled = true,
           disabled_at = null,
           last_seen_at = now(),
-          last_error_code = null
+          last_error_code = null,
+          collection_types = excluded.collection_types,
+          collection_dates = excluded.collection_dates,
+          audience_labels = excluded.audience_labels
       `;
     }
   });
-  return { enabled: registration.enabled, councilCount: requestedCouncils.length };
+  return { enabled: registration.enabled, councilCount: requestedSubscriptions.length };
 }
 
 async function loadBroadcastJob(jobId: string) {
@@ -220,6 +280,7 @@ async function loadBroadcastJob(jobId: string) {
       job.status,
       job.delivered_count,
       job.failed_count,
+      job.audience_criteria,
       coalesce(announcement.title, disruption.title) AS title,
       coalesce(
         announcement.body,
@@ -308,7 +369,7 @@ async function deliverExpoPush(
       sound: 'default',
       priority: 'high',
       channelId: 'bin-reminders',
-      data: { kind: 'council-service-alert', url: '/', broadcastJobId: notification.jobId },
+      data: { kind: 'council-service-alert', url: '/activity', broadcastJobId: notification.jobId },
     }))),
     signal: AbortSignal.timeout(15_000),
   });
@@ -370,6 +431,17 @@ export async function processCouncilBroadcast(jobId: string) {
       )
   `;
   const requestedChannels = new Set(job.channels);
+  const audience = job.audience_criteria;
+  const targeted = audience.scope === 'targeted';
+  const collectionTypes = targeted && Array.isArray(audience.collectionTypes)
+    ? audience.collectionTypes.filter((item): item is string => typeof item === 'string').slice(0, 6)
+    : [];
+  const collectionDates = targeted && Array.isArray(audience.collectionDates)
+    ? audience.collectionDates.filter((item): item is string => typeof item === 'string').slice(0, 24)
+    : [];
+  const audienceLabels = targeted && Array.isArray(audience.audienceLabels)
+    ? audience.audienceLabels.filter((item): item is string => typeof item === 'string').slice(0, 24)
+    : [];
   const registrations = await sql<RegistrationRow[]>`
     SELECT registration.id, registration.channel, registration.delivery_config
     FROM bin_council_push_registrations AS registration
@@ -378,6 +450,14 @@ export async function processCouncilBroadcast(jobId: string) {
       AND (
         (registration.channel = 'web-push' AND ${requestedChannels.has('web-push')})
         OR (registration.channel = 'expo-push' AND ${requestedChannels.has('native-push')})
+      )
+      AND (
+        ${!targeted}
+        OR (
+          (${collectionTypes.length === 0} OR registration.collection_types && ${collectionTypes}::varchar[])
+          AND (${collectionDates.length === 0} OR registration.collection_dates && ${collectionDates}::date[])
+          AND (${audienceLabels.length === 0} OR registration.audience_labels && ${audienceLabels}::varchar[])
+        )
       )
       AND NOT EXISTS (
         SELECT 1
@@ -398,7 +478,7 @@ export async function processCouncilBroadcast(jobId: string) {
           id: job.id,
           title,
           body,
-          url: '/',
+          url: '/activity',
           tag: `council-alert-${job.id}`,
         },
       );

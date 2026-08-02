@@ -5,7 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { planCollectionReminders, PlannedReminder } from '@/lib/reminder-plan';
-import { Collection, NotificationPreferences } from '@/lib/types';
+import { Collection, CouncilAlertSubscription, NotificationPreferences } from '@/lib/types';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -64,11 +64,14 @@ function alertRegistrationUrl() {
   return `${apiBase}/push/registrations`;
 }
 
-export async function syncCouncilAlertRegistration(councilIds: string[], enabled: boolean) {
+export async function syncCouncilAlertRegistration(
+  subscriptions: CouncilAlertSubscription[],
+  enabled: boolean,
+) {
   await ensureAndroidChannel();
   const installationId = await alertInstallationId();
   const permission = await Notifications.getPermissionsAsync();
-  const canDeliver = enabled && councilIds.length > 0 && hasNotificationPermission(permission);
+  const canDeliver = enabled && subscriptions.length > 0 && hasNotificationPermission(permission);
   let delivery: { token: string } | undefined;
   if (canDeliver) {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId
@@ -85,7 +88,7 @@ export async function syncCouncilAlertRegistration(councilIds: string[], enabled
     },
     body: JSON.stringify({
       installationId,
-      councilIds,
+      subscriptions,
       channel: 'expo-push',
       delivery,
       enabled: canDeliver,

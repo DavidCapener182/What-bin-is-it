@@ -38,6 +38,12 @@ export type CouncilCapabilityStatus =
   | 'map-fallback'
   | 'experimental'
   | 'not-connected';
+export type CouncilAudienceCriteria = {
+  scope: 'council' | 'targeted';
+  collectionTypes: WasteType[];
+  collectionDates: string[];
+  audienceLabels: string[];
+};
 export type CouncilProfile = {
   providerId: string;
   councilName?: string;
@@ -65,6 +71,28 @@ export type CouncilProfile = {
     secondaryColour: string;
     sponsorshipLabel?: string;
   };
+  sponsorship?: {
+    id: string;
+    sponsorType: 'council' | 'housing';
+    residentLabel: string;
+    features: string[];
+    startsAt: string;
+    endsAt?: string;
+    renewalAt?: string;
+  };
+  featureFlags?: {
+    collectionDates: boolean;
+    councilBranding: boolean;
+    pushAlerts: boolean;
+    missedCollection: boolean;
+    directReporting: boolean;
+    recyclingGuide: boolean;
+    partnerServices: boolean;
+    supportInbox: boolean;
+    sponsoredPlus: boolean;
+    analyticsExports: boolean;
+    bulkyWasteBooking: boolean;
+  };
   announcements?: {
     id: string;
     kind: string;
@@ -75,6 +103,7 @@ export type CouncilProfile = {
     startsAt?: string;
     endsAt?: string;
     sourceUrl?: string;
+    audience?: CouncilAudienceCriteria;
   }[];
   disruptions?: {
     id: string;
@@ -88,6 +117,7 @@ export type CouncilProfile = {
     expectedResumeAt?: string;
     endsAt?: string;
     sourceUrl?: string;
+    audience?: CouncilAudienceCriteria;
   }[];
   partners?: {
     id: string;
@@ -154,7 +184,25 @@ const capabilityStatuses = new Set<CouncilCapabilityStatus>([
   'experimental',
   'not-connected',
 ]);
-const councilPlacements = new Set(['home', 'schedule', 'guide', 'widget', 'push']);
+const councilPlacements = new Set(['home', 'schedule', 'guide', 'activity', 'widget', 'push']);
+
+function validAudience(value: unknown) {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const audience = value as Record<string, unknown>;
+  return (
+    (audience.scope === 'council' || audience.scope === 'targeted')
+    && Array.isArray(audience.collectionTypes)
+    && audience.collectionTypes.length <= 6
+    && audience.collectionTypes.every((item) => typeof item === 'string' && validWasteTypes.has(item as WasteType))
+    && Array.isArray(audience.collectionDates)
+    && audience.collectionDates.length <= 24
+    && audience.collectionDates.every(isIsoDate)
+    && Array.isArray(audience.audienceLabels)
+    && audience.audienceLabels.length <= 24
+    && audience.audienceLabels.every((item) => typeof item === 'string' && item.length <= 80)
+  );
+}
 
 function isSafeHttps(value: unknown) {
   return typeof value === 'string' && value.length <= 500 && value.startsWith('https://');
@@ -170,11 +218,25 @@ function validPlatformContent(profile: CouncilProfile) {
     || !/^#[0-9A-F]{6}$/i.test(profile.branding.primaryColour)
     || !/^#[0-9A-F]{6}$/i.test(profile.branding.secondaryColour)
   )) return false;
+  if (profile.sponsorship && (
+    typeof profile.sponsorship.id !== 'string'
+    || !['council', 'housing'].includes(profile.sponsorship.sponsorType)
+    || typeof profile.sponsorship.residentLabel !== 'string'
+    || profile.sponsorship.residentLabel.length > 160
+    || !Array.isArray(profile.sponsorship.features)
+    || profile.sponsorship.features.length > 20
+    || profile.sponsorship.features.some((feature) => typeof feature !== 'string' || feature.length > 40)
+    || !validOptionalDateTime(profile.sponsorship.startsAt)
+    || !validOptionalDateTime(profile.sponsorship.endsAt)
+    || (profile.sponsorship.renewalAt !== undefined && !isIsoDate(profile.sponsorship.renewalAt))
+  )) return false;
+  if (profile.featureFlags && Object.values(profile.featureFlags).some((enabled) => typeof enabled !== 'boolean')) return false;
   if (profile.announcements?.some((item) => (
     typeof item.id !== 'string'
     || typeof item.title !== 'string' || item.title.length > 120
     || typeof item.body !== 'string' || item.body.length > 600
     || !Array.isArray(item.placements) || item.placements.some((placement) => !councilPlacements.has(placement))
+    || !validAudience(item.audience)
     || !validOptionalDateTime(item.startsAt) || !validOptionalDateTime(item.endsAt)
     || (item.sourceUrl !== undefined && !isSafeHttps(item.sourceUrl))
   ))) return false;
@@ -184,6 +246,7 @@ function validPlatformContent(profile: CouncilProfile) {
     || typeof item.detail !== 'string' || item.detail.length > 600
     || typeof item.residentInstruction !== 'string' || item.residentInstruction.length > 400
     || !Array.isArray(item.collectionTypes) || !Array.isArray(item.areaLabels)
+    || !validAudience(item.audience)
     || !validOptionalDateTime(item.startsAt) || !validOptionalDateTime(item.endsAt)
     || (item.sourceUrl !== undefined && !isSafeHttps(item.sourceUrl))
   ))) return false;

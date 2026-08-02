@@ -19,11 +19,16 @@ import {
   unavailableSubscriptionSnapshot,
 } from '@/lib/subscriptions';
 import { useAccount } from '@/lib/use-account';
+import { useAppData } from '@/lib/use-app-data';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 type SubscriptionContextValue = SubscriptionSnapshot & {
   ready: boolean;
   busy: boolean;
   error?: string;
+  sponsoredBy?: string;
+  sponsorshipType?: 'council' | 'housing';
+  sponsoredFeatures: string[];
   showPaywall: () => Promise<void>;
   restore: () => Promise<void>;
   manage: () => Promise<void>;
@@ -37,6 +42,8 @@ function messageFor(error: unknown) {
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const account = useAccount();
+  const { activeAddress } = useAppData();
+  const profile = useCouncilProfile(activeAddress?.providerId);
   const [snapshot, setSnapshot] = useState<SubscriptionSnapshot>(unavailableSubscriptionSnapshot);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -86,21 +93,28 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const showPaywall = useCallback(() => run(presentSubscriptionPaywall), [run]);
   const restore = useCallback(() => run(restoreSubscriptionPurchases), [run]);
   const manage = useCallback(() => run(presentSubscriptionManagement), [run]);
+  const sponsorship = profile?.featureFlags?.sponsoredPlus
+    && profile.sponsorship?.features.includes('plus')
+    ? profile.sponsorship
+    : undefined;
 
   const value = useMemo<SubscriptionContextValue>(() => ({
     ...snapshot,
     // The native SDK is useful purchase UI, but only the reconciled server
     // entitlement can unlock resident features.
-    isPlus: account.entitlement.isPlus,
-    productIdentifier: snapshot.productIdentifier ?? account.entitlement.productId ?? account.entitlement.planId,
+    isPlus: account.entitlement.isPlus || Boolean(sponsorship),
+    productIdentifier: sponsorship ? 'plus-sponsored' : snapshot.productIdentifier ?? account.entitlement.productId ?? account.entitlement.planId,
     expirationDate: snapshot.expirationDate ?? account.entitlement.currentPeriodEnd,
+    sponsoredBy: sponsorship?.residentLabel,
+    sponsorshipType: sponsorship?.sponsorType,
+    sponsoredFeatures: sponsorship?.features ?? [],
     ready,
     busy,
     error,
     showPaywall,
     restore,
     manage,
-  }), [account.entitlement, busy, error, manage, ready, restore, showPaywall, snapshot]);
+  }), [account.entitlement, busy, error, manage, ready, restore, showPaywall, snapshot, sponsorship]);
 
   return <SubscriptionContext.Provider value={value}>{children}</SubscriptionContext.Provider>;
 }

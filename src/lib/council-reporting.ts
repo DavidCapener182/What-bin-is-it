@@ -3,6 +3,23 @@ import type { CouncilProfile } from '@/lib/council-provider';
 
 type RemoteReportingRule = CouncilProfile['reporting'];
 
+export function residentReportingRule(profile?: CouncilProfile): RemoteReportingRule {
+  if (profile?.featureFlags?.missedCollection === false) {
+    return {
+      enabled: false,
+      mode: 'disabled',
+      eligibilityStartsHours: 0,
+      reportingDeadlineHours: 0,
+      requireDelayCheck: true,
+      residentInstruction: 'This council has not enabled missed-collection reporting in What Bin.',
+    };
+  }
+  if (profile?.featureFlags?.directReporting === false && profile.reporting?.mode === 'direct-api') {
+    return { ...profile.reporting, mode: 'official-handoff' };
+  }
+  return profile?.reporting;
+}
+
 export const missedCollectionServiceUrl = 'https://www.gov.uk/missed-bin-collection';
 export const bulkyWasteServiceUrl = 'https://www.gov.uk/collection-large-waste-items';
 

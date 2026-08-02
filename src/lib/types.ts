@@ -68,6 +68,19 @@ export type PlaceReminderPreferences = NotificationPreferences & {
   recollectionAlerts: boolean;
 };
 
+/**
+ * Privacy-minimised attributes used to match an opted-in installation to a
+ * council service message. These values never include an address, postcode,
+ * property reference or account identifier.
+ */
+export type CouncilAlertSubscription = {
+  councilId: string;
+  collectionTypes: WasteType[];
+  collectionDates: string[];
+  /** Approved non-address labels emitted by a council feed, such as a round token. */
+  audienceLabels?: string[];
+};
+
 export type CollectionOutcomeStatus = 'put-out' | 'collected' | 'missed' | 'brought-in';
 
 export type CollectionOutcome = {
@@ -187,6 +200,12 @@ export type ActivityEntry = {
   title: string;
   detail?: string;
   occurredAt: string;
+};
+
+export type CouncilNoticePreferenceState = {
+  readAtById: Record<string, string>;
+  archivedAtById: Record<string, string>;
+  mutedProviderIds: string[];
 };
 
 export type IncorrectDataFeedback = {

@@ -21,6 +21,7 @@ import { useAppTheme } from '@/lib/theme';
 import { SupportRequest } from '@/lib/types';
 import { useAccount } from '@/lib/use-account';
 import { useAppData } from '@/lib/use-app-data';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 const topics: { value: SupportRequest['topic']; label: string }[] = [
   { value: 'app-help', label: 'Using the app' },
@@ -45,7 +46,9 @@ type SupportThread = {
   councilName?: string;
   topic: SupportRequest['topic'];
   subject: string;
-  status: 'waiting-support' | 'waiting-resident' | 'closed';
+  status: 'new' | 'in-progress' | 'waiting-resident' | 'waiting-operations' | 'resolved' | 'closed';
+  resolvedAt?: string;
+  satisfactionScore?: number;
   lastSender: 'resident' | 'support';
   lastMessageAt: string;
   createdAt: string;
@@ -71,13 +74,18 @@ function friendlyDate(value: string) {
 
 function statusLabel(thread: SupportThread) {
   if (thread.status === 'closed') return 'Closed';
-  return thread.status === 'waiting-resident' ? 'Reply received' : 'Sent to support';
+  if (thread.status === 'resolved') return 'Resolved';
+  if (thread.status === 'waiting-resident') return 'Reply received';
+  if (thread.status === 'waiting-operations') return 'With council operations';
+  return thread.status === 'in-progress' ? 'In progress' : 'Sent to support';
 }
 
 export default function SupportScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ topic?: string }>();
   const { activeAddress } = useAppData();
+  const councilProfile = useCouncilProfile(activeAddress?.providerId);
+  const councilSupportEnabled = councilProfile?.featureFlags?.supportInbox === true;
   const { accessToken, configured, ready: accountReady, user } = useAccount();
   const initialTopic = topics.some((item) => item.value === params.topic)
     ? params.topic as SupportRequest['topic']
@@ -159,8 +167,8 @@ export default function SupportScreen() {
         body: JSON.stringify({
           topic,
           detail: detail.trim(),
-          councilProviderId: activeAddress?.providerId,
-          councilName: activeAddress?.councilName,
+          councilProviderId: councilSupportEnabled ? activeAddress?.providerId : undefined,
+          councilName: councilSupportEnabled ? activeAddress?.councilName : undefined,
           clientRequestId: Crypto.randomUUID(),
         }),
       });
@@ -207,8 +215,34 @@ export default function SupportScreen() {
     }
   }
 
+  async function rateSupport(score: number) {
+    if (!accessToken || !selectedThread) return;
+    setSending(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const response = await fetch(`${apiBase}/support/satisfaction`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ threadId: selectedThread.id, score }),
+      });
+      const payload = await response.json() as ThreadsResponse;
+      if (!response.ok) throw new Error(payload.error ?? 'Your response could not be saved.');
+      acceptThreads(payload.threads ?? []);
+      setMessage('Thanks — your feedback was saved.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Your response could not be saved.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
-    <AppShell activeRoute="/support">
+    <AppShell activeRoute="/activity">
       <RouteHead title="Help and Support" description="Message the What Bin support team inside the app." path="/support" />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
@@ -290,7 +324,9 @@ export default function SupportScreen() {
                 <View style={styles.councilContext}>
                   <Ionicons color={theme.success} name="shield-checkmark-outline" size={17} />
                   <Text style={[styles.councilContextText, { color: theme.secondaryText }]}>
-                    Routed with {activeAddress.councilName} as the selected council. Your address and postcode are not sent.
+                    {councilSupportEnabled
+                      ? `Routed to ${activeAddress.councilName}. Your address and postcode are not sent.`
+                      : `Routed to What Bin support. ${activeAddress.councilName} has not enabled its resident inbox.`}
                   </Text>
                 </View>
               ) : null}
@@ -373,7 +409,7 @@ export default function SupportScreen() {
                       );
                     })}
                   </View>
-                  {selectedThread.status !== 'closed' ? (
+                  {!['resolved', 'closed'].includes(selectedThread.status) ? (
                     <View style={[styles.replyBox, { borderTopColor: theme.separator }]}>
                       <TextInput
                         accessibilityLabel="Reply to support"
@@ -397,10 +433,31 @@ export default function SupportScreen() {
                           : <Ionicons color="#FFFFFF" name="arrow-up" size={19} />}
                       </Pressable>
                     </View>
+                  ) : selectedThread.satisfactionScore ? (
+                    <View style={[styles.satisfactionResult, { borderTopColor: theme.separator }]}>
+                      <Ionicons color={theme.success} name="checkmark-circle-outline" size={20} />
+                      <Text style={[styles.closedText, { color: theme.secondaryText }]}>You rated this support conversation {selectedThread.satisfactionScore} out of 5.</Text>
+                    </View>
                   ) : (
-                    <Text style={[styles.closedText, { color: theme.secondaryText }]}>
-                      This conversation is closed. Start a new message above if you still need help.
-                    </Text>
+                    <View style={[styles.satisfaction, { borderTopColor: theme.separator }]}>
+                      <Text style={[styles.satisfactionTitle, { color: theme.text }]}>Was this support helpful?</Text>
+                      <Text style={[styles.satisfactionBody, { color: theme.secondaryText }]}>Your rating helps improve resident support.</Text>
+                      <View accessibilityRole="radiogroup" style={styles.satisfactionScores}>
+                        {[1, 2, 3, 4, 5].map((score) => (
+                          <Pressable
+                            accessibilityLabel={`Rate support ${score} out of 5`}
+                            accessibilityRole="radio"
+                            disabled={sending}
+                            key={score}
+                            onPress={() => void rateSupport(score)}
+                            style={({ pressed }) => [styles.scoreButton, { backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+                          >
+                            <Text style={[styles.scoreText, { color: theme.accent }]}>{score}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <Text style={[styles.closedText, { color: theme.secondaryText }]}>Start a new message above if you still need help.</Text>
+                    </View>
                   )}
                 </View>
               ) : null}
@@ -461,6 +518,13 @@ const styles = StyleSheet.create({
   replyInput: { flex: 1, minHeight: 44, maxHeight: 130, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, lineHeight: 20 },
   replyButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   closedText: { padding: 14, fontSize: 13, lineHeight: 18 },
+  satisfaction: { padding: 15, borderTopWidth: StyleSheet.hairlineWidth, alignItems: 'center' },
+  satisfactionTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700' },
+  satisfactionBody: { marginTop: 3, fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  satisfactionScores: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  scoreButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  scoreText: { fontSize: 15, fontWeight: '700' },
+  satisfactionResult: { minHeight: 62, padding: 14, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   pressed: { opacity: 0.68 },
   disabled: { opacity: 0.48 },
 });

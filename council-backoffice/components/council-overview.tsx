@@ -42,7 +42,7 @@ export async function CouncilOverview({ session }: { session: CouncilStaffSessio
           </div>
           <div className="connection-list">
             <div className="connection-row">
-              <div><strong>Resident app surfaces</strong><br /><span>Home, schedule and guide publishing</span></div>
+              <div><strong>Resident app surfaces</strong><br /><span>Today, Schedule, Guide and Activity publishing</span></div>
               <CheckCircle2 aria-label="Connected" color="#34C759" size={21} />
             </div>
             <div className="connection-row">

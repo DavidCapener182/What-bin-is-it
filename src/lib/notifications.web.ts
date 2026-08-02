@@ -1,6 +1,6 @@
 import { planCollectionReminders, PlannedReminder } from '@/lib/reminder-plan';
 import { getPwaInstallStatus } from '@/lib/pwa-install.web';
-import { Collection, NotificationPreferences } from '@/lib/types';
+import { Collection, CouncilAlertSubscription, NotificationPreferences } from '@/lib/types';
 
 type PushRunReference = {
   runId: string;
@@ -155,12 +155,15 @@ function alertInstallationId() {
   return id;
 }
 
-export async function syncCouncilAlertRegistration(councilIds: string[], enabled: boolean) {
+export async function syncCouncilAlertRegistration(
+  subscriptions: CouncilAlertSubscription[],
+  enabled: boolean,
+) {
   if (!browserAvailable()) return;
   const installationId = alertInstallationId();
   if (!installationId) return;
   const canDeliver = enabled
-    && councilIds.length > 0
+    && subscriptions.length > 0
     && notificationPermission() === 'granted';
   const delivery = canDeliver ? (await pushSubscription()).toJSON() : undefined;
   await jsonRequest<{ councilCount: number; enabled: boolean }>(
@@ -169,7 +172,7 @@ export async function syncCouncilAlertRegistration(councilIds: string[], enabled
     method: 'POST',
     body: JSON.stringify({
       installationId,
-      councilIds,
+      subscriptions,
       channel: 'web-push',
       delivery,
       enabled: canDeliver,

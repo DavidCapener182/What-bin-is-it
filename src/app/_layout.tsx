@@ -32,6 +32,7 @@ export default function RootLayout() {
                   <Stack.Screen name="index" />
                   <Stack.Screen name="schedule" />
                   <Stack.Screen name="guide" />
+                  <Stack.Screen name="activity" />
                   <Stack.Screen name="reports" />
                   <Stack.Screen name="report-missed" />
                   <Stack.Screen name="report-incorrect" />
@@ -40,9 +41,11 @@ export default function RootLayout() {
                   <Stack.Screen name="partners" />
                   <Stack.Screen name="plus" />
                   <Stack.Screen name="account" />
+                  <Stack.Screen name="household" />
                   <Stack.Screen name="privacy" />
                   <Stack.Screen name="terms" />
                   <Stack.Screen name="data-sources" />
+                  <Stack.Screen name="status" />
                   <Stack.Screen name="onboarding" />
                   <Stack.Screen name="calendar" />
                   <Stack.Screen name="find" />

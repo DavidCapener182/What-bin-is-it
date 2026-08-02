@@ -5,6 +5,7 @@ import { binDatabase } from './bin-database';
 import type {
   NewResidentSupportThreadInput,
   ResidentSupportReplyInput,
+  ResidentSupportSatisfactionInput,
   ResidentSupportStatus,
   ResidentSupportTopic,
 } from './resident-support-validation';
@@ -12,6 +13,7 @@ import type {
 export {
   parseNewResidentSupportThread,
   parseResidentSupportReply,
+  parseResidentSupportSatisfaction,
 } from './resident-support-validation';
 
 type ThreadRow = {
@@ -25,6 +27,8 @@ type ThreadRow = {
   last_message_at: Date;
   created_at: Date;
   updated_at: Date;
+  resolved_at: Date | null;
+  satisfaction_score: number | null;
 };
 
 type MessageRow = {
@@ -66,6 +70,8 @@ function publicThread(row: ThreadRow, messages: MessageRow[]) {
     lastMessageAt: row.last_message_at.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    resolvedAt: row.resolved_at?.toISOString(),
+    satisfactionScore: row.satisfaction_score ?? undefined,
     messages: messages.map(publicMessage),
   };
 }
@@ -86,6 +92,8 @@ async function residentThreadRows(
       last_message_at,
       created_at,
       updated_at
+      ,resolved_at
+      ,satisfaction_score
     FROM bin_resident_support_threads
     WHERE resident_user_id = ${userId}::uuid
     ORDER BY last_message_at DESC
@@ -102,6 +110,7 @@ export async function listResidentSupportThreads(userId: string) {
     SELECT id, thread_id, sender_kind, body, created_at
     FROM bin_resident_support_messages
     WHERE thread_id = any(${threadIds}::uuid[])
+      AND visibility = 'resident'
     ORDER BY created_at, id
     LIMIT 2000
   `;
@@ -201,14 +210,35 @@ export async function replyToResidentSupportThread(
       await transaction`
         UPDATE bin_resident_support_threads
         SET
-          status = 'waiting-support',
+          status = 'new',
           last_sender = 'resident',
           last_message_at = now(),
           updated_at = now(),
-          resolved_at = null
+          resolved_at = null,
+          satisfaction_score = null,
+          reopened_count = reopened_count + CASE WHEN ${thread.status} = 'resolved' THEN 1 ELSE 0 END,
+          reopen_reason = CASE WHEN ${thread.status} = 'resolved' THEN 'Resident replied after resolution' ELSE reopen_reason END
         WHERE id = ${thread.id}::uuid
       `;
     }
   });
+  return listResidentSupportThreads(user.id);
+}
+
+export async function rateResidentSupportThread(
+  user: BinAccountUser,
+  input: ResidentSupportSatisfactionInput,
+) {
+  const sql = binDatabase();
+  const rows = await sql<{ id: string }[]>`
+    UPDATE bin_resident_support_threads
+    SET satisfaction_score = ${input.score}, updated_at = now()
+    WHERE id = ${input.threadId}::uuid
+      AND resident_user_id = ${user.id}::uuid
+      AND status IN ('resolved', 'closed')
+      AND satisfaction_score IS NULL
+    RETURNING id
+  `;
+  if (!rows[0]) throw new Error('This conversation cannot be rated.');
   return listResidentSupportThreads(user.id);
 }

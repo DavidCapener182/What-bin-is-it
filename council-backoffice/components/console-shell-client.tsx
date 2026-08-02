@@ -1,6 +1,7 @@
 "use client";
 
 import { Building2, Menu, RadioTower, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
@@ -16,17 +17,28 @@ const primaryNavigation = [
   { href: "/guidance", label: "Recycling guidance", icon: "book" },
   { href: "/reports", label: "Missed collections", icon: "clipboard" },
   { href: "/partners", label: "Partner services", icon: "badge-pound" },
+  { href: "/sponsorship", label: "Sponsored Plus", icon: "badge-pound" },
   { href: "/crm/messages", label: "Resident messages", icon: "messages" },
   { href: "/analytics", label: "Evidence & analytics", icon: "activity" },
 ] as const;
 
-const platformNavigation = [
+const operationsNavigation = [
   { href: "/", label: "Platform overview", icon: "gauge" },
-  { href: "/crm", label: "Relationship CRM", icon: "building" },
+  { href: "/demand", label: "Council demand", icon: "activity" },
   { href: "/crm/messages", label: "Resident inbox", icon: "messages" },
+  { href: "/status-admin", label: "Service status", icon: "warning" },
+] as const;
+
+const commercialNavigation = [
+  { href: "/crm", label: "Relationship CRM", icon: "building" },
+] as const;
+
+const platformGovernanceNavigation = [
+  { href: "/governance", label: "Platform governance", icon: "scroll" },
 ] as const;
 
 const governanceNavigation = [
+  { href: "/setup", label: "Setup & features", icon: "settings" },
   { href: "/audit", label: "Audit trail", icon: "scroll" },
   { href: "/settings", label: "Council settings", icon: "settings" },
 ] as const;
@@ -43,9 +55,20 @@ export function ConsoleShellClient({
   const pathname = usePathname();
   const mobileMenuRef = useRef<HTMLDetailsElement>(null);
   const platformSurface = session.platformAdmin && (
-    pathname === "/" || pathname.startsWith("/crm")
+    pathname === "/" || pathname.startsWith("/crm") || pathname.startsWith("/demand")
+    || pathname.startsWith("/status-admin") || pathname.startsWith("/governance")
   );
   const councilSurface = !platformSurface;
+  const platformWorkspace = pathname === "/crm" || pathname.startsWith("/crm/") && !pathname.startsWith("/crm/messages")
+    ? "commercial"
+    : pathname.startsWith("/governance")
+      ? "governance"
+      : "operations";
+  const platformNavigation = platformWorkspace === "commercial"
+    ? commercialNavigation
+    : platformWorkspace === "governance"
+      ? platformGovernanceNavigation
+      : operationsNavigation;
 
   useEffect(() => {
     if (mobileMenuRef.current) {
@@ -97,7 +120,12 @@ export function ConsoleShellClient({
         <nav aria-label={platformSurface ? "Platform navigation" : "Council operations"} className="console-nav">
           {session.platformAdmin ? (
             <>
-              <span className="nav-section-label">Platform</span>
+              <div aria-label="Platform workspace" className="workspace-switcher">
+                <Link className={platformWorkspace === "commercial" ? "active" : ""} href="/crm">Commercial</Link>
+                <Link className={platformWorkspace === "operations" ? "active" : ""} href="/">Operations</Link>
+                <Link className={platformWorkspace === "governance" ? "active" : ""} href="/governance">Governance</Link>
+              </div>
+              <span className="nav-section-label">{platformWorkspace}</span>
               {platformNavigation.map((item) => <NavLink key={item.href} {...item} />)}
             </>
           ) : null}
@@ -178,7 +206,14 @@ export function ConsoleShellClient({
                   </form>
                 ) : null}
                 <nav aria-label="Complete mobile navigation" className="mobile-menu-links">
-                  {session.platformAdmin ? platformNavigation.map((item) => <NavLink key={item.href} {...item} />) : null}
+                  {session.platformAdmin ? <>
+                    <div aria-label="Platform workspace" className="workspace-switcher mobile-workspace-switcher">
+                      <Link className={platformWorkspace === "commercial" ? "active" : ""} href="/crm">Commercial</Link>
+                      <Link className={platformWorkspace === "operations" ? "active" : ""} href="/">Operations</Link>
+                      <Link className={platformWorkspace === "governance" ? "active" : ""} href="/governance">Governance</Link>
+                    </div>
+                    {platformNavigation.map((item) => <NavLink key={item.href} {...item} />)}
+                  </> : null}
                   {councilSurface ? (
                     <>
                       <span className="nav-section-label nav-section-spaced">Council operations</span>
@@ -216,8 +251,9 @@ export function ConsoleShellClient({
         <NavLink href="/" icon="gauge" label={platformSurface ? "Platform" : "Overview"} />
         {platformSurface ? (
           <>
-            <NavLink href="/crm" icon="building" label="CRM" />
-            <NavLink href="/crm/messages" icon="messages" label="Inbox" />
+            {platformWorkspace === "commercial" ? <NavLink href="/crm" icon="building" label="CRM" /> : null}
+            {platformWorkspace === "operations" ? <><NavLink href="/demand" icon="activity" label="Demand" /><NavLink href="/crm/messages" icon="messages" label="Inbox" /></> : null}
+            {platformWorkspace === "governance" ? <NavLink href="/governance" icon="scroll" label="Governance" /> : null}
           </>
         ) : (
           <>

@@ -28,7 +28,7 @@ export default function HistoryScreen() {
   const entries = history.filter((entry) => !activeAddress || !entry.addressId || entry.addressId === activeAddress.id);
 
   return (
-    <AppShell activeRoute="/history">
+    <AppShell activeRoute="/activity">
       <RouteHead title="Activity History" description="Review bin-night actions, collection outcomes and locally tracked reports." path="/history" />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
@@ -60,7 +60,7 @@ export default function HistoryScreen() {
             <View style={styles.empty}>
               <Ionicons color={theme.accent} name="time-outline" size={34} />
               <Text style={[styles.emptyTitle, { color: theme.text }]}>No activity yet</Text>
-              <Text style={[styles.emptyCopy, { color: theme.secondaryText }]}>Actions from Today and Reports will appear here.</Text>
+              <Text style={[styles.emptyCopy, { color: theme.secondaryText }]}>Actions from Today and Activity will appear here.</Text>
             </View>
           )}
         </ScrollView>

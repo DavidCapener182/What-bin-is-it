@@ -47,6 +47,35 @@ export type DashboardMetric = {
   tone?: "blue" | "teal" | "amber" | "red";
 };
 
+export type OutcomeFunnelStage = {
+  label: string;
+  value: number;
+  detail: string;
+};
+
+export type CouncilOutcomeFunnels = {
+  collection: OutcomeFunnelStage[];
+  guide: OutcomeFunnelStage[];
+  communications: OutcomeFunnelStage[];
+};
+
+export type CouncilPilotBaseline = {
+  periodStartsOn: string;
+  periodEndsOn: string;
+  agreedContactCostPence?: number;
+  residentContacts?: number;
+  missedCollectionContacts?: number;
+  notes?: string;
+  updatedAt: string;
+};
+
+export type CouncilAudienceCriteria = {
+  scope: "council" | "targeted";
+  collectionTypes: string[];
+  collectionDates: string[];
+  audienceLabels: string[];
+};
+
 export type CouncilAnnouncement = {
   id: string;
   kind: string;
@@ -58,6 +87,7 @@ export type CouncilAnnouncement = {
   startsAt?: string;
   endsAt?: string;
   sourceUrl?: string;
+  audience: CouncilAudienceCriteria;
   updatedAt: string;
 };
 
@@ -74,6 +104,7 @@ export type CouncilDisruption = {
   expectedResumeAt?: string;
   endsAt?: string;
   sourceUrl?: string;
+  audience: CouncilAudienceCriteria;
   updatedAt: string;
 };
 
@@ -83,6 +114,8 @@ export type CouncilBroadcastSummary = {
   status: string;
   acceptedCount: number;
   failedCount: number;
+  estimatedRecipientCount: number;
+  audience: CouncilAudienceCriteria;
   requestedAt: string;
   completedAt?: string;
 };
@@ -112,10 +145,50 @@ export type CouncilPartner = {
   commissionPence?: number;
   priority: number;
   licenceReference?: string;
+  supportedAreaLabels: string[];
+  complaintContact?: string;
+  evidenceUrl?: string;
+  budgetPence?: number;
+  suspensionReason?: string;
+  renewalReviewAt?: string;
+  conversionCounts: Record<string, number>;
   status: string;
   startsAt?: string;
   endsAt?: string;
   updatedAt: string;
+};
+
+export type CouncilSponsorshipProgramme = {
+  id: string;
+  sponsorType: "council" | "housing";
+  status: "draft" | "active" | "paused" | "ended";
+  residentLabel: string;
+  features: string[];
+  startsAt: string;
+  endsAt?: string;
+  renewalAt?: string;
+  createdAt: string;
+};
+
+export type CouncilFeatureFlags = {
+  collectionDates: boolean;
+  councilBranding: boolean;
+  pushAlerts: boolean;
+  missedCollection: boolean;
+  directReporting: boolean;
+  recyclingGuide: boolean;
+  partnerServices: boolean;
+  supportInbox: boolean;
+  sponsoredPlus: boolean;
+  analyticsExports: boolean;
+  bulkyWasteBooking: boolean;
+};
+
+export type CouncilOnboardingItem = {
+  itemKey: string;
+  status: "not-started" | "in-progress" | "complete" | "blocked";
+  evidenceNote?: string;
+  completedAt?: string;
 };
 
 export type ReportingRule = {

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -27,6 +27,7 @@ import { useAccount } from '@/lib/use-account';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
 import { useSubscription } from '@/lib/use-subscription';
+import { useCouncilProfile } from '@/lib/use-council-profile';
 
 const times = [18, 19, 20, 21];
 
@@ -111,6 +112,10 @@ export default function SettingsScreen() {
   const {
     appearance,
     setAppearance,
+    showSponsoredServices,
+    setShowSponsoredServices,
+    liveCollectionSurfaceEnabled,
+    setLiveCollectionSurfaceEnabled,
     reports,
     history,
     reminderPreferencesFor,
@@ -121,6 +126,7 @@ export default function SettingsScreen() {
   const subscription = useSubscription();
   const account = useAccount();
   const analytics = usePilotAnalytics();
+  const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const placePreferences = reminderPreferencesFor(activeAddress?.id);
   const presentWasteTypes = new Set(collections.map((collection) => collection.wasteType));
   const relevantWasteTypes = collections.length
@@ -160,6 +166,25 @@ export default function SettingsScreen() {
       Alert.alert('Could not update reminders', 'Please try again.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function changeLiveCollectionSurface(next: boolean) {
+    if (!next) {
+      setLiveCollectionSurfaceEnabled(false);
+      return;
+    }
+    try {
+      if (Platform.OS === 'android') {
+        const permission = await requestNotificationPermission();
+        if (!permission.granted) {
+          Alert.alert('Notifications are not ready', permission.reason);
+          return;
+        }
+      }
+      setLiveCollectionSurfaceEnabled(true);
+    } catch {
+      Alert.alert('Could not enable bin-night status', 'Please try again.');
     }
   }
 
@@ -370,10 +395,16 @@ export default function SettingsScreen() {
                   title={account.user ? 'Your account' : 'Sign in'}
                 />
                 <Row
-                  detail={subscription.isPlus ? 'Plus active · manage or restore purchases' : 'Free plan · optional household conveniences'}
+                  detail={subscription.sponsoredBy ?? (subscription.isPlus ? 'Plus active · manage or restore purchases' : 'Free plan · optional household conveniences')}
                   icon={subscription.isPlus ? 'checkmark-circle-outline' : 'sparkles-outline'}
                   onPress={() => router.push('/plus')}
-                  title="What Bin? Plus"
+                  title={subscription.sponsoredBy ? 'What Bin? Plus · included' : 'What Bin? Plus'}
+                />
+                <Row
+                  detail="Share responsibility and collection status without uploading your address"
+                  icon="people-outline"
+                  onPress={() => router.push('/household' as Href)}
+                  title="Household sharing"
                 />
               </View>
             </View>
@@ -400,13 +431,27 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Reports and activity</Text>
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-              <Row detail="Use after a verified collection window has passed" icon="alert-circle-outline" onPress={() => router.push('/report-missed')} title="Report a missed collection" />
-              <Row detail={`${reports.length} locally tracked`} icon="document-text-outline" onPress={() => router.push('/reports')} title="Missed collection reports" />
+              {councilProfile?.featureFlags?.missedCollection !== false ? <Row detail="Use after a verified collection window has passed" icon="alert-circle-outline" onPress={() => router.push('/report-missed')} title="Report a missed collection" /> : null}
+              <Row detail={`${reports.length} locally tracked`} icon="notifications-outline" onPress={() => router.push('/activity' as Href)} title="Activity, alerts and reports" />
               <Row detail={`${history.length} recorded actions`} icon="time-outline" onPress={() => withPlus(() => router.push('/history'))} title="Activity history" />
             </View>
           </View>
 
           <HomeScreenWidgetCard />
+
+          {Platform.OS !== 'web' ? (
+            <View style={styles.section}>
+              <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Lock Screen</Text>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                <ToggleRow
+                  detail="Show an iOS Live Activity or Android collection notification only on bin night and collection day."
+                  onChange={(enabled) => void changeLiveCollectionSurface(enabled)}
+                  title="Bin-night status"
+                  value={liveCollectionSurfaceEnabled}
+                />
+              </View>
+            </View>
+          ) : null}
 
           <PwaSettingsCard />
 
@@ -431,6 +476,12 @@ export default function SettingsScreen() {
                 onChange={(enabled) => void analytics.setEnabled(enabled)}
                 title="Help improve local bin services"
                 value={analytics.enabled}
+              />
+              <ToggleRow
+                detail="Show clearly labelled council-approved services after free council and reuse options"
+                onChange={setShowSponsoredServices}
+                title="Show sponsored local services"
+                value={showSponsoredServices}
               />
               <View style={styles.privacyRow}>
                 <Ionicons color={theme.accent} name="lock-closed-outline" size={20} />
@@ -481,6 +532,7 @@ export default function SettingsScreen() {
               <Row detail="How local information is stored and requested" icon="lock-closed-outline" onPress={() => router.push('/privacy')} title="Privacy" />
               <Row detail="Important limits and safe-use information" icon="document-outline" onPress={() => router.push('/terms')} title="Terms" />
               <Row detail="Council, postcode, report and map providers" icon="server-outline" onPress={() => router.push('/data-sources')} title="Data sources" />
+              <Row detail="Recorded incidents, components and council coverage" icon="pulse-outline" onPress={() => router.push('/status' as Href)} title="Service status" />
             </View>
           </View>
         </ScrollView>

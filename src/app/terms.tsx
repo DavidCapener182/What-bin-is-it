@@ -28,7 +28,7 @@ export default function TermsScreen() {
         },
         {
           title: 'Free essentials and optional Plus',
-          body: 'Verified collection information, one saved address, the standard reminder, recycling guidance, local services, service alerts and the basic missed-bin route remain free. Where What Bin? Plus is enabled, it adds optional multi-address, reminder, history, calendar, sharing, widget and support conveniences without restricting those essentials.',
+          body: 'Verified collection information, one saved address, the standard reminder, recycling guidance, local services, council alerts and the basic missed-bin route remain free. Where What Bin Plus is enabled, it adds optional multi-address, reminder, history, calendar, household-sharing, widget and support conveniences without restricting those essentials.',
         },
         {
           title: 'Accounts',
@@ -36,7 +36,15 @@ export default function TermsScreen() {
         },
         {
           title: 'Subscriptions and purchases',
-          body: 'Web Plus purchases are processed by Stripe; native purchases are processed by Apple App Store or Google Play. The checkout or store shows the current price and billing period before you confirm. Monthly and annual subscriptions renew automatically unless cancelled through the relevant billing portal or store account, subject to the terms shown at purchase. A lifetime product, if offered, is a one-time purchase. Sign in and use Restore purchases where available to recover eligible access. Refunds, billing and cancellation are handled under the applicable payment-provider rules.',
+          body: 'Web Plus purchases are processed by Stripe; native purchases are processed by Apple App Store or Google Play. The checkout or store shows the current price and billing period before you confirm. Monthly and annual subscriptions renew automatically unless cancelled through the relevant billing portal or store account, subject to the terms shown at purchase. A lifetime product, if offered, is a one-time purchase. Sign in and use Restore purchases where available to recover eligible access. Refunds, billing and cancellation are handled under the applicable payment-provider rules. Trial, council-sponsored or housing-sponsored access can start, change or end under the dates and features of that programme. The app does not show a consumer paywall for a currently selected council while an eligible sponsorship is active.',
+        },
+        {
+          title: 'Household sharing',
+          body: 'Household sharing is optional. The owner can invite members to a council-scoped household so they can coordinate responsibility and collection outcomes. Invite links should be shared only with intended household members. Members are responsible for the names and actions they add. A shared household does not transfer or restore the saved address or council property reference, which remain on each device.',
+        },
+        {
+          title: 'Council and partner messages',
+          body: 'Council alerts are operational messages for the selected authority. Delivery can depend on collection type, date or an approved opaque area label supplied by that authority. Do not rely on a push notification as the sole warning for an emergency. Relevant sponsored services are clearly labelled, remain below appropriate free council and reuse options, and can be hidden. Opening a listing is not a guarantee of availability, price or service quality.',
         },
         {
           title: 'External services',
@@ -52,7 +60,7 @@ export default function TermsScreen() {
         },
       ]}
       title="Terms"
-      updated="27 July 2026"
+      updated="2 August 2026"
     />
   );
 }

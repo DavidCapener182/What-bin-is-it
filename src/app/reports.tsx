@@ -13,7 +13,6 @@ import { useAppTheme } from '@/lib/theme';
 import { MissedCollectionReport } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useProductState } from '@/lib/use-product-state';
-import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 
 const statusLabels: Record<MissedCollectionReport['status'], string> = {
   draft: 'Draft',
@@ -32,8 +31,7 @@ const statusLabels: Record<MissedCollectionReport['status'], string> = {
 
 export default function ReportsScreen() {
   const theme = useAppTheme();
-  const { activeAddress, collections } = useAppData();
-  const weeklyBin = useWeeklyBinPalette(collections);
+  const { activeAddress } = useAppData();
   const { reports, updateReport } = useProductState();
   const [referenceById, setReferenceById] = useState<Record<string, string>>({});
   const [updateById, setUpdateById] = useState<Record<string, string>>({});
@@ -96,7 +94,7 @@ export default function ReportsScreen() {
   }
 
   return (
-    <AppShell activeRoute="/reports">
+    <AppShell activeRoute="/activity">
       <RouteHead
         title="Missed Collection Reports"
         description="Track missed bin collection reports and council references."
@@ -108,22 +106,22 @@ export default function ReportsScreen() {
           style={[
             styles.header,
             {
-              backgroundColor: weeklyBin.background,
-              borderBottomColor: weeklyBin.accent ? weeklyBin.background : theme.separator,
+              backgroundColor: theme.surface,
+              borderBottomColor: theme.separator,
             },
           ]}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={[styles.kicker, { color: weeklyBin.foreground }]}>Reports</Text>
-              <Text style={[styles.title, { color: weeklyBin.foreground }]}>Missed collections</Text>
-              <Text style={[styles.subtitle, { color: weeklyBin.secondary }]}>Reports and council follow-up</Text>
+              <Text style={[styles.kicker, { color: theme.accent }]}>Activity</Text>
+              <Text style={[styles.title, { color: theme.text }]}>Missed collections</Text>
+              <Text style={[styles.subtitle, { color: theme.secondaryText }]}>Official handoff, references and recollection updates</Text>
             </View>
             <Pressable
               accessibilityLabel="Open settings"
               accessibilityRole="button"
               onPress={() => router.push('/settings')}
-              style={({ pressed }) => [styles.iconButton, { backgroundColor: weeklyBin.control }, pressed && styles.pressed]}>
-              <Ionicons color={weeklyBin.accent ? weeklyBin.foreground : theme.accent} name="settings-outline" size={21} />
+              style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.groupedBackground }, pressed && styles.pressed]}>
+              <Ionicons color={theme.accent} name="settings-outline" size={21} />
             </Pressable>
           </View>
         </SafeAreaView>

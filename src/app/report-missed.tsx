@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Href, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import {
   buildMissedReport,
   evaluateMissedReportEligibility,
   reportingCapability,
+  residentReportingRule,
 } from '@/lib/council-reporting';
 import { useAppTheme } from '@/lib/theme';
 import { useAppData } from '@/lib/use-app-data';
@@ -26,7 +27,7 @@ export default function ReportMissedScreen() {
   const analytics = usePilotAnalytics();
   const { markCollection, outcomeFor, reports, saveReport } = useProductState();
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
-  const remoteReporting = councilProfile?.reporting;
+  const remoteReporting = residentReportingRule(councilProfile);
   const collection = useMemo(() => (
     collections.find((item) => item.id === params.collectionId)
     ?? sortCollections(collections).find((item) => new Date(`${item.date}T17:00:00`) <= new Date())
@@ -86,6 +87,22 @@ export default function ReportMissedScreen() {
     );
   }
 
+  if (councilProfile?.featureFlags?.missedCollection === false) {
+    return (
+      <AppShell activeRoute="/activity">
+        <RouteHead title="Missed Collection" description="Missed-collection reporting availability for the selected council." path="/report-missed" />
+        <View style={[styles.center, { backgroundColor: theme.background }]}>
+          <Ionicons color={theme.secondaryText} name="shield-outline" size={36} />
+          <Text style={[styles.centerTitle, { color: theme.text }]}>Reporting is not enabled here</Text>
+          <Text style={[styles.centerCopy, { color: theme.secondaryText }]}>This council has not enabled a missed-collection route inside What Bin. No report has been created.</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.replace('/activity' as Href)} style={[styles.cta, { backgroundColor: theme.accent }]}>
+            <Text style={styles.ctaText}>Back to Activity</Text>
+          </Pressable>
+        </View>
+      </AppShell>
+    );
+  }
+
   if (existingReport) {
     return (
       <AppShell activeRoute="/report-missed">
@@ -94,9 +111,9 @@ export default function ReportMissedScreen() {
           <Ionicons color={theme.accent} name="document-text-outline" size={36} />
           <Text style={[styles.centerTitle, { color: theme.text }]}>This report is already tracked</Text>
           <Text style={[styles.centerCopy, { color: theme.secondaryText }]}>
-            Open Reports to copy its reference, add an update or return to the official council service.
+            Open Activity to copy its reference, add an update or return to the official council service.
           </Text>
-          <Pressable accessibilityRole="button" onPress={() => router.replace('/reports')} style={[styles.cta, { backgroundColor: theme.accent }]}>
+          <Pressable accessibilityRole="button" onPress={() => router.replace('/activity' as Href)} style={[styles.cta, { backgroundColor: theme.accent }]}>
             <Text style={styles.ctaText}>View report</Text>
           </Pressable>
         </View>
@@ -163,7 +180,7 @@ export default function ReportMissedScreen() {
       context: capability.method === 'direct-api' ? 'direct-api' : 'council-website',
       outcome: 'opened',
     });
-    router.replace('/reports');
+    router.replace('/activity' as Href);
   }
 
   const checks = [

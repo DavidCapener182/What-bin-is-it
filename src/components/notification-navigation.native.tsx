@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 
@@ -7,7 +7,7 @@ export function NotificationNavigation() {
     const openNotification = (notification: Notifications.Notification) => {
       const url = notification.request.content.data?.url;
       if (url === '/schedule') router.push('/schedule');
-      else if (url === '/reports') router.push('/reports');
+      else if (url === '/reports' || url === '/activity') router.push('/activity' as Href);
       else if (url === '/') router.push('/');
     };
     const initialResponse = Notifications.getLastNotificationResponse();

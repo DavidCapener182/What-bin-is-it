@@ -7,13 +7,13 @@ These answers describe the current `proof` phase. Reassess them before every sub
 - No advertising SDK.
 - No tracking SDK or cross-app tracking.
 - Optional password-free resident account. Supabase stores email identity and the minimum Free/Plus plan record; saved household addresses remain device-local.
-- Saved addresses, dates, outcomes, reports and preferences are device-local.
+- Saved addresses, dates, outcomes, reports and preferences are device-local. Optional Plus household coordination stores a household nickname, public council provider ID, member display names and explicitly recorded bin responsibilities/outcomes; it never stores the address, postcode or council property reference.
 - A user-initiated lookup transmits postcode, council provider ID and an opaque property reference to the gateway and relevant source.
 - Saving a place automatically sends a random installation identifier and its public council provider identifiers for aggregate active, currently linked and all-time council reach. It does not send a postcode, address, property reference, coordinates, account or email in that resident-count request.
 - “Help improve local bin services” is a separate opt-in stream of allow-listed app-improvement events and is not required for the council resident count.
 - Foreground location is requested only after the user taps the location action; it is converted to a postcode and is not continuously tracked.
 - Native reminders are scheduled on the device.
-- With notification consent, the installed web or native app stores an opaque installation identifier, council provider identifiers and a private browser/Expo push credential so verified council service alerts can be delivered. No postcode, address, property reference, account or email is stored in that registration.
+- With notification consent, the installed web or native app stores an opaque installation identifier, council provider identifiers, bounded collection types/dates, optional council-issued opaque round/ward labels and a private browser/Expo push credential so verified council service alerts can be delivered. No postcode, address, property reference, account or email is stored in that registration.
 - The native store app does not sell or share address/location data.
 - Account export and removal of What Bin-owned plan/grant records are available in Account.
 - Support opens an external GitHub issue only after the user chooses it.

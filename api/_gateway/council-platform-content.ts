@@ -1,6 +1,6 @@
 import postgres from 'postgres';
 
-import type { CouncilGuidanceDestination, CouncilProfile } from './council-profile.ts';
+import type { CouncilAudienceCriteria, CouncilGuidanceDestination, CouncilProfile } from './council-profile.ts';
 
 type Environment = Record<string, string | undefined>;
 
@@ -50,12 +50,13 @@ export async function councilPlatformProfile(
   const organisation = organisations[0];
   if (!organisation) return profile;
 
-  const [announcements, disruptions, guidance, partners, reporting] = await Promise.all([
+  const [announcements, disruptions, guidance, partners, reporting, sponsorships, featureFlags] = await Promise.all([
     sql<{
       id: string; kind: string; severity: string; title: string; body: string;
       placements: string[]; starts_at: Date | null; ends_at: Date | null; source_url: string | null;
+      audience_criteria: CouncilAudienceCriteria;
     }[]>`
-      SELECT id, kind, severity, title, body, placements, starts_at, ends_at, source_url
+      SELECT id, kind, severity, title, body, placements, starts_at, ends_at, source_url, audience_criteria
       FROM bin_council_announcements
       WHERE organisation_id = ${organisation.id}::uuid
         AND status = 'published'
@@ -68,9 +69,10 @@ export async function councilPlatformProfile(
       id: string; title: string; detail: string; collection_types: string[]; area_labels: string[];
       cause: string; resident_instruction: string; starts_at: Date; expected_resume_at: Date | null;
       ends_at: Date | null; source_url: string | null;
+      audience_criteria: CouncilAudienceCriteria;
     }[]>`
       SELECT id, title, detail, collection_types, area_labels, cause, resident_instruction,
-        starts_at, expected_resume_at, ends_at, source_url
+        starts_at, expected_resume_at, ends_at, source_url, audience_criteria
       FROM bin_council_disruptions
       WHERE organisation_id = ${organisation.id}::uuid
         AND status = 'published'
@@ -113,6 +115,32 @@ export async function councilPlatformProfile(
       WHERE organisation_id = ${organisation.id}::uuid
       LIMIT 1
     `,
+    sql<{
+      id: string; sponsor_type: 'council' | 'housing'; resident_label: string; features: string[];
+      starts_at: Date; ends_at: Date | null; renewal_at: Date | null;
+    }[]>`
+      SELECT id, sponsor_type, resident_label, features, starts_at, ends_at, renewal_at
+      FROM bin_sponsorship_programmes
+      WHERE organisation_id = ${organisation.id}::uuid
+        AND status = 'active'
+        AND starts_at <= now()
+        AND (ends_at IS NULL OR ends_at > now())
+      ORDER BY starts_at DESC
+      LIMIT 1
+    `,
+    sql<{
+      collection_dates: boolean; council_branding: boolean; push_alerts: boolean;
+      missed_collection: boolean; direct_reporting: boolean; recycling_guide: boolean;
+      partner_services: boolean; support_inbox: boolean; sponsored_plus: boolean;
+      analytics_exports: boolean; bulky_waste_booking: boolean;
+    }[]>`
+      SELECT collection_dates, council_branding, push_alerts, missed_collection,
+        direct_reporting, recycling_guide, partner_services, support_inbox,
+        sponsored_plus, analytics_exports, bulky_waste_booking
+      FROM bin_council_feature_flags
+      WHERE organisation_id = ${organisation.id}::uuid
+      LIMIT 1
+    `,
   ]);
 
   const localGuidance = Object.fromEntries(guidance.map((item) => [
@@ -125,6 +153,8 @@ export async function councilPlatformProfile(
     },
   ]));
   const rule = reporting[0];
+  const sponsorship = sponsorships[0];
+  const flags = featureFlags[0];
   return {
     ...profile,
     councilName: organisation.brand_name ?? organisation.name,
@@ -149,6 +179,28 @@ export async function councilPlatformProfile(
       secondaryColour: organisation.secondary_colour,
       sponsorshipLabel: organisation.sponsorship_label ?? undefined,
     },
+    sponsorship: sponsorship ? {
+      id: sponsorship.id,
+      sponsorType: sponsorship.sponsor_type,
+      residentLabel: sponsorship.resident_label,
+      features: sponsorship.features,
+      startsAt: sponsorship.starts_at.toISOString(),
+      endsAt: iso(sponsorship.ends_at),
+      renewalAt: sponsorship.renewal_at?.toISOString().slice(0, 10),
+    } : undefined,
+    featureFlags: flags ? {
+      collectionDates: flags.collection_dates,
+      councilBranding: flags.council_branding,
+      pushAlerts: flags.push_alerts,
+      missedCollection: flags.missed_collection,
+      directReporting: flags.direct_reporting,
+      recyclingGuide: flags.recycling_guide,
+      partnerServices: flags.partner_services,
+      supportInbox: flags.support_inbox,
+      sponsoredPlus: flags.sponsored_plus,
+      analyticsExports: flags.analytics_exports,
+      bulkyWasteBooking: flags.bulky_waste_booking,
+    } : undefined,
     announcements: announcements.map((item) => ({
       id: item.id,
       kind: item.kind,
@@ -159,6 +211,7 @@ export async function councilPlatformProfile(
       startsAt: iso(item.starts_at),
       endsAt: iso(item.ends_at),
       sourceUrl: item.source_url ?? undefined,
+      audience: item.audience_criteria,
     })),
     disruptions: disruptions.map((item) => ({
       id: item.id,
@@ -172,6 +225,7 @@ export async function councilPlatformProfile(
       expectedResumeAt: iso(item.expected_resume_at),
       endsAt: iso(item.ends_at),
       sourceUrl: item.source_url ?? undefined,
+      audience: item.audience_criteria,
     })),
     partners: partners.map((item) => ({
       id: item.id,

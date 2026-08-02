@@ -27,7 +27,7 @@ export default function PlusScreen() {
   const nativeStore = Platform.OS === 'ios' || Platform.OS === 'android';
   const canOpenStore = paymentsEnabled && nativeStore && subscription.configured;
   const status = subscription.isPlus
-    ? 'Plus is active'
+    ? subscription.sponsoredBy ?? 'Plus is active'
     : commercialLaunchPhase === 'proof'
       ? 'Included in the free preview'
       : canOpenStore
@@ -87,6 +87,15 @@ export default function PlusScreen() {
             </Text>
           </View>
 
+          {subscription.sponsoredBy ? (
+            <View style={[styles.previewNote, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <Text style={[styles.previewTitle, { color: theme.text }]}>Your council includes Plus</Text>
+              <Text style={[styles.previewBody, { color: theme.secondaryText }]}>
+                {subscription.sponsoredBy}. Access follows the currently selected place and is recalculated if you change address.
+              </Text>
+            </View>
+          ) : null}
+
           {subscription.error ? (
             <View style={[styles.error, { backgroundColor: `${theme.danger}14` }]}>
               <Ionicons color={theme.danger} name="alert-circle-outline" size={20} />
@@ -94,7 +103,7 @@ export default function PlusScreen() {
             </View>
           ) : null}
 
-          {Platform.OS === 'web' ? (
+          {subscription.sponsoredBy ? null : Platform.OS === 'web' ? (
             <WebSupporterOffer />
           ) : paymentsEnabled ? (
             <View style={styles.actions}>

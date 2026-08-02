@@ -19,13 +19,23 @@ const webSubscription = {
 test('keeps a council alert registration anonymous and council bounded', () => {
   assert.deepEqual(parseCouncilAlertRegistration({
     installationId: '123e4567-e89b-42d3-a456-426614174000',
-    councilIds: ['lad-e08000011', 'lad-e08000011'],
+    subscriptions: [{
+      councilId: 'lad-e08000011',
+      collectionTypes: ['general', 'food', 'general'],
+      collectionDates: ['2026-08-03', '2026-08-03'],
+      audienceLabels: [],
+    }],
     channel: 'web-push',
     delivery: webSubscription,
     enabled: true,
   }), {
     installationId: '123e4567-e89b-42d3-a456-426614174000',
-    councilIds: ['lad-e08000011'],
+    subscriptions: [{
+      councilId: 'lad-e08000011',
+      collectionTypes: ['general', 'food'],
+      collectionDates: ['2026-08-03'],
+      audienceLabels: [],
+    }],
     channel: 'web-push',
     delivery: webSubscription,
     enabled: true,
@@ -33,9 +43,28 @@ test('keeps a council alert registration anonymous and council bounded', () => {
 
   assert.throws(() => parseCouncilAlertRegistration({
     installationId: '123e4567-e89b-42d3-a456-426614174000',
-    councilIds: ['lad-e08000011'],
+    subscriptions: [{
+      councilId: 'lad-e08000011',
+      collectionTypes: [],
+      collectionDates: [],
+      audienceLabels: [],
+    }],
     channel: 'web-push',
     delivery: { ...webSubscription, postcode: 'L36 7XA' },
+    enabled: true,
+  }), /unexpected/);
+
+  assert.throws(() => parseCouncilAlertRegistration({
+    installationId: '123e4567-e89b-42d3-a456-426614174000',
+    subscriptions: [{
+      councilId: 'lad-e08000011',
+      collectionTypes: [],
+      collectionDates: [],
+      audienceLabels: [],
+      postcode: 'L36 7XA',
+    }],
+    channel: 'web-push',
+    delivery: webSubscription,
     enabled: true,
   }), /unexpected/);
 });

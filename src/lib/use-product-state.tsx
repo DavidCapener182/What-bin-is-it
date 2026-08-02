@@ -21,6 +21,7 @@ import {
   Collection,
   CollectionOutcome,
   CollectionOutcomeStatus,
+  CouncilNoticePreferenceState,
   DisruptionAlert,
   IncorrectDataFeedback,
   MissedCollectionReport,
@@ -30,6 +31,8 @@ import {
   WasteType,
 } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
+import { syncCollectionLiveSurface } from '@/widgets/collection-live-surface';
+import { buildCollectionLiveSurfaceSnapshot } from '@/widgets/collection-live-surface-data';
 
 const storageKey = '@what-bin-is-it-tonight/product-state-v1';
 
@@ -56,6 +59,9 @@ type OnboardingState = {
 
 type ProductState = {
   appearance: AppearancePreference;
+  showSponsoredServices: boolean;
+  liveCollectionSurfaceEnabled: boolean;
+  savedGuideItemIds: string[];
   onboarding: OnboardingState;
   reminderPreferencesByAddressId: Record<string, PlaceReminderPreferences>;
   outcomes: CollectionOutcome[];
@@ -64,11 +70,15 @@ type ProductState = {
   history: ActivityEntry[];
   incorrectFeedback: IncorrectDataFeedback[];
   supportRequests: SupportRequest[];
+  councilNotices: CouncilNoticePreferenceState;
 };
 
 type ProductContextValue = ProductState & {
   ready: boolean;
   setAppearance: (appearance: AppearancePreference) => void;
+  setShowSponsoredServices: (enabled: boolean) => void;
+  setLiveCollectionSurfaceEnabled: (enabled: boolean) => void;
+  toggleSavedGuideItem: (itemId: string) => void;
   completeOnboarding: () => void;
   skipOnboarding: () => void;
   reminderPreferencesFor: (addressId?: string) => PlaceReminderPreferences;
@@ -84,6 +94,10 @@ type ProductContextValue = ProductState & {
   replaceDisruptions: (addressId: string, alerts: DisruptionAlert[]) => void;
   saveIncorrectFeedback: (feedback: Omit<IncorrectDataFeedback, 'id' | 'createdAt'>) => void;
   saveSupportRequest: (request: Omit<SupportRequest, 'id' | 'createdAt'>) => void;
+  markCouncilNoticeRead: (noticeId: string) => void;
+  markCouncilNoticesRead: (noticeIds: string[]) => void;
+  archiveCouncilNotice: (noticeId: string) => void;
+  setCouncilNoticesMuted: (providerId: string, muted: boolean) => void;
   clearProductData: () => Promise<void>;
 };
 
@@ -92,6 +106,9 @@ const ProductContext = createContext<ProductContextValue | undefined>(undefined)
 function initialState(): ProductState {
   return {
     appearance: 'system',
+    showSponsoredServices: true,
+    liveCollectionSurfaceEnabled: false,
+    savedGuideItemIds: [],
     onboarding: { completed: false, skipped: false },
     reminderPreferencesByAddressId: {},
     outcomes: [],
@@ -100,6 +117,7 @@ function initialState(): ProductState {
     history: [],
     incorrectFeedback: [],
     supportRequests: [],
+    councilNotices: { readAtById: {}, archivedAtById: {}, mutedProviderIds: [] },
   };
 }
 
@@ -176,6 +194,17 @@ function hasStringId(value: unknown): value is { id: string } {
   return Boolean(value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string');
 }
 
+function safeStringRecord(value: unknown, limit = 500) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.entries(value)
+    .filter(([key, item]) => key.length > 0 && key.length <= 220 && typeof item === 'string')
+    .slice(0, limit)
+    .reduce<Record<string, string>>((result, [key, item]) => {
+      result[key] = item as string;
+      return result;
+    }, {});
+}
+
 function hydrate(value: unknown): ProductState {
   const fallback = initialState();
   if (!value || typeof value !== 'object') return fallback;
@@ -194,6 +223,11 @@ function hydrate(value: unknown): ProductState {
   );
   return {
     appearance: validAppearance(raw.appearance),
+    showSponsoredServices: validBoolean(raw.showSponsoredServices, true),
+    liveCollectionSurfaceEnabled: validBoolean(raw.liveCollectionSurfaceEnabled, false),
+    savedGuideItemIds: Array.isArray(raw.savedGuideItemIds)
+      ? raw.savedGuideItemIds.filter((item): item is string => typeof item === 'string' && item.length <= 120).slice(0, 100)
+      : [],
     onboarding: {
       completed: validBoolean(raw.onboarding?.completed, false),
       skipped: validBoolean(raw.onboarding?.skipped, false),
@@ -205,6 +239,13 @@ function hydrate(value: unknown): ProductState {
     history: safeArray(raw.history, hasStringId, 500) as ActivityEntry[],
     incorrectFeedback: safeArray(raw.incorrectFeedback, hasStringId) as IncorrectDataFeedback[],
     supportRequests: safeArray(raw.supportRequests, hasStringId) as SupportRequest[],
+    councilNotices: {
+      readAtById: safeStringRecord(raw.councilNotices?.readAtById),
+      archivedAtById: safeStringRecord(raw.councilNotices?.archivedAtById),
+      mutedProviderIds: Array.isArray(raw.councilNotices?.mutedProviderIds)
+        ? raw.councilNotices.mutedProviderIds.filter((item): item is string => typeof item === 'string').slice(0, 100)
+        : [],
+    },
   };
 }
 
@@ -215,6 +256,7 @@ function activity(type: ActivityEntry['type'], title: string, addressId?: string
 export function ProductStateProvider({ children }: { children: ReactNode }) {
   const {
     addresses,
+    activeAddress,
     schedulesByAddressId,
     ready: appDataReady,
   } = useAppData();
@@ -334,7 +376,7 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
               triggerAt,
               title: 'Recollection due tomorrow',
               body: `${address.label}: leave the ${report.binLabel.toLowerCase()} out for the council.`,
-              url: '/reports',
+              url: '/activity',
             });
           });
       }
@@ -358,18 +400,49 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!ready || !appDataReady) return;
-    const councilIds = [...new Set(addresses
+    const snapshot = state.liveCollectionSurfaceEnabled
+      ? buildCollectionLiveSurfaceSnapshot(
+          activeAddress,
+          activeAddress ? schedulesByAddressId[activeAddress.id]?.collections ?? [] : [],
+          state.outcomes,
+        )
+      : undefined;
+    void syncCollectionLiveSurface(snapshot).catch(() => undefined);
+  }, [
+    activeAddress,
+    appDataReady,
+    ready,
+    schedulesByAddressId,
+    state.liveCollectionSurfaceEnabled,
+    state.outcomes,
+  ]);
+
+  useEffect(() => {
+    if (!ready || !appDataReady) return;
+    const subscriptions = [...new Set(addresses
       .filter((address) => {
         const preferences = state.reminderPreferencesByAddressId[address.id] ?? defaultPlaceReminders;
         return Boolean(address.providerId && preferences.enabled && preferences.disruptionAlerts);
       })
-      .map((address) => address.providerId)
-      .filter((providerId): providerId is string => Boolean(providerId)))];
-    void syncCouncilAlertRegistration(councilIds, councilIds.length > 0).catch(() => undefined);
+      .map((address) => address.providerId))]
+      .map((councilId) => {
+        const collections = addresses
+          .filter((address) => address.providerId === councilId)
+          .flatMap((address) => schedulesByAddressId[address.id]?.collections ?? []);
+        return {
+          councilId,
+          collectionTypes: [...new Set(collections.map((collection) => collection.wasteType))],
+          collectionDates: [...new Set(collections.map((collection) => collection.date))]
+            .sort()
+            .slice(0, 24),
+        };
+      });
+    void syncCouncilAlertRegistration(subscriptions, subscriptions.length > 0).catch(() => undefined);
   }, [
     addresses,
     appDataReady,
     ready,
+    schedulesByAddressId,
     state.reminderPreferencesByAddressId,
   ]);
 
@@ -408,6 +481,14 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
     ...state,
     ready,
     setAppearance: (appearance) => setState((current) => ({ ...current, appearance })),
+    setShowSponsoredServices: (showSponsoredServices) => setState((current) => ({ ...current, showSponsoredServices })),
+    setLiveCollectionSurfaceEnabled: (liveCollectionSurfaceEnabled) => setState((current) => ({ ...current, liveCollectionSurfaceEnabled })),
+    toggleSavedGuideItem: (itemId) => setState((current) => ({
+      ...current,
+      savedGuideItemIds: current.savedGuideItemIds.includes(itemId)
+        ? current.savedGuideItemIds.filter((savedId) => savedId !== itemId)
+        : [...current.savedGuideItemIds, itemId].slice(-100),
+    })),
     completeOnboarding: () => setState((current) => ({
       ...current,
       onboarding: { completed: true, skipped: false },
@@ -476,6 +557,43 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
     saveSupportRequest: (request) => setState((current) => ({
       ...current,
       supportRequests: [{ ...request, id: recordId('support'), createdAt: timestamp() }, ...current.supportRequests],
+    })),
+    markCouncilNoticeRead: (noticeId) => setState((current) => ({
+      ...current,
+      councilNotices: {
+        ...current.councilNotices,
+        readAtById: { ...current.councilNotices.readAtById, [noticeId]: timestamp() },
+      },
+    })),
+    markCouncilNoticesRead: (noticeIds) => setState((current) => {
+      const readAt = timestamp();
+      return {
+        ...current,
+        councilNotices: {
+          ...current.councilNotices,
+          readAtById: noticeIds.reduce<Record<string, string>>(
+            (result, noticeId) => ({ ...result, [noticeId]: readAt }),
+            current.councilNotices.readAtById,
+          ),
+        },
+      };
+    }),
+    archiveCouncilNotice: (noticeId) => setState((current) => ({
+      ...current,
+      councilNotices: {
+        ...current.councilNotices,
+        archivedAtById: { ...current.councilNotices.archivedAtById, [noticeId]: timestamp() },
+        readAtById: { ...current.councilNotices.readAtById, [noticeId]: timestamp() },
+      },
+    })),
+    setCouncilNoticesMuted: (providerId, muted) => setState((current) => ({
+      ...current,
+      councilNotices: {
+        ...current.councilNotices,
+        mutedProviderIds: muted
+          ? [...new Set([...current.councilNotices.mutedProviderIds, providerId])]
+          : current.councilNotices.mutedProviderIds.filter((item) => item !== providerId),
+      },
     })),
     clearProductData: async () => {
       await AsyncStorage.removeItem(storageKey);

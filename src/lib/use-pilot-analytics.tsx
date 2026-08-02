@@ -34,6 +34,15 @@ export const pilotAnalyticsEventNames = [
   'missed_report_eligible',
   'missed_report_route_opened',
   'council_submission_confirmed',
+  'collection_answer_shown',
+  'bin_marked_out',
+  'collection_outcome_confirmed',
+  'missed_report_started',
+  'council_alert_shown',
+  'council_alert_opened',
+  'council_alert_muted',
+  'partner_listing_viewed',
+  'partner_external_opened',
 ] as const;
 
 export type PilotAnalyticsEventName = typeof pilotAnalyticsEventNames[number];

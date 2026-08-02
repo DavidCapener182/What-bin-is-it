@@ -8,16 +8,20 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { appFonts } from '@/lib/design-system';
+import { residentAlertsForProfile } from '@/lib/resident-alerts';
 import { useAppTheme } from '@/lib/theme';
+import { useAppData } from '@/lib/use-app-data';
+import { useCouncilProfile } from '@/lib/use-council-profile';
+import { useProductState } from '@/lib/use-product-state';
 
-type PrimaryRoute = '/' | '/schedule' | '/guide' | '/reports';
-type AppRoute = PrimaryRoute | '/settings' | '/places' | '/history' | '/support' | '/partners' | '/report-missed' | '/report-incorrect' | '/onboarding';
+type PrimaryRoute = '/' | '/schedule' | '/guide' | '/activity';
+type AppRoute = PrimaryRoute | '/reports' | '/settings' | '/places' | '/history' | '/support' | '/partners' | '/report-missed' | '/report-incorrect' | '/onboarding';
 
 const tabs: { route: PrimaryRoute; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },
   { route: '/schedule', label: 'Schedule', icon: 'calendar-outline', activeIcon: 'calendar' },
   { route: '/guide', label: 'Guide', icon: 'search-outline', activeIcon: 'search' },
-  { route: '/reports', label: 'Reports', icon: 'document-text-outline', activeIcon: 'document-text' },
+  { route: '/activity', label: 'Activity', icon: 'notifications-outline', activeIcon: 'notifications' },
 ];
 
 export function AppShell({
@@ -31,9 +35,20 @@ export function AppShell({
 }) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
+  const { activeAddress, collections } = useAppData();
+  const profile = useCouncilProfile(activeAddress?.providerId);
+  const { councilNotices, reports } = useProductState();
   const tabRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
   const dockBottomPadding = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, 6);
   const primaryActive = tabs.some((tab) => tab.route === activeRoute);
+  const currentAlerts = residentAlertsForProfile(profile, collections)
+    .filter((alert) => !councilNotices.archivedAtById[alert.id]);
+  const unreadAlerts = currentAlerts.filter((alert) => !councilNotices.readAtById[alert.id]).length;
+  const openReports = reports.filter((report) => (
+    (!activeAddress || report.addressId === activeAddress.id)
+    && !['resolved', 'rejected', 'cancelled', 'closed'].includes(report.status)
+  )).length;
+  const activityBadge = Math.min(99, unreadAlerts + openReports);
 
   function openTab(route: PrimaryRoute) {
     if (route === activeRoute) return;
@@ -100,6 +115,11 @@ export function AppShell({
                     style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}>
                     <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
                       <Ionicons color={active ? theme.accent : theme.secondaryText} name={active ? tab.activeIcon : tab.icon} size={22} />
+                      {tab.route === '/activity' && activityBadge ? (
+                        <View style={[styles.badge, { backgroundColor: theme.danger }]}>
+                          <Text style={styles.badgeText}>{activityBadge}</Text>
+                        </View>
+                      ) : null}
                     </View>
                     <Text style={[styles.tabLabel, { color: active ? theme.accent : theme.secondaryText }, active && styles.tabLabelActive]}>{tab.label}</Text>
                   </Pressable>
@@ -151,6 +171,8 @@ const styles = StyleSheet.create({
   tabBar: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 58, gap: 1 },
   iconWrap: { height: 29, width: 40, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', top: -3, right: -4, minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#FFFFFF', fontSize: 9.5, lineHeight: 12, fontWeight: '800' },
   iconWrapActive: { backgroundColor: 'rgba(0,122,255,0.12)' },
   tabLabel: { fontFamily: appFonts.text, fontSize: 12, fontWeight: '600', letterSpacing: -0.1 },
   tabLabelActive: { fontWeight: '700' },

@@ -19,11 +19,10 @@ import {
   collectionSubscriptionUrl,
   shareCollectionSchedule,
 } from '@/lib/schedule-tools';
-import { WasteType } from '@/lib/types';
+import { Collection, SavedAddress, WasteType } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useOnlineStatus } from '@/lib/use-online-status';
 import { useProductState } from '@/lib/use-product-state';
-import { useWeeklyBinPalette } from '@/lib/use-weekly-bin-palette';
 import { useCouncilProfile } from '@/lib/use-council-profile';
 
 export default function ScheduleScreen() {
@@ -31,6 +30,8 @@ export default function ScheduleScreen() {
   const styles = createStyles(theme);
   const {
     collections,
+    addresses,
+    schedulesByAddressId,
     activeAddress,
     sourceStatus,
     collectionDataState,
@@ -41,12 +42,20 @@ export default function ScheduleScreen() {
   } = useAppData();
   const { outcomeFor } = useProductState();
   const [calendarWasteTypes, setCalendarWasteTypes] = useState<WasteType[]>([...wasteTypes]);
+  const [viewMode, setViewMode] = useState<'place' | 'all'>('place');
   const online = useOnlineStatus();
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
-  const weeklyBin = useWeeklyBinPalette(collections);
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
-  const grouped = upcoming.reduce<Record<string, typeof collections>>((result, collection) => {
-    result[collection.date] = [...(result[collection.date] ?? []), collection];
+  const activeItems = upcoming.map((collection) => ({ collection, address: activeAddress }));
+  const allItems = addresses.flatMap((address) => (
+    sortCollections(schedulesByAddressId[address.id]?.collections ?? [])
+      .filter((collection) => dayDifference(collection.date) >= 0)
+      .map((collection) => ({ collection, address }))
+  )).sort((left, right) => left.collection.date.localeCompare(right.collection.date));
+  const cycleDates = [...new Set((viewMode === 'all' ? allItems : activeItems).map(({ collection }) => collection.date))].slice(0, 4);
+  const cycleItems = (viewMode === 'all' ? allItems : activeItems).filter(({ collection }) => cycleDates.includes(collection.date));
+  const grouped = cycleItems.reduce<Record<string, { collection: Collection; address?: SavedAddress }[]>>((result, item) => {
+    result[item.collection.date] = [...(result[item.collection.date] ?? []), item];
     return result;
   }, {});
   const exactAddressRequired = activeAddress
@@ -111,28 +120,22 @@ export default function ScheduleScreen() {
       <View style={styles.page}>
         <SafeAreaView
           edges={['top']}
-          style={[
-            styles.safe,
-            {
-              backgroundColor: weeklyBin.background,
-              borderBottomColor: weeklyBin.accent ? weeklyBin.background : theme.separator,
-            },
-          ]}>
-          <Text style={[styles.kicker, { color: weeklyBin.foreground }]}>Schedule</Text>
-          <Text style={[styles.title, { color: weeklyBin.foreground }]}>Upcoming collections</Text>
+          style={styles.safe}>
+          <Text style={[styles.kicker, { color: theme.accent }]}>Schedule</Text>
+          <Text style={styles.title}>Upcoming collections</Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/places')}
             style={({ pressed }) => [
               styles.addressPill,
-              { backgroundColor: weeklyBin.control },
+              { backgroundColor: theme.accentSoft },
               pressed && styles.pressed,
             ]}>
-            <Ionicons color={weeklyBin.accent ? weeklyBin.foreground : theme.accent} name="location" size={16} />
-            <Text numberOfLines={1} style={[styles.address, { color: weeklyBin.accent ? weeklyBin.foreground : theme.accent }]}>
+            <Ionicons color={theme.accent} name="location" size={16} />
+            <Text numberOfLines={1} style={styles.address}>
               {activeAddress ? `${activeAddress.label} · ${activeAddress.postcode}` : 'Add an address'}
             </Text>
-            <Ionicons color={weeklyBin.accent ? weeklyBin.foreground : theme.accent} name="chevron-down" size={14} />
+            <Ionicons color={theme.accent} name="chevron-down" size={14} />
           </Pressable>
         </SafeAreaView>
 
@@ -160,6 +163,24 @@ export default function ScheduleScreen() {
             </View>
           ) : (
             <>
+              {addresses.length > 1 ? (
+                <View accessibilityRole="tablist" style={styles.viewPicker}>
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: viewMode === 'place' }}
+                    onPress={() => setViewMode('place')}
+                    style={[styles.viewOption, viewMode === 'place' && styles.viewOptionSelected]}>
+                    <Text style={[styles.viewOptionText, viewMode === 'place' && styles.viewOptionTextSelected]}>This place</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: viewMode === 'all' }}
+                    onPress={() => setViewMode('all')}
+                    style={[styles.viewOption, viewMode === 'all' && styles.viewOptionSelected]}>
+                    <Text style={[styles.viewOptionText, viewMode === 'all' && styles.viewOptionTextSelected]}>All places</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <View style={[styles.statusLine, (!online || collectionDataState === 'cached' || collectionDataState === 'error') && styles.statusLineWarning]}>
                 {refreshing
                   ? <ActivityIndicator color={theme.accent} />
@@ -191,14 +212,15 @@ export default function ScheduleScreen() {
                       </View>
                     </View>
                     <View style={styles.collectionsCard}>
-                      {dayCollections.map((collection, index) => {
+                      {dayCollections.map(({ collection, address }, index) => {
                         const meta = collectionDisplayMeta(collection);
-                        const outcome = outcomeFor(activeAddress.id, collection);
+                        const outcome = outcomeFor(address?.id ?? activeAddress.id, collection);
                         return (
-                          <View key={collection.id} style={[styles.collectionRow, index !== dayCollections.length - 1 && styles.collectionBorder]}>
+                          <View key={`${address?.id ?? activeAddress.id}-${collection.id}`} style={[styles.collectionRow, index !== dayCollections.length - 1 && styles.collectionBorder]}>
                             <View style={[styles.iconCircle, { backgroundColor: meta.tint }]}><WasteIcon colour={meta.colour} type={collection.wasteType} /></View>
                             <View style={styles.rowCopy}>
                               <Text style={styles.rowTitle}>{meta.label}</Text>
+                              {viewMode === 'all' && address ? <Text style={styles.placeLabel}>{address.label}</Text> : null}
                               <Text style={styles.rowInfo}>
                                 {outcome?.status === 'collected'
                                   ? 'Confirmed collected'
@@ -229,7 +251,7 @@ export default function ScheduleScreen() {
                 );
               })}
 
-              {!upcoming.length ? (
+              {!cycleItems.length ? (
                 <View style={styles.emptyState}>
                   <View style={styles.emptyIcon}><Ionicons color={theme.accent} name="calendar-clear-outline" size={30} /></View>
                   <Text style={styles.emptyTitle}>{collectionDataState === 'error' ? 'Council check unavailable' : 'No verified dates yet'}</Text>
@@ -252,7 +274,7 @@ export default function ScheduleScreen() {
                     horizontal
                     showsHorizontalScrollIndicator={false}>
                     {wasteTypes
-                      .filter((type) => upcoming.some((collection) => collection.wasteType === type))
+                      .filter((type) => cycleItems.some(({ collection }) => collection.wasteType === type))
                       .map((type) => {
                         const selected = calendarWasteTypes.includes(type);
                         return (
@@ -271,6 +293,7 @@ export default function ScheduleScreen() {
                       })}
                   </ScrollView>
                 </View>
+                <Text style={styles.cycleFootnote}>Showing the next four collection dates{viewMode === 'all' ? ' across your saved places' : ''}. Calendar tools below use the selected place.</Text>
                 <View style={styles.actionsCard}>
                   <Pressable
                     accessibilityRole="button"
@@ -325,6 +348,11 @@ function createStyles(theme: AppTheme) {
   statusLine: { borderRadius: 16, padding: 14, backgroundColor: theme.accentSoft, flexDirection: 'row', gap: 10, alignItems: 'center' },
   statusLineWarning: { backgroundColor: `${theme.warning}14` },
   statusText: { flex: 1, color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
+  viewPicker: { minHeight: 44, padding: 3, borderRadius: 14, backgroundColor: theme.groupedBackground, flexDirection: 'row', gap: 3 },
+  viewOption: { flex: 1, minHeight: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  viewOptionSelected: { backgroundColor: theme.surface, shadowColor: '#000000', shadowOpacity: 0.08, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
+  viewOptionText: { color: theme.secondaryText, fontSize: 13, fontWeight: '700' },
+  viewOptionTextSelected: { color: theme.text },
   changeNotice: { borderRadius: 14, padding: 14, backgroundColor: `${theme.warning}14`, flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: `${theme.warning}45` },
   changeCopy: { flex: 1 },
   changeTitle: { color: theme.text, fontSize: 14, fontWeight: '700' },
@@ -343,6 +371,7 @@ function createStyles(theme: AppTheme) {
   iconCircle: { height: 42, width: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   rowCopy: { flex: 1 },
   rowTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
+  placeLabel: { color: theme.accent, fontSize: 11.5, marginTop: 2, fontWeight: '700' },
   rowInfo: { color: theme.secondaryText, fontSize: 12.5, marginTop: 3, fontWeight: '600' },
   statusDot: { height: 8, width: 8, borderRadius: 4 },
   rowCalendar: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -9 },
@@ -359,6 +388,7 @@ function createStyles(theme: AppTheme) {
   calendarTypeSelected: { borderColor: theme.accent, backgroundColor: theme.accentSoft },
   calendarTypeText: { color: theme.secondaryText, fontSize: 12.5, fontWeight: '600' },
   calendarTypeTextSelected: { color: theme.accent, fontWeight: '700' },
+  cycleFootnote: { color: theme.tertiaryText, fontSize: 12, lineHeight: 17, marginTop: -15, paddingHorizontal: 3 },
   actionsCard: { backgroundColor: theme.surface, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
   actionRow: { minHeight: 56, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
   actionText: { flex: 1, color: theme.text, fontSize: 14, fontWeight: '700' },

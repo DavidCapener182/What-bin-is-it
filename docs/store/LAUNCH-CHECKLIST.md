@@ -118,7 +118,12 @@ The Android submit profile uses the internal track first. Promote only after phy
 - [ ] Auth rate limits, production redirect allowlist and CAPTCHA escalation are configured.
 - [ ] Account export and app-owned account removal work.
 - [ ] iOS and Android widgets refresh from verified dates on physical devices.
+- [ ] The optional iOS bin-night Live Activity starts, updates and ends at the intended lifecycle points on a physical device.
+- [ ] The Android bin-night ongoing notification appears only when enabled and clears after the collection lifecycle ends.
 - [ ] A missed report stores a council reference only after council confirmation and can track a recollection.
+- [ ] Activity correctly groups unread council alerts, support replies, collection outcomes and open missed reports.
+- [ ] Targeted council-alert test devices receive only the expected collection type/date/opaque-label audience.
+- [ ] Council-sponsored Plus disappears when the selected place changes to an ineligible council.
 
 ## Store listing
 
