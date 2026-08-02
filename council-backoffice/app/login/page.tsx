@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ArrowRight, KeyRound, RadioTower, ShieldCheck } from "lucide-react";
 
 import { requestCouncilSignIn, signInCouncilWithPassword } from "@/app/actions";
+import { LoginSubmitButton } from "@/components/login-submit-button";
 import { developmentSuperadminLoginAvailable, getCouncilSession } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Council staff sign in" };
@@ -87,10 +88,7 @@ export default async function LoginPage({
                 required
                 type="password"
               />
-              <button className="primary-button" type="submit">
-                Sign in
-                <ArrowRight aria-hidden="true" size={18} />
-              </button>
+              <LoginSubmitButton />
             </form>
           )}
           {developmentLogin ? null : <div className="login-divider"><span>or use a secure link</span></div>}

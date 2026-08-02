@@ -97,20 +97,27 @@ test("council authentication uses a dedicated cookie namespace", async () => {
 });
 
 test("hosted authentication is time bounded and supports an authorised password sign-in", async () => {
-  const [actions, auth, callback, fetchSource, proxy] = await Promise.all([
+  const [actions, auth, callback, database, fetchSource, loginButton, proxy] = await Promise.all([
     readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/database.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/supabase/fetch.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/login-submit-button.tsx", import.meta.url), "utf8"),
     readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(actions, /export async function signInCouncilWithPassword/);
   assert.match(actions, /signInWithPassword/);
-  assert.match(actions, /authorisedCouncilEmail\(email\)/);
+  assert.match(actions, /authorisedCouncilUserId/);
+  assert.doesNotMatch(actions, /allowSignInAttempt\(email, "password"/);
   assert.doesNotMatch(actions, /console\.(?:log|info|warn|error)\([^\n]*password/i);
+  assert.match(database, /statement_timeout/);
+  assert.match(database, /lock_timeout/);
   assert.match(fetchSource, /AbortController/);
   assert.match(fetchSource, /COUNCIL_AUTH_FETCH_TIMEOUT_MS/);
+  assert.match(loginButton, /useFormStatus/);
+  assert.match(loginButton, /Signing in/);
   assert.match(proxy, /global:\s*\{\s*fetch: councilAuthFetch\s*\}/);
   assert.match(proxy, /catch/);
   assert.match(auth, /catch/);

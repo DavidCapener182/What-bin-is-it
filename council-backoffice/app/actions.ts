@@ -259,6 +259,30 @@ async function authorisedCouncilEmail(email: string) {
   return rows[0]?.authorised === true;
 }
 
+async function authorisedCouncilUserId(userId: string) {
+  const sql = councilDatabase();
+  const rows = await sql<{ authorised: boolean }[]>`
+    SELECT (
+      EXISTS (
+        SELECT 1
+        FROM bin_council_staff AS staff
+        INNER JOIN bin_council_organisations AS organisation
+          ON organisation.id = staff.organisation_id
+        WHERE staff.user_id = ${userId}::uuid
+          AND staff.status = 'active'
+          AND organisation.status IN ('pilot', 'active')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM bin_council_platform_admins AS platform_admin
+        WHERE platform_admin.user_id = ${userId}::uuid
+          AND platform_admin.status = 'active'
+      )
+    ) AS authorised
+  `;
+  return rows[0]?.authorised === true;
+}
+
 export async function requestCouncilSignIn(formData: FormData) {
   const email = requiredText(formData.get("email"), "Email", 254).toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) redirect("/login?sent=1");
@@ -298,24 +322,29 @@ export async function signInCouncilWithPassword(formData: FormData) {
     && email.length <= 254
     && password.length >= 8
     && password.length <= 256;
-  let authenticated = false;
+  let outcome: "authenticated" | "invalid" | "unavailable" = "invalid";
 
   if (validInput) {
     try {
-      const permitted = await allowSignInAttempt(email, "password", 1_500, 10);
-      const authorised = permitted && await authorisedCouncilEmail(email);
-      if (authorised) {
-        const supabase = await createCouncilSupabaseServerClient();
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        authenticated = !error;
+      // Supabase owns password throttling. Authenticating before the council
+      // database lookup avoids making every password attempt wait on a
+      // transaction-backed application rate limiter.
+      const supabase = await createCouncilSupabaseServerClient();
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && data.user) {
+        if (await authorisedCouncilUserId(data.user.id)) {
+          outcome = "authenticated";
+        } else {
+          await supabase.auth.signOut({ scope: "local" });
+        }
       }
     } catch {
-      // Keep failures generic so staff records and authentication state are not disclosed.
+      outcome = "unavailable";
     }
   }
 
-  if (authenticated) redirect("/");
-  redirect("/login?auth=invalid");
+  if (outcome === "authenticated") redirect("/");
+  redirect(`/login?auth=${outcome}`);
 }
 
 export async function signOutCouncil() {
