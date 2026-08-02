@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type postgres from "postgres";
 
 import { councilDatabase } from "./database";
+import { refundMarketplacePayment, releaseMarketplacePayout } from "./marketplace-payments";
 import type {
   AuditEvent,
   CouncilAnnouncement,
@@ -1136,6 +1137,8 @@ export async function listPartners(session: CouncilStaffSession) {
     booking_price_pence: number | null;
     platform_fee_pence: number | null;
     stripe_account_id: string | null;
+    provider_acceptance_sla_hours: number;
+    terms_url: string | null;
     priority: number;
     licence_reference: string | null;
     supported_area_labels: string[];
@@ -1163,6 +1166,8 @@ export async function listPartners(session: CouncilStaffSession) {
       booking_price_pence,
       platform_fee_pence,
       stripe_account_id,
+      provider_acceptance_sla_hours,
+      terms_url,
       priority,
       licence_reference,
       supported_area_labels,
@@ -1201,8 +1206,12 @@ export async function listPartners(session: CouncilStaffSession) {
     confirmed_fee_pence: number;
   }[]>`
     SELECT partner_id, status, count(*)::int AS booking_count,
-      coalesce(sum(amount_pence) FILTER (WHERE status IN ('confirmed', 'completed')), 0)::int AS confirmed_value_pence,
-      coalesce(sum(platform_fee_pence) FILTER (WHERE status IN ('confirmed', 'completed')), 0)::int AS confirmed_fee_pence
+      coalesce(sum(amount_pence) FILTER (WHERE status IN (
+        'awaiting-provider', 'provider-accepted', 'scheduled', 'confirmed', 'completed', 'payout-released'
+      )), 0)::int AS confirmed_value_pence,
+      coalesce(sum(platform_fee_pence) FILTER (WHERE status IN (
+        'confirmed', 'completed', 'payout-released'
+      )), 0)::int AS confirmed_fee_pence
     FROM bin_bulky_bookings
     WHERE organisation_id = ${session.organisation.id}::uuid AND partner_id IS NOT NULL
     GROUP BY partner_id, status
@@ -1233,6 +1242,8 @@ export async function listPartners(session: CouncilStaffSession) {
     bookingPricePence: row.booking_price_pence ?? undefined,
     platformFeePence: row.platform_fee_pence ?? undefined,
     stripeAccountId: row.stripe_account_id ?? undefined,
+    providerAcceptanceSlaHours: row.provider_acceptance_sla_hours,
+    termsUrl: row.terms_url ?? undefined,
     priority: row.priority,
     licenceReference: row.licence_reference ?? undefined,
     supportedAreaLabels: row.supported_area_labels,
@@ -1276,6 +1287,8 @@ export async function createPartner(
         booking_price_pence,
         platform_fee_pence,
         stripe_account_id,
+        provider_acceptance_sla_hours,
+        terms_url,
         priority,
         licence_reference,
         supported_area_labels,
@@ -1302,6 +1315,8 @@ export async function createPartner(
         ${input.bookingPricePence ?? null},
         ${input.platformFeePence ?? null},
         ${input.stripeAccountId ?? null},
+        ${input.providerAcceptanceSlaHours},
+        ${input.termsUrl ?? null},
         ${input.priority},
         ${input.licenceReference ?? null},
         ${input.supportedAreaLabels},
@@ -1341,13 +1356,25 @@ export async function listBulkyBookings(session: CouncilStaffSession): Promise<C
     platform_fee_pence: number | null;
     status: string;
     partner_reference: string | null;
+    stripe_payment_intent_id: string | null;
     started_at: Date;
     confirmed_at: Date | null;
+    provider_accepted_at: Date | null;
+    provider_declined_at: Date | null;
+    scheduled_for: Date | null;
+    completed_at: Date | null;
+    payout_released_at: Date | null;
+    refunded_at: Date | null;
+    stripe_transfer_id: string | null;
+    stripe_refund_id: string | null;
   }[]>`
     SELECT booking.public_reference, booking.partner_id, partner.name AS partner_name,
       booking.booking_channel, booking.item_key, booking.quantity, booking.amount_pence,
       booking.platform_fee_pence, booking.status, booking.partner_reference,
-      booking.started_at, booking.confirmed_at
+      booking.stripe_payment_intent_id, booking.started_at, booking.confirmed_at,
+      booking.provider_accepted_at, booking.provider_declined_at,
+      booking.scheduled_for, booking.completed_at, booking.payout_released_at,
+      booking.refunded_at, booking.stripe_transfer_id, booking.stripe_refund_id
     FROM bin_bulky_bookings booking
     LEFT JOIN bin_council_partners partner ON partner.id = booking.partner_id
     WHERE booking.organisation_id = ${session.organisation.id}::uuid
@@ -1365,9 +1392,231 @@ export async function listBulkyBookings(session: CouncilStaffSession): Promise<C
     platformFeePence: row.platform_fee_pence ?? undefined,
     status: row.status,
     providerReference: row.partner_reference ?? undefined,
+    paymentIntentId: session.platformAdmin ? row.stripe_payment_intent_id ?? undefined : undefined,
     startedAt: row.started_at.toISOString(),
     confirmedAt: row.confirmed_at?.toISOString(),
+    providerAcceptedAt: row.provider_accepted_at?.toISOString(),
+    providerDeclinedAt: row.provider_declined_at?.toISOString(),
+    scheduledFor: row.scheduled_for?.toISOString(),
+    completedAt: row.completed_at?.toISOString(),
+    payoutReleasedAt: row.payout_released_at?.toISOString(),
+    refundedAt: row.refunded_at?.toISOString(),
+    payoutReleased: Boolean(row.stripe_transfer_id),
+    refunded: Boolean(row.stripe_refund_id),
   }));
+}
+
+function assertMarketplaceSuperadmin(session: CouncilStaffSession) {
+  if (!session.platformAdmin) throw new Error("Platform superadmin access is required for paid booking fulfilment.");
+}
+
+export async function acceptMarketplaceBulkyBooking(
+  session: CouncilStaffSession,
+  reference: string,
+  providerReference: string,
+  scheduledFor: string,
+) {
+  assertMarketplaceSuperadmin(session);
+  const sql = councilDatabase();
+  return sql.begin(async (transaction) => {
+    const rows = await transaction<{
+      id: string;
+      previous_status: string;
+      partner_id: string;
+      installation_id: string;
+    }[]>`
+      WITH current_booking AS (
+        SELECT id, status AS previous_status
+        FROM bin_bulky_bookings
+        WHERE public_reference = ${reference}
+          AND organisation_id = ${session.organisation.id}::uuid
+          AND booking_channel = 'stripe-connect'
+          AND status = 'awaiting-provider'
+        FOR UPDATE
+      )
+      UPDATE bin_bulky_bookings booking SET
+        status = 'scheduled',
+        partner_reference = ${providerReference},
+        provider_accepted_at = coalesce(provider_accepted_at, now()),
+        scheduled_for = ${scheduledFor}::timestamptz,
+        updated_at = now()
+      FROM current_booking
+      WHERE booking.id = current_booking.id
+      RETURNING booking.id, current_booking.previous_status,
+        booking.partner_id, booking.installation_id
+    `;
+    const booking = rows[0];
+    if (!booking) throw new Error("This paid booking is not awaiting provider acceptance.");
+    await transaction`
+      INSERT INTO bin_bulky_booking_events (
+        booking_id, actor_type, event_name, from_status, to_status, external_reference
+      ) VALUES (
+        ${booking.id}::uuid, 'platform-admin', 'provider-accepted',
+        ${booking.previous_status}, 'scheduled', ${providerReference}
+      )
+    `;
+    const referralTokenHash = createHash("sha256").update(reference, "utf8").digest("hex");
+    await transaction`
+      INSERT INTO bin_partner_conversion_events (
+        partner_id, organisation_id, installation_id, event_name, referral_token_hash
+      ) SELECT
+        ${booking.partner_id}::uuid, ${session.organisation.id}::uuid,
+        ${booking.installation_id}::uuid, 'booking-confirmed', ${referralTokenHash}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM bin_partner_conversion_events
+        WHERE partner_id = ${booking.partner_id}::uuid
+          AND event_name = 'booking-confirmed'
+          AND referral_token_hash = ${referralTokenHash}
+      )
+    `;
+    await appendAudit(transaction, session, "bulky-booking.provider-accepted", "bulky-booking", booking.id, {
+      reference,
+      providerReference,
+      scheduledFor,
+    });
+  });
+}
+
+export async function declineAndRefundMarketplaceBulkyBooking(
+  session: CouncilStaffSession,
+  reference: string,
+) {
+  assertMarketplaceSuperadmin(session);
+  const sql = councilDatabase();
+  const rows = await sql<{
+    id: string;
+    status: string;
+    stripe_payment_intent_id: string;
+  }[]>`
+    SELECT id, status, stripe_payment_intent_id
+    FROM bin_bulky_bookings
+    WHERE public_reference = ${reference}
+      AND organisation_id = ${session.organisation.id}::uuid
+      AND booking_channel = 'stripe-connect'
+      AND status IN ('awaiting-provider', 'provider-accepted', 'scheduled')
+      AND stripe_payment_intent_id IS NOT NULL
+    LIMIT 1
+  `;
+  const booking = rows[0];
+  if (!booking) throw new Error("This booking cannot be declined or does not have a captured payment.");
+  const refund = await refundMarketplacePayment({
+    paymentIntentId: booking.stripe_payment_intent_id,
+    reference,
+  });
+  await sql.begin(async (transaction) => {
+    const updated = await transaction<{ id: string }[]>`
+      UPDATE bin_bulky_bookings SET
+        status = 'refunded',
+        provider_declined_at = coalesce(provider_declined_at, now()),
+        cancelled_at = coalesce(cancelled_at, now()),
+        refunded_at = coalesce(refunded_at, now()),
+        stripe_refund_id = ${refund.id},
+        updated_at = now()
+      WHERE id = ${booking.id}::uuid
+        AND status = ${booking.status}
+      RETURNING id
+    `;
+    if (!updated[0]) throw new Error("The booking changed while the refund was being issued. Check Stripe before retrying.");
+    await transaction`
+      INSERT INTO bin_bulky_booking_events (
+        booking_id, actor_type, event_name, from_status, to_status, external_reference
+      ) VALUES (
+        ${booking.id}::uuid, 'platform-admin', 'provider-declined-refunded',
+        ${booking.status}, 'refunded', ${refund.id}
+      )
+    `;
+    await appendAudit(transaction, session, "bulky-booking.refunded", "bulky-booking", booking.id, {
+      reference,
+      refundId: refund.id,
+      reason: "provider-declined",
+    });
+  });
+}
+
+export async function completeMarketplaceBulkyBooking(
+  session: CouncilStaffSession,
+  reference: string,
+) {
+  assertMarketplaceSuperadmin(session);
+  const sql = councilDatabase();
+  const rows = await sql<{
+    id: string;
+    partner_id: string;
+    installation_id: string;
+    amount_pence: number;
+    platform_fee_pence: number;
+    stripe_charge_id: string;
+    stripe_account_id: string;
+  }[]>`
+    SELECT booking.id, booking.partner_id, booking.installation_id,
+      booking.amount_pence, booking.platform_fee_pence,
+      booking.stripe_charge_id, partner.stripe_account_id
+    FROM bin_bulky_bookings booking
+    JOIN bin_council_partners partner ON partner.id = booking.partner_id
+    WHERE booking.public_reference = ${reference}
+      AND booking.organisation_id = ${session.organisation.id}::uuid
+      AND booking.booking_channel = 'stripe-connect'
+      AND booking.status = 'scheduled'
+      AND booking.stripe_transfer_id IS NULL
+      AND booking.amount_pence IS NOT NULL
+      AND booking.platform_fee_pence IS NOT NULL
+      AND booking.stripe_charge_id IS NOT NULL
+      AND partner.stripe_account_id IS NOT NULL
+    LIMIT 1
+  `;
+  const booking = rows[0];
+  if (!booking) throw new Error("This booking is not ready for completed-collection payout.");
+  const providerAmount = booking.amount_pence - booking.platform_fee_pence;
+  if (providerAmount <= 0) throw new Error("The provider payout must be greater than zero.");
+  const transfer = await releaseMarketplacePayout({
+    amountPence: providerAmount,
+    chargeId: booking.stripe_charge_id,
+    destinationAccountId: booking.stripe_account_id,
+    reference,
+  });
+  await sql.begin(async (transaction) => {
+    const updated = await transaction<{ id: string }[]>`
+      UPDATE bin_bulky_bookings SET
+        status = 'payout-released',
+        completed_at = coalesce(completed_at, now()),
+        payout_released_at = coalesce(payout_released_at, now()),
+        stripe_transfer_id = ${transfer.id},
+        updated_at = now()
+      WHERE id = ${booking.id}::uuid
+        AND status = 'scheduled'
+        AND stripe_transfer_id IS NULL
+      RETURNING id
+    `;
+    if (!updated[0]) throw new Error("The booking changed while the payout was being released. Check Stripe before retrying.");
+    await transaction`
+      INSERT INTO bin_bulky_booking_events (
+        booking_id, actor_type, event_name, from_status, to_status, external_reference
+      ) VALUES (
+        ${booking.id}::uuid, 'platform-admin', 'collection-completed-payout-released',
+        'scheduled', 'payout-released', ${transfer.id}
+      )
+    `;
+    const referralTokenHash = createHash("sha256").update(reference, "utf8").digest("hex");
+    await transaction`
+      INSERT INTO bin_partner_conversion_events (
+        partner_id, organisation_id, installation_id, event_name, referral_token_hash
+      ) SELECT
+        ${booking.partner_id}::uuid, ${session.organisation.id}::uuid,
+        ${booking.installation_id}::uuid, 'booking-completed', ${referralTokenHash}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM bin_partner_conversion_events
+        WHERE partner_id = ${booking.partner_id}::uuid
+          AND event_name = 'booking-completed'
+          AND referral_token_hash = ${referralTokenHash}
+      )
+    `;
+    await appendAudit(transaction, session, "bulky-booking.payout-released", "bulky-booking", booking.id, {
+      reference,
+      transferId: transfer.id,
+      providerAmountPence: providerAmount,
+      platformFeePence: booking.platform_fee_pence,
+    });
+  });
 }
 
 export async function confirmExternalBulkyBooking(
@@ -1427,10 +1676,12 @@ export async function setPartnerStatus(
   return sql.begin(async (transaction) => {
     const currentRows = await transaction<{
       name: string; complaint_contact: string | null; evidence_url: string | null; renewal_review_at: string | null;
+      licence_reference: string | null; terms_url: string | null;
       booking_mode: string; booking_price_pence: number | null; platform_fee_pence: number | null; stripe_account_id: string | null;
     }[]>`
       SELECT name, complaint_contact, evidence_url, renewal_review_at::text,
-        booking_mode, booking_price_pence, platform_fee_pence, stripe_account_id
+        licence_reference, terms_url, booking_mode, booking_price_pence,
+        platform_fee_pence, stripe_account_id
       FROM bin_council_partners
       WHERE id = ${id}::uuid AND organisation_id = ${session.organisation.id}::uuid
       LIMIT 1
@@ -1442,8 +1693,12 @@ export async function setPartnerStatus(
     }
     if (status === "active" && current.booking_mode === "stripe-connect" && (
       !current.booking_price_pence || current.platform_fee_pence === null || !current.stripe_account_id
+      || !current.licence_reference || !current.terms_url
     )) {
-      throw new Error("Add the fixed price, platform fee and Stripe connected account before activation.");
+      throw new Error("Add the fixed price, platform fee, Stripe account, waste-carrier licence and terms link before activation.");
+    }
+    if (status === "active" && current.booking_mode === "stripe-connect" && !session.platformAdmin) {
+      throw new Error("A platform superadmin must approve a paid in-app collection service.");
     }
     if (status === "paused" && !suspensionReason) {
       throw new Error("Record why the listing is being suspended.");

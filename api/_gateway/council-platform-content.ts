@@ -96,9 +96,11 @@ export async function councilPlatformProfile(
       item_keys: string[]; disclosure_label: string;
       booking_mode: 'none' | 'external-referral' | 'stripe-connect';
       booking_price_pence: number | null;
+      provider_acceptance_sla_hours: number;
+      terms_url: string | null;
     }[]>`
       SELECT id, name, category, description, service_url, item_keys, disclosure_label,
-        booking_mode, booking_price_pence
+        booking_mode, booking_price_pence, provider_acceptance_sla_hours, terms_url
       FROM bin_council_partners
       WHERE organisation_id = ${organisation.id}::uuid
         AND status = 'active'
@@ -240,6 +242,8 @@ export async function councilPlatformProfile(
       disclosureLabel: item.disclosure_label,
       bookingMode: item.booking_mode === 'none' ? undefined : item.booking_mode,
       bookingPricePence: item.booking_price_pence ?? undefined,
+      providerAcceptanceSlaHours: item.provider_acceptance_sla_hours,
+      termsUrl: item.terms_url ?? undefined,
     })),
     reporting: rule ? {
       enabled: rule.enabled,

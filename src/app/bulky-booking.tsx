@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
@@ -23,6 +24,19 @@ const bulkyItems: { key: BulkyBookingItemKey; label: string; icon: keyof typeof 
 
 function money(pence: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100);
+}
+
+function bookingHeading(booking?: BulkyBookingStatus) {
+  switch (booking?.status) {
+    case 'awaiting-provider': return 'Payment received — confirming collector';
+    case 'provider-accepted': return 'Collector accepted the booking';
+    case 'scheduled': return 'Collection booked';
+    case 'completed':
+    case 'payout-released': return 'Collection completed';
+    case 'refunded': return 'Payment refunded';
+    case 'payment-failed': return 'Payment was not completed';
+    default: return 'Checking payment';
+  }
 }
 
 export default function BulkyBookingScreen() {
@@ -50,6 +64,20 @@ export default function BulkyBookingScreen() {
     return () => { active = false; };
   }, [params.booking, params.reference]);
 
+  async function refreshStatus() {
+    const reference = booking?.reference ?? params.reference;
+    if (!reference) return;
+    setBusy('status');
+    setStatusError(undefined);
+    try {
+      setBooking(await getBulkyBookingStatus(reference));
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : 'The booking is still being confirmed.');
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
   async function begin(partnerId?: string) {
     if (!activeAddress?.providerId) {
       router.push('/places');
@@ -63,7 +91,18 @@ export default function BulkyBookingScreen() {
         quantity,
         partnerId,
       });
-      await Linking.openURL(result.url);
+      if (Platform.OS === 'web') {
+        await Linking.openURL(result.url);
+      } else {
+        await WebBrowser.openBrowserAsync(result.url, {
+          dismissButtonStyle: 'close',
+          enableBarCollapsing: true,
+          toolbarColor: theme.surface,
+        });
+        if (result.reference) {
+          setBooking(await getBulkyBookingStatus(result.reference));
+        }
+      }
     } catch (error) {
       Alert.alert('Booking could not be opened', error instanceof Error ? error.message : 'Try again in a moment.');
     } finally {
@@ -87,12 +126,16 @@ export default function BulkyBookingScreen() {
             <Text style={styles.subtitle}>The official council route always appears first. Paid services are clearly labelled and only count as revenue after a real booking is confirmed.</Text>
           </View>
 
-          {params.booking === 'success' ? (
+          {params.booking === 'success' || booking ? (
             <View accessibilityLiveRegion="polite" style={styles.successCard}>
               <Ionicons color={theme.success} name="checkmark-circle" size={28} />
               <View style={styles.flex}>
-                <Text style={styles.cardTitle}>{booking?.status === 'confirmed' ? 'Booking confirmed' : 'Payment received'}</Text>
-                <Text style={styles.cardBody}>{booking ? `${booking.partnerName ?? 'Your provider'} · ${booking.reference}` : statusError ?? 'We are waiting for the signed payment confirmation.'}</Text>
+                <Text style={styles.cardTitle}>{bookingHeading(booking)}</Text>
+                <Text style={styles.cardBody}>{booking ? `${booking.partnerName ?? 'Your provider'} · ${booking.reference}${booking.scheduledFor ? ` · ${new Date(booking.scheduledFor).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}` : statusError ?? 'We are waiting for the signed payment confirmation.'}</Text>
+                <Pressable accessibilityRole="button" disabled={busy === 'status'} onPress={() => void refreshStatus()} style={styles.statusButton}>
+                  {busy === 'status' ? <ActivityIndicator color={theme.accent} size="small" /> : <Ionicons color={theme.accent} name="refresh" size={15} />}
+                  <Text style={styles.statusButtonText}>Refresh status</Text>
+                </Pressable>
               </View>
             </View>
           ) : null}
@@ -122,14 +165,14 @@ export default function BulkyBookingScreen() {
             {partners?.map((partner) => (
               <View key={partner.id} style={styles.partnerCard}>
                 <View style={styles.optionIcon}><Ionicons color={theme.accent} name="car-outline" size={23} /></View>
-                <View style={styles.flex}><Text style={styles.sponsored}>{partner.disclosureLabel}</Text><Text style={styles.cardTitle}>{partner.name}</Text><Text style={styles.cardBody}>{partner.description}</Text>{partner.bookingPricePence ? <Text style={styles.price}>{money(partner.bookingPricePence * quantity)}</Text> : <Text style={styles.cardBody}>Price confirmed by provider</Text>}</View>
-                <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => void begin(partner.id)} style={styles.optionButton}>{busy === partner.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.optionButtonText}>{partner.bookingMode === 'stripe-connect' ? 'Book & pay' : 'Book'}</Text>}</Pressable>
+                <View style={styles.flex}><Text style={styles.sponsored}>SPONSORED PAID COLLECTION</Text><Text style={styles.cardTitle}>{partner.name}</Text><Text style={styles.cardBody}>{partner.description}</Text>{partner.bookingPricePence ? <Text style={styles.price}>{money(partner.bookingPricePence * quantity)}</Text> : <Text style={styles.cardBody}>Price confirmed by provider</Text>}{partner.bookingMode === 'stripe-connect' ? <Text style={styles.marketplaceNote}>Pay What Bin securely. We confirm the collector and release their payout after collection.</Text> : null}{partner.providerAcceptanceSlaHours ? <Text style={styles.cardBody}>Provider response within {partner.providerAcceptanceSlaHours} hours.</Text> : null}{partner.termsUrl ? <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(partner.termsUrl!)}><Text style={styles.termsLink}>Booking terms</Text></Pressable> : null}</View>
+                <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => void begin(partner.id)} style={styles.optionButton}>{busy === partner.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.optionButtonText}>{partner.bookingMode === 'stripe-connect' ? 'Book in app' : 'Book'}</Text>}</Pressable>
               </View>
             ))}
             {!partners?.length ? <View style={styles.noPartners}><Ionicons color={theme.secondaryText} name="shield-checkmark-outline" size={20} /><Text style={styles.noPartnersText}>No paid bulky-waste partner is approved for this council yet. Only the official and reuse routes are shown.</Text></View> : null}
           </View>
 
-          <View style={styles.privacyCard}><Ionicons color={theme.secondaryText} name="lock-closed-outline" size={19} /><Text style={styles.privacyText}>What Bin records an anonymous booking reference, item type and booking outcome. We do not copy your name, contact details, postcode or collection address into our booking ledger. Stripe or your chosen provider collects the details needed to fulfil the booking.</Text></View>
+          <View style={styles.privacyCard}><Ionicons color={theme.secondaryText} name="lock-closed-outline" size={19} /><Text style={styles.privacyText}>What Bin records an anonymous booking reference, item type, amount and outcome. Stripe securely holds the contact and collection-address details needed for fulfilment. What Bin confirms the approved collector, refunds you if they decline, and releases their payout after the collection is completed.</Text></View>
         </ScrollView>
       </View>
     </AppShell>
@@ -168,6 +211,8 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     cardTitle: { color: theme.text, fontFamily: appFonts.text, fontSize: 16, lineHeight: 20, fontWeight: '700' },
     cardBody: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, lineHeight: 18 },
     price: { color: theme.text, fontFamily: appFonts.text, fontSize: 15, fontWeight: '800', marginTop: 3 },
+    marketplaceNote: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
+    termsLink: { color: theme.accent, fontFamily: appFonts.text, fontSize: 12, fontWeight: '700', marginTop: 2 },
     optionButton: { minWidth: 76, minHeight: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
     optionButtonText: { color: '#FFFFFF', fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
     noPartners: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 14, borderRadius: 14, backgroundColor: theme.groupedBackground },
@@ -175,5 +220,7 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     privacyCard: { marginHorizontal: 16, marginBottom: 24, padding: 15, borderRadius: 16, backgroundColor: theme.groupedBackground, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     privacyText: { flex: 1, color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 18 },
     successCard: { marginHorizontal: 16, marginBottom: 20, padding: 15, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.success, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    statusButton: { minHeight: 34, marginTop: 5, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6 },
+    statusButtonText: { color: theme.accent, fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
   });
 }

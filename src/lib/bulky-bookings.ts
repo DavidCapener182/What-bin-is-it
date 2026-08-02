@@ -20,6 +20,11 @@ export type BulkyBookingStatus = {
   partnerName?: string;
   startedAt: string;
   confirmedAt?: string;
+  providerAcceptedAt?: string;
+  scheduledFor?: string;
+  completedAt?: string;
+  payoutReleasedAt?: string;
+  refundedAt?: string;
 };
 
 async function payloadOrError<T>(response: Response): Promise<T> {

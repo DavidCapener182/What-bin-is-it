@@ -61,3 +61,22 @@ test('the database ledger is Bin-prefixed, private and excludes resident contact
     /\b(resident_name|resident_email|telephone|phone_number|postcode|street_address|uprn)\b\s+(?:varchar|text)/i,
   );
 });
+
+test('paid bulky collections hold provider funds until collection completion', async () => {
+  const [migration, server, residentScreen] = await Promise.all([
+    readFile(new URL('../supabase/migrations/20260802131152_sponsored_bulky_marketplace.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../server/lib/bulky-bookings.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/bulky-booking.tsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(migration, /create table if not exists public\.bin_bulky_booking_events/);
+  assert.match(migration, /'awaiting-provider'/);
+  assert.match(migration, /stripe_transfer_id/);
+  assert.match(migration, /revoke all on table public\.bin_bulky_booking_events from anon, authenticated/);
+  assert.match(server, /transfer_group: reference/);
+  assert.doesNotMatch(server, /transfer_data\s*:/);
+  assert.match(server, /FOR UPDATE/);
+  assert.match(server, /'awaiting-provider' AND status IN \('started', 'checkout-created', 'payment-pending', 'payment-failed'\)/);
+  assert.match(residentScreen, /SPONSORED PAID COLLECTION/);
+  assert.match(residentScreen, /We confirm the collector and release their payout after collection/);
+  assert.match(residentScreen, /Refresh status/);
+});

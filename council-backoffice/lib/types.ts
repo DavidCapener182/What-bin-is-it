@@ -147,6 +147,8 @@ export type CouncilPartner = {
   bookingPricePence?: number;
   platformFeePence?: number;
   stripeAccountId?: string;
+  providerAcceptanceSlaHours: number;
+  termsUrl?: string;
   priority: number;
   licenceReference?: string;
   supportedAreaLabels: string[];
@@ -176,8 +178,17 @@ export type CouncilBulkyBooking = {
   platformFeePence?: number;
   status: string;
   providerReference?: string;
+  paymentIntentId?: string;
   startedAt: string;
   confirmedAt?: string;
+  providerAcceptedAt?: string;
+  providerDeclinedAt?: string;
+  scheduledFor?: string;
+  completedAt?: string;
+  payoutReleasedAt?: string;
+  refundedAt?: string;
+  payoutReleased: boolean;
+  refunded: boolean;
 };
 
 export type CouncilSponsorshipProgramme = {

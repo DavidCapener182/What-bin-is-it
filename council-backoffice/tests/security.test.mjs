@@ -146,3 +146,28 @@ test("the council console exposes an installable privacy-safe PWA", async () => 
   assert.match(proxy, /sw\.js/);
   assert.match(iconRoute, /ImageResponse/);
 });
+
+test("sponsored collection money movement is restricted to platform superadmins", async () => {
+  const [actions, data, payments, partnerPage] = await Promise.all([
+    readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/marketplace-payments.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(console)/partners/page.tsx", import.meta.url), "utf8"),
+  ]);
+
+  for (const action of [
+    "acceptMarketplaceBulkyBookingAction",
+    "declineMarketplaceBulkyBookingAction",
+    "completeMarketplaceBulkyBookingAction",
+  ]) {
+    assert.match(actions, new RegExp(`${action}[\\s\\S]*?requirePlatformAdminAction\\(\\)`));
+  }
+  assert.match(data, /assertMarketplaceSuperadmin/);
+  assert.match(data, /current\.booking_mode === "stripe-connect" && !session\.platformAdmin/);
+  assert.match(data, /status = 'scheduled'/);
+  assert.match(data, /stripe_transfer_id IS NULL/);
+  assert.match(payments, /source_transaction: input\.chargeId/);
+  assert.match(payments, /idempotencyKey: `bulky-payout-/);
+  assert.match(payments, /idempotencyKey: `bulky-refund-/);
+  assert.match(partnerPage, /SPONSORED PAID COLLECTION|controlled marketplace/i);
+});

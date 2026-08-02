@@ -30,7 +30,10 @@ import {
   createDisruption,
   createPartner,
   createSponsorshipProgramme,
+  acceptMarketplaceBulkyBooking,
+  completeMarketplaceBulkyBooking,
   confirmExternalBulkyBooking,
+  declineAndRefundMarketplaceBulkyBooking,
   saveCouncilFeatureFlags,
   saveCouncilPilotBaseline,
   saveCouncilOnboardingItem,
@@ -578,6 +581,13 @@ export async function savePartnerAction(formData: FormData) {
         ? integerValue(formData.get("platformFeePence"), "Platform fee", 0, 100000)
         : undefined,
       stripeAccountId: optionalText(formData.get("stripeAccountId"), 255),
+      providerAcceptanceSlaHours: integerValue(
+        formData.get("providerAcceptanceSlaHours"),
+        "Provider acceptance window",
+        1,
+        168,
+      ),
+      termsUrl: safeHttpsUrl(formData.get("termsUrl")),
       priority: integerValue(formData.get("priority"), "Priority", 1, 1000),
       licenceReference: optionalText(formData.get("licenceReference"), 120),
       supportedAreaLabels: splitValues(formData.get("supportedAreaLabels"), 40, 80),
@@ -687,6 +697,53 @@ export async function confirmExternalBulkyBookingAction(formData: FormData) {
     redirect(errorPath(path, error));
   }
   redirect(successPath(path, "The provider-confirmed booking is now included in the evidence ledger."));
+}
+
+export async function acceptMarketplaceBulkyBookingAction(formData: FormData) {
+  const path = "/partners";
+  try {
+    const session = await requirePlatformAdminAction();
+    const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
+    if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
+    await acceptMarketplaceBulkyBooking(
+      session,
+      reference,
+      requiredText(formData.get("providerReference"), "Provider confirmation reference", 160),
+      isoDateTime(formData.get("scheduledFor"), true)!,
+    );
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Provider acceptance recorded and the resident booking is scheduled."));
+}
+
+export async function declineMarketplaceBulkyBookingAction(formData: FormData) {
+  const path = "/partners";
+  try {
+    const session = await requirePlatformAdminAction();
+    const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
+    if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
+    await declineAndRefundMarketplaceBulkyBooking(session, reference);
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Provider decline recorded and the resident payment was refunded."));
+}
+
+export async function completeMarketplaceBulkyBookingAction(formData: FormData) {
+  const path = "/partners";
+  try {
+    const session = await requirePlatformAdminAction();
+    const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
+    if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
+    await completeMarketplaceBulkyBooking(session, reference);
+    revalidatePath(path);
+  } catch (error) {
+    redirect(errorPath(path, error));
+  }
+  redirect(successPath(path, "Collection completed and the provider payout was released."));
 }
 
 export async function saveSponsorshipProgrammeAction(formData: FormData) {
