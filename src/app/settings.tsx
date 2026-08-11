@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Href, router } from 'expo-router';
-import { useState } from 'react';
 import {
   Alert,
   Platform,
@@ -17,19 +16,16 @@ import { AppShell } from '@/components/app-shell';
 import { PwaSettingsCard } from '@/components/pwa-settings-card';
 import { HomeScreenWidgetCard } from '@/components/home-screen-widget-card';
 import { RouteHead } from '@/components/route-head';
-import { collectionMeta, wasteTypes } from '@/lib/data';
 import { residentPaymentsEnabled } from '@/lib/commercial-offer';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { useAppTheme } from '@/lib/theme';
-import { AppearancePreference, PlaceReminderPreferences, WasteType } from '@/lib/types';
+import { AppearancePreference } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
 import { useAccount } from '@/lib/use-account';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
 import { useSubscription } from '@/lib/use-subscription';
 import { useCouncilProfile } from '@/lib/use-council-profile';
-
-const times = [18, 19, 20, 21];
 
 function Row({
   icon,
@@ -98,14 +94,10 @@ function ToggleRow({
 export default function SettingsScreen() {
   const theme = useAppTheme();
   const {
-    preferences,
     addresses,
     activeAddress,
-    collections,
     sourceStatus,
     lastVerifiedAt,
-    updatePreferences,
-    toggleWasteType,
     refreshCollections,
     clearAllAppData,
   } = useAppData();
@@ -119,24 +111,13 @@ export default function SettingsScreen() {
     reports,
     history,
     reminderPreferencesFor,
-    updatePlaceReminders,
     clearProductData,
   } = useProductState();
-  const [busy, setBusy] = useState(false);
   const subscription = useSubscription();
   const account = useAccount();
   const analytics = usePilotAnalytics();
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const placePreferences = reminderPreferencesFor(activeAddress?.id);
-  const presentWasteTypes = new Set(collections.map((collection) => collection.wasteType));
-  const relevantWasteTypes = collections.length
-    ? wasteTypes.filter((type) => presentWasteTypes.has(type))
-    : [];
-
-  function updatePlace(next: Partial<PlaceReminderPreferences>) {
-    if (!activeAddress) return;
-    updatePlaceReminders(activeAddress.id, next);
-  }
 
   function withPlus(action: () => void) {
     if (!residentPaymentsEnabled() || subscription.isPlus) {
@@ -144,29 +125,6 @@ export default function SettingsScreen() {
       return;
     }
     router.push('/plus');
-  }
-
-  async function changeNotifications(next: boolean) {
-    if (!activeAddress) {
-      router.push('/places');
-      return;
-    }
-    setBusy(true);
-    try {
-      if (next) {
-        const permission = await requestNotificationPermission();
-        if (!permission.granted) {
-          Alert.alert('Notifications are not ready', permission.reason);
-          return;
-        }
-      }
-      updatePlace({ enabled: next });
-      updatePreferences({ enabled: next });
-    } catch {
-      Alert.alert('Could not update reminders', 'Please try again.');
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function changeLiveCollectionSurface(next: boolean) {
@@ -186,27 +144,6 @@ export default function SettingsScreen() {
     } catch {
       Alert.alert('Could not enable bin-night status', 'Please try again.');
     }
-  }
-
-  function changeReminderTime(hour: number, minute = 0) {
-    updatePlace({ reminderHour: hour, reminderMinute: minute });
-    updatePreferences({ reminderHour: hour, reminderMinute: minute });
-  }
-
-  function adjustReminderTime(amountMinutes: number) {
-    const current = placePreferences.reminderHour * 60 + placePreferences.reminderMinute;
-    const next = (current + amountMinutes + (24 * 60)) % (24 * 60);
-    changeReminderTime(Math.floor(next / 60), next % 60);
-  }
-
-  function changeWasteType(type: WasteType) {
-    updatePlace({
-      wasteTypes: {
-        ...placePreferences.wasteTypes,
-        [type]: !placePreferences.wasteTypes[type],
-      },
-    });
-    if (preferences.wasteTypes[type] === placePreferences.wasteTypes[type]) toggleWasteType(type);
   }
 
   function confirmClear() {
@@ -266,122 +203,17 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Reminders for {activeAddress?.label ?? 'a saved place'}</Text>
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-              <ToggleRow
-                detail={activeAddress ? 'Alert before verified collections at this place.' : 'Add an address first.'}
-                disabled={busy || !activeAddress}
-                onChange={(value) => void changeNotifications(value)}
-                title="Bin-night reminder"
-                value={activeAddress ? placePreferences.enabled : false}
-              />
-              <ToggleRow
-                detail={`Optional ${placePreferences.morningHour}:00 prompt on collection morning.`}
-                disabled={!placePreferences.enabled}
-                onChange={(morningReminder) => withPlus(() => updatePlace({ morningReminder }))}
-                title="Morning reminder"
-                value={placePreferences.morningReminder}
-              />
-              <ToggleRow
-                detail={`A second prompt at ${placePreferences.secondReminderHour}:00 if the bin is not marked out.`}
-                disabled={!placePreferences.enabled}
-                onChange={(secondReminder) => withPlus(() => updatePlace({ secondReminder }))}
-                title="Second reminder"
-                value={placePreferences.secondReminder}
-              />
-              <ToggleRow
-                detail="Ask whether the collection was completed after the collection window."
-                disabled={!placePreferences.enabled}
-                onChange={(collectionFollowUp) => withPlus(() => updatePlace({ collectionFollowUp }))}
-                title="Collection follow-up"
-                value={placePreferences.collectionFollowUp}
-              />
-              <ToggleRow
-                detail="Notify when a newly verified date differs from the saved schedule."
-                disabled={!placePreferences.enabled}
-                onChange={(collectionChangeAlerts) => updatePlace({ collectionChangeAlerts })}
-                title="Date-change alerts"
-                value={placePreferences.collectionChangeAlerts}
-              />
-              <ToggleRow
-                detail="Notify only when a verified council service alert is available."
-                disabled={!placePreferences.enabled}
-                onChange={(disruptionAlerts) => updatePlace({ disruptionAlerts })}
-                title="Disruption alerts"
-                value={placePreferences.disruptionAlerts}
-              />
-              <ToggleRow
-                detail="Follow-up reminder when a council recollection date is recorded."
-                disabled={!placePreferences.enabled}
-                onChange={(recollectionAlerts) => updatePlace({ recollectionAlerts })}
-                title="Recollection alerts"
-                value={placePreferences.recollectionAlerts}
+              <Row
+                detail={!activeAddress
+                  ? 'Add an address first'
+                  : !placePreferences.enabled
+                    ? 'Off'
+                    : `${placePreferences.reminderDayOffset ? 'Day before' : 'Collection day'} · ${String(placePreferences.reminderHour).padStart(2, '0')}:${String(placePreferences.reminderMinute).padStart(2, '0')} · ${Object.values(placePreferences.wasteTypes).filter(Boolean).length} bin types`}
+                icon="notifications-outline"
+                onPress={() => activeAddress ? router.push('/reminder-settings' as Href) : router.push('/places')}
+                title="Bin reminders"
               />
             </View>
-
-            <Text style={[styles.inlineLabel, { color: theme.secondaryText }]}>Evening reminder time</Text>
-            <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
-              {([
-                [1, 'Day before'],
-                [0, 'Collection day'],
-              ] as const).map(([value, label]) => (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: placePreferences.reminderDayOffset === value, disabled: !placePreferences.enabled }}
-                  disabled={!placePreferences.enabled}
-                  key={value}
-                  onPress={() => updatePlace({ reminderDayOffset: value })}
-                  style={[styles.segmentOption, placePreferences.reminderDayOffset === value && { backgroundColor: theme.surface }]}>
-                  <Text style={[styles.segmentText, { color: placePreferences.reminderDayOffset === value ? theme.accent : theme.secondaryText }]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
-              {times.map((hour) => (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0, disabled: !placePreferences.enabled }}
-                  disabled={!placePreferences.enabled}
-                  key={hour}
-                  onPress={() => changeReminderTime(hour)}
-                  style={[styles.segmentOption, placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0 && { backgroundColor: theme.surface }]}>
-                  <Text style={[styles.segmentText, { color: placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0 ? theme.accent : theme.secondaryText }]}>{hour}:00</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={[styles.timeStepper, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-              <Pressable accessibilityLabel="Set reminder 15 minutes earlier" accessibilityRole="button" disabled={!placePreferences.enabled} onPress={() => adjustReminderTime(-15)} style={styles.timeButton}>
-                <Ionicons color={theme.accent} name="remove" size={21} />
-              </Pressable>
-              <View style={styles.timeCopy}>
-                <Text style={[styles.timeTitle, { color: theme.text }]}>Custom time</Text>
-                <Text style={[styles.timeValue, { color: theme.secondaryText }]}>{String(placePreferences.reminderHour).padStart(2, '0')}:{String(placePreferences.reminderMinute).padStart(2, '0')}</Text>
-              </View>
-              <Pressable accessibilityLabel="Set reminder 15 minutes later" accessibilityRole="button" disabled={!placePreferences.enabled} onPress={() => adjustReminderTime(15)} style={styles.timeButton}>
-                <Ionicons color={theme.accent} name="add" size={21} />
-              </Pressable>
-            </View>
-
-            {relevantWasteTypes.length ? (
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-                {relevantWasteTypes.map((type) => (
-                  <Pressable
-                    accessibilityRole="switch"
-                    accessibilityState={{ checked: placePreferences.wasteTypes[type] }}
-                    key={type}
-                    onPress={() => changeWasteType(type)}
-                    style={[styles.binRow, { borderBottomColor: theme.separator }]}>
-                    <View style={[styles.dot, { backgroundColor: collectionMeta[type].colour }]} />
-                    <Text style={[styles.binLabel, { color: theme.text }]}>{collectionMeta[type].label}</Text>
-                    <Switch
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                      pointerEvents="none"
-                      trackColor={{ false: theme.tertiaryText, true: theme.accent }}
-                      value={placePreferences.wasteTypes[type]}
-                    />
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
           </View>
 
           {residentPaymentsEnabled() || Platform.OS === 'web' ? (

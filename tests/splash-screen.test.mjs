@@ -8,7 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = JSON.parse(readFileSync(resolve(root, 'app.json'), 'utf8')).expo;
 const splash = app.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen')?.[1];
 
-test('uses a simple native logo splash and keeps the illustrated artwork for the in-app handoff', () => {
+test('uses one simple native logo splash with a brief handoff to the first rendered screen', () => {
   assert.equal(splash.backgroundColor, '#F2F2F7');
   assert.equal(splash.image, './assets/images/splash-icon.png');
   assert.equal(splash.imageWidth, 160);
@@ -17,11 +17,9 @@ test('uses a simple native logo splash and keeps the illustrated artwork for the
   assert.equal(splash.dark.backgroundColor, '#1C1C1E');
   assert.equal(splash.dark.image, './assets/images/splash-icon-dark.png');
 
-  const component = readFileSync(resolve(root, 'src/components/launch-splash.tsx'), 'utf8');
   const layout = readFileSync(resolve(root, 'src/app/_layout.tsx'), 'utf8');
-  assert.match(component, /launch-splash\.png/);
-  assert.match(component, /resizeMode="cover"/);
-  assert.match(layout, /<LaunchSplash \/>/);
+  assert.doesNotMatch(layout, /LaunchSplash/);
+  assert.match(layout, /SplashScreen\.setOptions\(\{ duration: 400, fade: true \}\)/);
 });
 
 test('wires the supplied branded icon set to both stores', () => {

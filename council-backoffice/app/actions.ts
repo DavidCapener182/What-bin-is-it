@@ -104,6 +104,24 @@ function checked(formData: FormData, name: string) {
   return formData.get(name) === "yes";
 }
 
+function assertExpectedOrganisation(
+  formData: FormData,
+  session: Awaited<ReturnType<typeof requireCouncilAction>>,
+) {
+  const expectedOrganisationId = assertUuid(
+    requiredText(formData.get("expectedOrganisationId"), "Selected council", 36),
+  );
+  if (expectedOrganisationId !== session.organisation.id) {
+    throw new Error("The selected council changed. Reload this page before confirming the action.");
+  }
+}
+
+function assertHighRiskConfirmation(formData: FormData) {
+  if (!checked(formData, "confirmCouncilAction")) {
+    throw new Error("Confirm the selected council and action before continuing.");
+  }
+}
+
 function broadcastAudience(
   formData: FormData,
   defaultCollectionTypes: string[] = [],
@@ -386,6 +404,8 @@ export async function saveAnnouncementAction(formData: FormData) {
     const status = allowedValue(formData.get("status"), ["draft", "published"] as const, "Status");
     const sendPush = status === "published" && checked(formData, "sendPush");
     const session = await requireCouncilAction("content:write");
+    assertExpectedOrganisation(formData, session);
+    if (status === "published") assertHighRiskConfirmation(formData);
     if (status === "published") assertCouncilPermission(session.role, "content:publish");
     const placements = selectedValues(formData, "placements");
     const supportedPlacements = placements.filter((placement) => (
@@ -426,6 +446,8 @@ export async function changeAnnouncementStatusAction(formData: FormData) {
   try {
     const status = allowedValue(formData.get("status"), ["published", "archived"] as const, "Status");
     const session = await requireCouncilAction("content:publish");
+    assertExpectedOrganisation(formData, session);
+    if (status === "published") assertHighRiskConfirmation(formData);
     const sendPush = status === "published" && checked(formData, "sendPush");
     assertAudienceConfirmed(formData, sendPush);
     const jobId = await setAnnouncementStatus(
@@ -449,6 +471,8 @@ export async function saveDisruptionAction(formData: FormData) {
     const status = allowedValue(formData.get("status"), ["draft", "published"] as const, "Status");
     const sendPush = status === "published" && checked(formData, "sendPush");
     const session = await requireCouncilAction("content:write");
+    assertExpectedOrganisation(formData, session);
+    if (status === "published") assertHighRiskConfirmation(formData);
     if (status === "published") assertCouncilPermission(session.role, "content:publish");
     const collectionTypes = selectedValues(formData, "collectionTypes");
     const supportedCollectionTypes = new Set(["all", "general", "recycling", "garden", "food", "other"]);
@@ -497,6 +521,8 @@ export async function changeDisruptionStatusAction(formData: FormData) {
   try {
     const status = allowedValue(formData.get("status"), ["published", "resolved", "archived"] as const, "Status");
     const session = await requireCouncilAction("content:publish");
+    assertExpectedOrganisation(formData, session);
+    if (status === "published") assertHighRiskConfirmation(formData);
     const sendPush = status === "published" && checked(formData, "sendPush");
     assertAudienceConfirmed(formData, sendPush);
     const jobId = await setDisruptionStatus(
@@ -668,6 +694,8 @@ export async function changePartnerStatusAction(formData: FormData) {
   const path = "/partners";
   try {
     const session = await requireCouncilAction("partners:approve");
+    assertExpectedOrganisation(formData, session);
+    assertHighRiskConfirmation(formData);
     await setPartnerStatus(
       session,
       assertUuid(requiredText(formData.get("id"), "Partner", 36)),
@@ -703,6 +731,8 @@ export async function acceptMarketplaceBulkyBookingAction(formData: FormData) {
   const path = "/partners";
   try {
     const session = await requirePlatformAdminAction();
+    assertExpectedOrganisation(formData, session);
+    assertHighRiskConfirmation(formData);
     const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
     if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
     await acceptMarketplaceBulkyBooking(
@@ -722,6 +752,8 @@ export async function declineMarketplaceBulkyBookingAction(formData: FormData) {
   const path = "/partners";
   try {
     const session = await requirePlatformAdminAction();
+    assertExpectedOrganisation(formData, session);
+    assertHighRiskConfirmation(formData);
     const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
     if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
     await declineAndRefundMarketplaceBulkyBooking(session, reference);
@@ -736,6 +768,8 @@ export async function completeMarketplaceBulkyBookingAction(formData: FormData) 
   const path = "/partners";
   try {
     const session = await requirePlatformAdminAction();
+    assertExpectedOrganisation(formData, session);
+    assertHighRiskConfirmation(formData);
     const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
     if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
     await completeMarketplaceBulkyBooking(session, reference);

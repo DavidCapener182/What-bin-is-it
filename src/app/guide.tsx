@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
@@ -47,25 +47,13 @@ function localDestination(item: GuideItem, collections: Collection[], councilNam
 
 function GuideResult({
   item,
-  expanded,
-  onPress,
-  collections,
-  councilName,
-  findService,
-  partners,
-  openPartner,
+  onOpen,
   query,
   saved,
   toggleSaved,
 }: {
   item: GuideItem;
-  expanded: boolean;
-  onPress: () => void;
-  collections: Collection[];
-  councilName?: string;
-  findService: (item: GuideItem) => void;
-  partners?: CouncilProfile['partners'];
-  openPartner: (partner: NonNullable<CouncilProfile['partners']>[number], item: GuideItem) => void;
+  onOpen: () => void;
   query: string;
   saved: boolean;
   toggleSaved: () => void;
@@ -74,81 +62,150 @@ function GuideResult({
   const styles = createStyles(theme);
   const colour = destinationColour(item.destination, theme);
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={onPress} style={({ pressed }) => [styles.guideItem, expanded && styles.guideItemOpen, pressed && styles.pressed]}>
-      <View style={[styles.guideIcon, { backgroundColor: theme.groupedBackground }]}><Ionicons color={colour.colour} name={item.icon as keyof typeof Ionicons.glyphMap} size={22} /></View>
-      <View style={styles.guideCopy}>
-        <Text style={styles.guideName}>
-          {(() => {
-            const needle = query.trim();
-            const index = needle ? item.name.toLowerCase().indexOf(needle.toLowerCase()) : -1;
-            if (index < 0) return item.name;
-            return <>
-              {item.name.slice(0, index)}
-              <Text style={styles.highlight}>{item.name.slice(index, index + needle.length)}</Text>
-              {item.name.slice(index + needle.length)}
-            </>;
-          })()}
-        </Text>
-        <Text style={[styles.destination, { color: colour.colour }]}>{destinationLabel[item.destination]}</Text>
-        {expanded && <>
-          <Pressable accessibilityRole="button" accessibilityState={{ selected: saved }} onPress={(event) => { event.stopPropagation(); toggleSaved(); }} style={styles.saveItemButton}>
-            <Ionicons color={theme.accent} name={saved ? 'bookmark' : 'bookmark-outline'} size={17} />
-            <Text style={styles.inlineServiceText}>{saved ? 'Saved for later' : 'Save this item'}</Text>
-          </Pressable>
-          <Text style={styles.guideHeading}>What to do</Text>
-          <Text style={styles.guideDetail}>{item.heading}</Text>
-          <Text style={styles.guideHeading}>Prepare it</Text>
-          <Text style={styles.guideDetail}>{item.detail}</Text>
-          <Text style={styles.guideHeading}>Why this route</Text>
-          <Text style={styles.guideDetail}>
-            {item.destination === 'service'
-              ? 'It needs a specialist, retailer, reuse, or council drop-off route rather than a household bin.'
-              : item.destination === 'check'
-                ? 'UK councils use different collection containers and sorting systems for this material.'
-                : `This material is commonly handled through ${destinationLabel[item.destination].toLowerCase()}.`}
+    <View style={styles.guideItem}>
+      <Pressable
+        accessibilityHint="Opens disposal and preparation guidance"
+        accessibilityLabel={`${item.name}. ${destinationLabel[item.destination]}`}
+        accessibilityRole="button"
+        onPress={onOpen}
+        style={({ pressed }) => [styles.guideItemMain, pressed && styles.pressed]}>
+        <View style={[styles.guideIcon, { backgroundColor: theme.groupedBackground }]}><Ionicons color={colour.colour} name={item.icon as keyof typeof Ionicons.glyphMap} size={22} /></View>
+        <View style={styles.guideCopy}>
+          <Text style={styles.guideName}>
+            {(() => {
+              const needle = query.trim();
+              const index = needle ? item.name.toLowerCase().indexOf(needle.toLowerCase()) : -1;
+              if (index < 0) return item.name;
+              return <>
+                {item.name.slice(0, index)}
+                <Text style={styles.highlight}>{item.name.slice(index, index + needle.length)}</Text>
+                {item.name.slice(index + needle.length)}
+              </>;
+            })()}
           </Text>
-          <View style={styles.localNote}><Ionicons color={theme.secondaryText} name="location-outline" size={14} /><Text style={styles.localNoteText}>{localDestination(item, collections, councilName)}</Text></View>
-          {item.destination === 'service' || item.destination === 'check' ? (
-            <Pressable accessibilityRole="button" onPress={() => findService(item)} style={styles.inlineServiceButton}>
-              <Ionicons color={theme.accent} name="map-outline" size={17} />
-              <Text style={styles.inlineServiceText}>Find a nearby service</Text>
-            </Pressable>
-          ) : null}
-          {partners?.length ? (
-            <View style={styles.partnerGroup}>
-              <Text style={styles.guideHeading}>Partner services</Text>
-              <Text style={styles.partnerPolicy}>Council and free options come first. These commercial services match this item.</Text>
-              {partners.map((partner) => (
-                <Pressable
-                  accessibilityLabel={`Open ${partner.name}, ${partner.disclosureLabel}`}
-                  accessibilityRole="link"
-                  key={partner.id}
-                  onPress={() => openPartner(partner, item)}
-                  style={styles.partnerCard}>
-                  <View style={styles.partnerCopy}>
-                    <Text style={styles.partnerDisclosure}>{partner.disclosureLabel}</Text>
-                    <Text style={styles.partnerName}>{partner.name}</Text>
-                    <Text style={styles.partnerDetail}>{partner.description}</Text>
-                  </View>
-                  <Ionicons color={theme.accent} name="open-outline" size={18} />
-                </Pressable>
-              ))}
+          <Text style={[styles.destination, { color: colour.colour }]}>{destinationLabel[item.destination]}</Text>
+        </View>
+        <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
+      </Pressable>
+      <Pressable
+        accessibilityLabel={saved ? `Remove ${item.name} from saved items` : `Save ${item.name}`}
+        accessibilityRole="button"
+        accessibilityState={{ selected: saved }}
+        onPress={toggleSaved}
+        style={({ pressed }) => [styles.guideSaveButton, pressed && styles.pressed]}>
+        <Ionicons color={saved ? theme.accent : theme.secondaryText} name={saved ? 'bookmark' : 'bookmark-outline'} size={20} />
+      </Pressable>
+    </View>
+  );
+}
+
+function GuideDetailSheet({
+  item,
+  collections,
+  councilName,
+  findService,
+  partners,
+  openPartner,
+  saved,
+  toggleSaved,
+  onClose,
+}: {
+  item?: GuideItem;
+  collections: Collection[];
+  councilName?: string;
+  findService: (item: GuideItem) => void;
+  partners?: CouncilProfile['partners'];
+  openPartner: (partner: NonNullable<CouncilProfile['partners']>[number], item: GuideItem) => void;
+  saved: boolean;
+  toggleSaved: () => void;
+  onClose: () => void;
+}) {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
+  if (!item) return null;
+  const colour = destinationColour(item.destination, theme);
+  return (
+    <Modal
+      animationType="slide"
+      onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      transparent
+      visible>
+      <View accessibilityViewIsModal style={styles.sheetOverlay}>
+        <Pressable accessibilityLabel="Close item guidance" accessibilityRole="button" onPress={onClose} style={styles.sheetBackdrop} />
+        <SafeAreaView edges={['bottom']} style={styles.detailSheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={[styles.sheetIcon, { backgroundColor: theme.groupedBackground }]}>
+              <Ionicons color={colour.colour} name={item.icon as keyof typeof Ionicons.glyphMap} size={25} />
             </View>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push({
-              pathname: '/report-incorrect',
-              params: { issue: 'guide-problem', detail: `Guide item: ${item.name}` },
-            })}
-            style={styles.inlineServiceButton}>
-            <Ionicons color={theme.accent} name="flag-outline" size={17} />
-            <Text style={styles.inlineServiceText}>Report incorrect guidance</Text>
-          </Pressable>
-        </>}
+            <View style={styles.guideCopy}>
+              <Text style={styles.sheetTitle}>{item.name}</Text>
+              <Text style={[styles.sheetDestination, { color: colour.colour }]}>{destinationLabel[item.destination]}</Text>
+            </View>
+            <Pressable accessibilityLabel="Close" accessibilityRole="button" onPress={onClose} style={styles.sheetClose}>
+              <Ionicons color={theme.secondaryText} name="close" size={21} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
+            <Pressable accessibilityRole="button" accessibilityState={{ selected: saved }} onPress={toggleSaved} style={styles.sheetSaveButton}>
+              <Ionicons color={theme.accent} name={saved ? 'bookmark' : 'bookmark-outline'} size={18} />
+              <Text style={styles.inlineServiceText}>{saved ? 'Saved for later' : 'Save this item'}</Text>
+            </Pressable>
+            <Text style={styles.guideHeading}>What to do</Text>
+            <Text style={styles.guideDetail}>{item.heading}</Text>
+            <Text style={styles.guideHeading}>Prepare it</Text>
+            <Text style={styles.guideDetail}>{item.detail}</Text>
+            <Text style={styles.guideHeading}>Why this route</Text>
+            <Text style={styles.guideDetail}>
+              {item.destination === 'service'
+                ? 'It needs a specialist, retailer, reuse, or council drop-off route rather than a household bin.'
+                : item.destination === 'check'
+                  ? 'UK councils use different collection containers and sorting systems for this material.'
+                  : `This material is commonly handled through ${destinationLabel[item.destination].toLowerCase()}.`}
+            </Text>
+            <View style={styles.localNote}><Ionicons color={theme.secondaryText} name="location-outline" size={16} /><Text style={styles.localNoteText}>{localDestination(item, collections, councilName)}</Text></View>
+            {item.destination === 'service' || item.destination === 'check' ? (
+              <Pressable accessibilityRole="button" onPress={() => { onClose(); findService(item); }} style={styles.inlineServiceButton}>
+                <Ionicons color={theme.accent} name="map-outline" size={18} />
+                <Text style={styles.inlineServiceText}>Find a nearby service</Text>
+              </Pressable>
+            ) : null}
+            {partners?.length ? (
+              <View style={styles.partnerGroup}>
+                <Text style={styles.guideHeading}>Partner services</Text>
+                <Text style={styles.partnerPolicy}>Council and free options come first. These commercial services match this item.</Text>
+                {partners.map((partner) => (
+                  <Pressable
+                    accessibilityLabel={`${partner.category === 'bulky-waste' ? 'Compare booking options for' : 'Open'} ${partner.name}, ${partner.disclosureLabel}`}
+                    accessibilityRole="button"
+                    key={partner.id}
+                    onPress={() => { onClose(); openPartner(partner, item); }}
+                    style={styles.partnerCard}>
+                    <View style={styles.partnerCopy}>
+                      <Text style={styles.partnerDisclosure}>{partner.disclosureLabel}</Text>
+                      <Text style={styles.partnerName}>{partner.name}</Text>
+                      <Text style={styles.partnerDetail}>{partner.description}</Text>
+                    </View>
+                    <Ionicons color={theme.accent} name={partner.category === 'bulky-waste' ? 'chevron-forward' : 'open-outline'} size={18} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                onClose();
+                router.push({ pathname: '/report-incorrect', params: { issue: 'guide-problem', detail: `Guide item: ${item.name}` } });
+              }}
+              style={styles.inlineServiceButton}>
+              <Ionicons color={theme.accent} name="flag-outline" size={18} />
+              <Text style={styles.inlineServiceText}>Report incorrect guidance</Text>
+            </Pressable>
+          </ScrollView>
+        </SafeAreaView>
       </View>
-      <Ionicons color={theme.tertiaryText} name={expanded ? 'chevron-up' : 'chevron-down'} size={18} />
-    </Pressable>
+    </Modal>
   );
 }
 
@@ -260,14 +317,14 @@ export default function GuideScreen() {
   }
 
   function selectGuideItem(item: GuideItem) {
-    setSelected(selected === item.id ? undefined : item.id);
+    setSelected(item.id);
     setRecent((current) => [item.name, ...current.filter((name) => name !== item.name)].slice(0, 4));
     analytics.track('guide_result_selected', {
       councilId: activeAddress?.providerId,
       context: item.destination,
       outcome: 'success',
     });
-    if (selected !== item.id && showSponsoredServices) {
+    if (showSponsoredServices) {
       activeCouncilProfile?.partners
         ?.filter((partner) => partner.itemKeys.includes(item.id))
         .forEach((partner) => {
@@ -299,7 +356,12 @@ export default function GuideScreen() {
 
   function openPartner(
     partner: NonNullable<CouncilProfile['partners']>[number],
+    item: GuideItem,
   ) {
+    if (partner.category === 'bulky-waste') {
+      router.push({ pathname: '/bulky-booking', params: { item: item.id, partner: partner.id } });
+      return;
+    }
     void recordPartnerConversion(partner.id, 'website-opened');
     analytics.track('partner_external_opened', {
       councilId: activeAddress?.providerId,
@@ -402,17 +464,9 @@ export default function GuideScreen() {
               <View accessibilityLiveRegion="polite" style={styles.guideHeader}><View><Text style={styles.sectionKicker}>{query ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : `${guideItemCount} items`}</Text><Text style={styles.sectionTitle}>{query ? 'Best route' : 'Common household items'}</Text></View><View style={styles.checkPill}><Ionicons color={theme.warning} name="alert-circle-outline" size={14} /><Text style={styles.checkText}>Check locally</Text></View></View>
               <View style={styles.guideList}>{results.map((item) => (
                 <GuideResult
-                  collections={collections}
-                  councilName={activeAddress?.councilName}
-                  expanded={selected === item.id}
-                  findService={switchToServices}
                   item={item}
                   key={item.id}
-                  onPress={() => selectGuideItem(item)}
-                  openPartner={openPartner}
-                  partners={showSponsoredServices && activeCouncilProfile?.featureFlags?.partnerServices
-                    ? activeCouncilProfile.partners?.filter((partner) => partner.itemKeys.includes(item.id))
-                    : undefined}
+                  onOpen={() => selectGuideItem(item)}
                   query={query}
                   saved={savedGuideItemIds.includes(item.id)}
                   toggleSaved={() => toggleSavedGuideItem(item.id)}
@@ -448,6 +502,19 @@ export default function GuideScreen() {
             </>
           )}
         </ScrollView>
+        <GuideDetailSheet
+          collections={collections}
+          councilName={activeAddress?.councilName}
+          findService={switchToServices}
+          item={results.find((item) => item.id === selected)}
+          onClose={() => setSelected(undefined)}
+          openPartner={openPartner}
+          partners={showSponsoredServices && activeCouncilProfile?.featureFlags?.partnerServices
+            ? activeCouncilProfile.partners?.filter((partner) => partner.itemKeys.includes(selected ?? ''))
+            : undefined}
+          saved={Boolean(selected && savedGuideItemIds.includes(selected))}
+          toggleSaved={() => { if (selected) toggleSavedGuideItem(selected); }}
+        />
       </View>
     </AppShell>
   );
@@ -472,7 +539,7 @@ function createStyles(theme: AppTheme) {
   guidanceSource: { minHeight: 68, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   guidanceSourceCopy: { flex: 1 },
   guidanceSourceTitle: { color: theme.text, fontSize: 12.5, lineHeight: 17, fontWeight: '700' },
-  guidanceSourceDetail: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, marginTop: 2 },
+  guidanceSourceDetail: { color: theme.secondaryText, fontSize: 12, lineHeight: 17, marginTop: 2 },
   input: { color: theme.text, fontSize: 14, fontWeight: '600', flex: 1, height: '100%' },
   chips: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: -5 },
   chipsLabel: { color: theme.secondaryText, fontSize: 12, letterSpacing: 0.25, fontWeight: '700', marginRight: 2 },
@@ -488,8 +555,9 @@ function createStyles(theme: AppTheme) {
   checkPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: `${theme.warning}14` },
   checkText: { color: theme.warning, fontSize: 12, fontWeight: '700' },
   guideList: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden', backgroundColor: theme.surface },
-  guideItem: { minHeight: 68, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
-  guideItemOpen: { alignItems: 'flex-start', paddingTop: 14, paddingBottom: 15, backgroundColor: theme.elevated },
+  guideItem: { minHeight: 68, flexDirection: 'row', alignItems: 'stretch', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+  guideItemMain: { flex: 1, minHeight: 68, paddingLeft: 13, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  guideSaveButton: { width: 52, minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   guideIcon: { height: 39, width: 39, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   guideCopy: { flex: 1 },
   guideName: { color: theme.text, fontSize: 13.5, fontWeight: '700' },
@@ -503,12 +571,23 @@ function createStyles(theme: AppTheme) {
   saveItemButton: { minHeight: 44, marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   inlineServiceText: { color: theme.accent, fontSize: 13, fontWeight: '700' },
   partnerGroup: { marginTop: 7, gap: 7 },
-  partnerPolicy: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, fontWeight: '600' },
+  partnerPolicy: { color: theme.secondaryText, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   partnerCard: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 2, padding: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, borderRadius: 12, backgroundColor: theme.surface },
   partnerCopy: { flex: 1 },
-  partnerDisclosure: { color: theme.warning, fontSize: 10.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: .35 },
+  partnerDisclosure: { color: theme.warning, fontSize: 12, fontWeight: '800' },
   partnerName: { color: theme.text, fontSize: 13, fontWeight: '800', marginTop: 3 },
-  partnerDetail: { color: theme.secondaryText, fontSize: 11.5, lineHeight: 16, marginTop: 2, fontWeight: '600' },
+  partnerDetail: { color: theme.secondaryText, fontSize: 12, lineHeight: 17, marginTop: 2, fontWeight: '600' },
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.28)' },
+  sheetBackdrop: { position: 'absolute', inset: 0 },
+  detailSheet: { width: '100%', maxWidth: 640, maxHeight: '90%', alignSelf: 'center', backgroundColor: theme.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
+  sheetHandle: { width: 38, height: 5, borderRadius: 3, backgroundColor: theme.separator, alignSelf: 'center', marginTop: 8 },
+  sheetHeader: { minHeight: 78, paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+  sheetIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  sheetTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 21, lineHeight: 26, fontWeight: '700', letterSpacing: -0.35 },
+  sheetDestination: { fontSize: 13, fontWeight: '800', marginTop: 3 },
+  sheetClose: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.groupedBackground },
+  sheetContent: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 28 },
+  sheetSaveButton: { minHeight: 48, marginBottom: 2, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
   empty: { borderRadius: 18, padding: 23, borderWidth: 1, borderStyle: 'dashed', borderColor: theme.separator, alignItems: 'center' },
   emptyTitle: { color: theme.text, fontSize: 13.5, fontWeight: '700', marginTop: 8 },
   emptyText: { color: theme.secondaryText, fontSize: 13, textAlign: 'center', lineHeight: 18, marginTop: 4, maxWidth: 270 },

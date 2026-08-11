@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -32,7 +32,12 @@ const statusLabels: Record<MissedCollectionReport['status'], string> = {
 export default function ReportsScreen() {
   const theme = useAppTheme();
   const { activeAddress } = useAppData();
-  const { reports, updateReport } = useProductState();
+  const {
+    reports,
+    reportStatusSeenById,
+    markReportStatusSeen,
+    updateReport,
+  } = useProductState();
   const [referenceById, setReferenceById] = useState<Record<string, string>>({});
   const [updateById, setUpdateById] = useState<Record<string, string>>({});
   const [recollectionById, setRecollectionById] = useState<Record<string, string>>({});
@@ -40,6 +45,14 @@ export default function ReportsScreen() {
     () => reports.filter((report) => !activeAddress || report.addressId === activeAddress.id),
     [activeAddress, reports],
   );
+
+  useEffect(() => {
+    visibleReports.forEach((report) => {
+      if (reportStatusSeenById[report.id] !== report.status) {
+        markReportStatusSeen(report.id, report.status);
+      }
+    });
+  }, [markReportStatusSeen, reportStatusSeenById, visibleReports]);
 
   function setStatus(report: MissedCollectionReport, status: MissedCollectionReport['status']) {
     updateReport(report.id, {

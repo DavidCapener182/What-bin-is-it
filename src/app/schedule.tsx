@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
@@ -43,6 +43,7 @@ export default function ScheduleScreen() {
   const { outcomeFor } = useProductState();
   const [calendarWasteTypes, setCalendarWasteTypes] = useState<WasteType[]>([...wasteTypes]);
   const [viewMode, setViewMode] = useState<'place' | 'all'>('place');
+  const [showCalendarTools, setShowCalendarTools] = useState(false);
   const online = useOnlineStatus();
   const upcoming = sortCollections(collections).filter((collection) => dayDifference(collection.date) >= 0);
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
@@ -74,9 +75,10 @@ export default function ScheduleScreen() {
     if (url) void Linking.openURL(url);
   }
 
-  function exportOneCollection(collection: typeof upcoming[number]) {
-    if (!activeAddress) return;
-    const url = downloadCollectionCalendar([collection], activeAddress);
+  function exportOneCollection(collection: typeof upcoming[number], address?: SavedAddress) {
+    const place = address ?? activeAddress;
+    if (!place) return;
+    const url = downloadCollectionCalendar([collection], place);
     if (url) void Linking.openURL(url);
   }
 
@@ -122,7 +124,7 @@ export default function ScheduleScreen() {
           edges={['top']}
           style={styles.safe}>
           <Text style={[styles.kicker, { color: theme.accent }]}>Schedule</Text>
-          <Text style={styles.title}>Upcoming collections</Text>
+          <Text style={styles.title}>Next four collections</Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/places')}
@@ -239,7 +241,7 @@ export default function ScheduleScreen() {
                             <Pressable
                               accessibilityLabel={`Add ${meta.label} on ${formatCollectionDate(collection.date, 'weekday')} to calendar`}
                               accessibilityRole="button"
-                              onPress={() => exportOneCollection(collection)}
+                              onPress={() => exportOneCollection(collection, address)}
                               style={styles.rowCalendar}>
                               <Ionicons color={theme.accent} name="calendar-outline" size={19} />
                             </Pressable>
@@ -305,25 +307,10 @@ export default function ScheduleScreen() {
                     <Text style={styles.actionText}>{refreshing ? 'Refreshing…' : 'Refresh council dates'}</Text>
                     <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
                   </Pressable>
-                  <Pressable accessibilityRole="button" onPress={shareSchedule} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
-                    <Ionicons color={theme.accent} name="share-outline" size={21} />
-                    <Text style={styles.actionText}>Share this schedule</Text>
-                    <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
-                  </Pressable>
-                  <Pressable accessibilityRole="button" onPress={() => void copyNextReminder()} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
-                    <Ionicons color={theme.accent} name="copy-outline" size={21} />
-                    <Text style={styles.actionText}>Copy next collection reminder</Text>
-                    <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
-                  </Pressable>
-                  <Pressable accessibilityRole="button" onPress={exportCalendar} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
+                  <Pressable accessibilityRole="button" onPress={() => setShowCalendarTools(true)} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
                     <Ionicons color={theme.accent} name="calendar-outline" size={21} />
-                    <Text style={styles.actionText}>Add to calendar (.ics)</Text>
-                    <Ionicons color={theme.tertiaryText} name="download-outline" size={18} />
-                  </Pressable>
-                  <Pressable accessibilityRole="button" onPress={() => void copySubscription()} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
-                    <Ionicons color={theme.accent} name="link-outline" size={21} />
-                    <Text style={styles.actionText}>Copy live calendar link</Text>
-                    <Ionicons color={theme.tertiaryText} name="copy-outline" size={18} />
+                    <Text style={styles.actionText}>Calendar and sharing</Text>
+                    <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
                   </Pressable>
                 </View>
                 </>
@@ -331,6 +318,42 @@ export default function ScheduleScreen() {
             </>
           )}
         </ScrollView>
+        <Modal animationType="slide" onRequestClose={() => setShowCalendarTools(false)} presentationStyle="pageSheet" visible={showCalendarTools}>
+          <SafeAreaView edges={['top', 'bottom']} style={styles.sheetPage}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeaderButton} />
+              <Text style={styles.sheetTitle}>Calendar and sharing</Text>
+              <Pressable accessibilityLabel="Close calendar and sharing" accessibilityRole="button" onPress={() => setShowCalendarTools(false)} style={styles.sheetHeaderButton}>
+                <Ionicons color={theme.accent} name="close" size={24} />
+              </Pressable>
+            </View>
+            <View style={styles.sheetContent}>
+              <Text style={styles.sheetCopy}>These tools use {activeAddress?.label ?? 'the selected place'} and the bin types selected on Schedule.</Text>
+              <View style={styles.actionsCard}>
+                <Pressable accessibilityRole="button" onPress={() => { setShowCalendarTools(false); void shareSchedule(); }} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
+                  <Ionicons color={theme.accent} name="share-outline" size={21} />
+                  <Text style={styles.actionText}>Share this schedule</Text>
+                  <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => { setShowCalendarTools(false); void copyNextReminder(); }} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
+                  <Ionicons color={theme.accent} name="copy-outline" size={21} />
+                  <Text style={styles.actionText}>Copy next collection reminder</Text>
+                  <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => { setShowCalendarTools(false); exportCalendar(); }} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
+                  <Ionicons color={theme.accent} name="calendar-outline" size={21} />
+                  <Text style={styles.actionText}>Add to calendar (.ics)</Text>
+                  <Ionicons color={theme.tertiaryText} name="download-outline" size={18} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => { setShowCalendarTools(false); void copySubscription(); }} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
+                  <Ionicons color={theme.accent} name="link-outline" size={21} />
+                  <Text style={styles.actionText}>Copy live calendar link</Text>
+                  <Ionicons color={theme.tertiaryText} name="copy-outline" size={18} />
+                </Pressable>
+              </View>
+            </View>
+          </SafeAreaView>
+        </Modal>
       </View>
     </AppShell>
   );
@@ -394,5 +417,11 @@ function createStyles(theme: AppTheme) {
   actionText: { flex: 1, color: theme.text, fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.7, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.55 },
+  sheetPage: { flex: 1, backgroundColor: theme.background },
+  sheetHeader: { minHeight: 58, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+  sheetHeaderButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  sheetTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
+  sheetContent: { padding: 18, gap: 14 },
+  sheetCopy: { color: theme.secondaryText, fontSize: 14, lineHeight: 20 },
   });
 }

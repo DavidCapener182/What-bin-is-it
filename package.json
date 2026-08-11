@@ -4,30 +4,30 @@
   "version": "1.1.0",
   "packageManager": "npm@10.9.8",
   "dependencies": {
-    "@expo/ui": "~57.0.8",
+    "@expo/ui": "~57.0.10",
     "@expo/vector-icons": "^15.0.2",
     "@opentelemetry/api": "^1.9.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.110.8",
-    "expo": "~57.0.9",
+    "expo": "~57.0.12",
     "expo-blur": "~57.0.2",
     "expo-clipboard": "~57.0.1",
     "expo-constants": "~57.0.7",
     "expo-crypto": "~57.0.1",
-    "expo-dev-client": "~57.0.10",
+    "expo-dev-client": "~57.0.11",
     "expo-device": "~57.0.1",
     "expo-font": "~57.0.1",
     "expo-glass-effect": "~57.0.1",
     "expo-haptics": "~57.0.1",
-    "expo-image": "~57.0.1",
+    "expo-image": "~57.0.2",
     "expo-linear-gradient": "~57.0.1",
-    "expo-linking": "~57.0.4",
-    "expo-location": "~57.0.7",
-    "expo-notifications": "~57.0.8",
-    "expo-router": "~57.0.9",
-    "expo-splash-screen": "~57.0.5",
+    "expo-linking": "~57.0.5",
+    "expo-location": "~57.0.9",
+    "expo-notifications": "~57.0.10",
+    "expo-router": "~57.0.12",
+    "expo-splash-screen": "~57.0.6",
     "expo-status-bar": "~57.0.1",
-    "expo-symbols": "~57.0.1",
+    "expo-symbols": "~57.0.2",
     "expo-system-ui": "~57.0.2",
     "expo-web-browser": "~57.0.2",
     "expo-widgets": "~57.0.6",
@@ -69,7 +69,7 @@
     "build:web": "expo export --platform web && node scripts/generate-pwa.mjs",
     "build:server": "nitro build",
     "build": "npm run build:web && npm run build:server",
-    "audit:production": "npm audit --omit=dev --audit-level=high",
+    "audit:production": "node scripts/audit-production.mjs",
     "councils:sync": "node --no-warnings --experimental-strip-types scripts/sync-council-pipeline.mjs",
     "lint": "eslint . --max-warnings=0",
     "store:check": "node scripts/verify-store-readiness.mjs",
@@ -79,9 +79,31 @@
   },
   "overrides": {
     "@swc/cli": {
-      "minimatch": "9.0.8"
+      "minimatch": {
+        ".": "9.0.8",
+        "brace-expansion": "5.0.9"
+      }
+    },
+    "@workflow/core": {
+      "nanoid": "5.1.16"
+    },
+    "@workflow/world-local": {
+      "undici": "7.29.0"
+    },
+    "@workflow/world-vercel": {
+      "undici": "7.29.0"
     },
     "filelist": "2.0.2",
+    "js-yaml": "4.3.1",
+    "minimatch@>=9.0.0": {
+      "brace-expansion": "5.0.9"
+    },
+    "expo-router": {
+      "nanoid": "3.3.17"
+    },
+    "postcss": {
+      "nanoid": "3.3.17"
+    },
     "uuid": "11.1.1"
   },
   "private": true

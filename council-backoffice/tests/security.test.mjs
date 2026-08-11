@@ -10,6 +10,23 @@ import {
   selectedValues,
 } from "../lib/validation.ts";
 
+function exportedAsyncFunctionSource(source, functionName) {
+  const marker = `export async function ${functionName}`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `${functionName} must be exported`);
+  const nextExport = source.indexOf("\nexport async function ", start + marker.length);
+  return source.slice(start, nextExport === -1 ? source.length : nextExport);
+}
+
+function jsxFormSource(source, actionName) {
+  const marker = `<form action={${actionName}`;
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `form for ${actionName} must exist`);
+  const end = source.indexOf("</form>", start);
+  assert.notEqual(end, -1, `form for ${actionName} must be closed`);
+  return source.slice(start, end + "</form>".length);
+}
+
 test("support staff cannot publish or export council data", () => {
   assert.equal(councilRoleCan("support", "content:publish"), false);
   assert.equal(councilRoleCan("support", "analytics:export"), false);
@@ -160,7 +177,7 @@ test("sponsored collection money movement is restricted to platform superadmins"
     "declineMarketplaceBulkyBookingAction",
     "completeMarketplaceBulkyBookingAction",
   ]) {
-    assert.match(actions, new RegExp(`${action}[\\s\\S]*?requirePlatformAdminAction\\(\\)`));
+    assert.match(exportedAsyncFunctionSource(actions, action), /requirePlatformAdminAction\(\)/);
   }
   assert.match(data, /assertMarketplaceSuperadmin/);
   assert.match(data, /current\.booking_mode === "stripe-connect" && !session\.platformAdmin/);
@@ -170,4 +187,74 @@ test("sponsored collection money movement is restricted to platform superadmins"
   assert.match(payments, /idempotencyKey: `bulky-payout-/);
   assert.match(payments, /idempotencyKey: `bulky-refund-/);
   assert.match(partnerPage, /SPONSORED PAID COLLECTION|controlled marketplace/i);
+});
+
+test("high-risk council mutations bind the submitted and authenticated council context", async () => {
+  const [actions, announcementsPage, disruptionsPage, partnersPage] = await Promise.all([
+    readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/(console)/announcements/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(console)/disruptions/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(console)/partners/page.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(actions, /function assertExpectedOrganisation/);
+  assert.match(actions, /expectedOrganisationId !== session\.organisation\.id/);
+  assert.match(actions, /function assertHighRiskConfirmation/);
+  for (const action of [
+    "saveAnnouncementAction",
+    "changeAnnouncementStatusAction",
+    "saveDisruptionAction",
+    "changeDisruptionStatusAction",
+    "changePartnerStatusAction",
+    "acceptMarketplaceBulkyBookingAction",
+    "declineMarketplaceBulkyBookingAction",
+    "completeMarketplaceBulkyBookingAction",
+  ]) {
+    const actionSource = exportedAsyncFunctionSource(actions, action);
+    assert.match(actionSource, /assertExpectedOrganisation\(formData, session\)/);
+    assert.match(actionSource, /assertHighRiskConfirmation\(formData\)/);
+  }
+
+  for (const [page, action] of [
+    [announcementsPage, "saveAnnouncementAction"],
+    [announcementsPage, "changeAnnouncementStatusAction"],
+    [disruptionsPage, "saveDisruptionAction"],
+    [disruptionsPage, "changeDisruptionStatusAction"],
+    [partnersPage, "changePartnerStatusAction"],
+    [partnersPage, "acceptMarketplaceBulkyBookingAction"],
+    [partnersPage, "declineMarketplaceBulkyBookingAction"],
+    [partnersPage, "completeMarketplaceBulkyBookingAction"],
+  ]) {
+    const formSource = jsxFormSource(page, action);
+    assert.match(
+      formSource,
+      /name="expectedOrganisationId"[^>]*value=\{session\.organisation\.id\}/,
+    );
+    assert.match(formSource, /name="confirmCouncilAction"/);
+  }
+});
+
+test("council operational work is queried from real tenant-scoped records", async () => {
+  const [data, overview] = await Promise.all([
+    readFile(new URL("../lib/data.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/council-overview.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(data, /export async function councilOperationalQueue/);
+  for (const table of [
+    "bin_council_disruptions",
+    "bin_council_broadcast_jobs",
+    "bin_gateway_checks",
+    "bin_resident_support_threads",
+    "bin_bulky_bookings",
+    "bin_council_partners",
+  ]) {
+    assert.match(data, new RegExp(table));
+  }
+  assert.match(data, /organisation_id = \$\{organisationId\}::uuid/);
+  assert.match(data, /council_id = \$\{providerId\}/);
+  assert.match(data, /council_provider_id = \$\{providerId\}/);
+  assert.doesNotMatch(data, /operationalQueue[\s\S]*?Math\.random/);
+  assert.match(overview, /Selected council · \{session\.organisation\.name\}/);
+  assert.match(overview, /No evidenced items need action/);
 });

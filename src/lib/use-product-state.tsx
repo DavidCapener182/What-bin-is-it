@@ -71,6 +71,8 @@ type ProductState = {
   incorrectFeedback: IncorrectDataFeedback[];
   supportRequests: SupportRequest[];
   councilNotices: CouncilNoticePreferenceState;
+  reportStatusSeenById: Record<string, string>;
+  supportSeenMessageIdByThreadId: Record<string, string>;
 };
 
 type ProductContextValue = ProductState & {
@@ -98,6 +100,8 @@ type ProductContextValue = ProductState & {
   markCouncilNoticesRead: (noticeIds: string[]) => void;
   archiveCouncilNotice: (noticeId: string) => void;
   setCouncilNoticesMuted: (providerId: string, muted: boolean) => void;
+  markReportStatusSeen: (reportId: string, status: string) => void;
+  markSupportThreadSeen: (threadId: string, messageId: string) => void;
   clearProductData: () => Promise<void>;
 };
 
@@ -118,6 +122,8 @@ function initialState(): ProductState {
     incorrectFeedback: [],
     supportRequests: [],
     councilNotices: { readAtById: {}, archivedAtById: {}, mutedProviderIds: [] },
+    reportStatusSeenById: {},
+    supportSeenMessageIdByThreadId: {},
   };
 }
 
@@ -246,6 +252,8 @@ function hydrate(value: unknown): ProductState {
         ? raw.councilNotices.mutedProviderIds.filter((item): item is string => typeof item === 'string').slice(0, 100)
         : [],
     },
+    reportStatusSeenById: safeStringRecord(raw.reportStatusSeenById),
+    supportSeenMessageIdByThreadId: safeStringRecord(raw.supportSeenMessageIdByThreadId),
   };
 }
 
@@ -593,6 +601,17 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
         mutedProviderIds: muted
           ? [...new Set([...current.councilNotices.mutedProviderIds, providerId])]
           : current.councilNotices.mutedProviderIds.filter((item) => item !== providerId),
+      },
+    })),
+    markReportStatusSeen: (reportId, status) => setState((current) => ({
+      ...current,
+      reportStatusSeenById: { ...current.reportStatusSeenById, [reportId]: status },
+    })),
+    markSupportThreadSeen: (threadId, messageId) => setState((current) => ({
+      ...current,
+      supportSeenMessageIdByThreadId: {
+        ...current.supportSeenMessageIdByThreadId,
+        [threadId]: messageId,
       },
     })),
     clearProductData: async () => {

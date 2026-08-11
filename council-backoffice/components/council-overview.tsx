@@ -1,17 +1,23 @@
 import {
   Activity,
+  ArrowRight,
   BellRing,
+  CheckCircle,
   CheckCircle2,
   RadioTower,
   ShieldCheck,
 } from "lucide-react";
+import Link from "next/link";
 
-import { dashboardMetrics } from "@/lib/data";
+import { councilOperationalQueue, dashboardMetrics } from "@/lib/data";
 import type { CouncilStaffSession } from "@/lib/types";
 import { PageHeader } from "./page-header";
 
 export async function CouncilOverview({ session }: { session: CouncilStaffSession }) {
-  const overview = await dashboardMetrics(session);
+  const [overview, operationalQueue] = await Promise.all([
+    dashboardMetrics(session),
+    councilOperationalQueue(session),
+  ]);
   const pushConfigured = Boolean(
     process.env.COUNCIL_BROADCAST_SECRET?.trim()
     && process.env.RESIDENT_APP_BASE_URL?.trim(),
@@ -32,6 +38,38 @@ export async function CouncilOverview({ session }: { session: CouncilStaffSessio
             <span className="metric-detail">{metric.detail}</span>
           </article>
         ))}
+      </section>
+
+      <section aria-labelledby="operational-queue-title" className="panel operational-queue">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">Selected council · {session.organisation.name}</span>
+            <h2 id="operational-queue-title">Operational queue</h2>
+          </div>
+          <Activity aria-hidden="true" color="#007AFF" size={22} />
+        </div>
+        {operationalQueue.length ? (
+          <div className="operational-queue-list">
+            {operationalQueue.map((item) => (
+              <Link className={`operational-queue-row tone-${item.tone}`} href={item.href} key={item.key}>
+                <span className="operational-queue-count">{item.count}</span>
+                <span className="operational-queue-copy">
+                  <strong>{item.label}</strong>
+                  <span>{item.detail}</span>
+                </span>
+                <ArrowRight aria-hidden="true" size={20} />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="operational-queue-empty">
+            <CheckCircle aria-hidden="true" color="#34C759" size={24} />
+            <div>
+              <strong>No evidenced items need action</strong>
+              <p>The tracked council sources contain no active queue item. This does not replace routine operational checks.</p>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="overview-grid">

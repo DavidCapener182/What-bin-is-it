@@ -76,7 +76,30 @@ test('paid bulky collections hold provider funds until collection completion', a
   assert.doesNotMatch(server, /transfer_data\s*:/);
   assert.match(server, /FOR UPDATE/);
   assert.match(server, /'awaiting-provider' AND status IN \('started', 'checkout-created', 'payment-pending', 'payment-failed'\)/);
-  assert.match(residentScreen, /SPONSORED PAID COLLECTION/);
+  assert.match(residentScreen, /Sponsored · Paid service/);
   assert.match(residentScreen, /We confirm the collector and release their payout after collection/);
+  assert.match(residentScreen, /Review your collection/);
+  assert.match(residentScreen, /Confirm and pay/);
+  assert.match(residentScreen, /If the provider declines, What Bin refunds your payment/);
   assert.match(residentScreen, /Refresh status/);
+});
+
+test('resident disclosures distinguish managed checkout from an external referral', async () => {
+  const residentScreen = await readFile(new URL('../src/app/bulky-booking.tsx', import.meta.url), 'utf8');
+
+  assert.match(
+    residentScreen,
+    /partner\.bookingMode === 'stripe-connect' \? 'Pay What Bin securely\. We confirm the collector and release their payout after collection\.' : 'Payment, cancellation, refunds and terms are handled by the provider\. What Bin only records the referral\.'/,
+  );
+  assert.match(
+    residentScreen,
+    /reviewPartner\.bookingMode === 'stripe-connect' \? 'If the provider declines, What Bin refunds your payment\.' : 'The provider handles payment, cancellation and any refund directly\.'/,
+  );
+  assert.match(
+    residentScreen,
+    /reviewPartner\.bookingMode === 'stripe-connect' \? 'Cancellation rights, provider charges and collection conditions are set out in the booking terms\. Check them before continuing\.' : 'You are leaving What Bin to book with this provider\. The provider handles payment, cancellation, refunds and terms\. What Bin only records the referral\.'/,
+  );
+  assert.match(residentScreen, /hasManagedBookings \? 'For in-app bookings, Stripe securely holds/);
+  assert.match(residentScreen, /hasExternalReferrals \? 'For provider referrals, the provider handles payment, cancellation, refunds and terms; What Bin only records the referral\.'/);
+  assert.match(residentScreen, /reviewPartner\.bookingMode === 'stripe-connect' \? 'Confirm and pay' : 'Continue to provider'/);
 });

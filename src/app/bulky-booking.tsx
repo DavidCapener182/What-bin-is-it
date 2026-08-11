@@ -2,12 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { BulkyBookingItemKey, BulkyBookingStatus, getBulkyBookingStatus, startBulkyBooking } from '@/lib/bulky-bookings';
+import { CouncilProfile } from '@/lib/council-provider';
 import { appFonts } from '@/lib/design-system';
 import { useAppTheme } from '@/lib/theme';
 import { useAppData } from '@/lib/use-app-data';
@@ -21,6 +22,16 @@ const bulkyItems: { key: BulkyBookingItemKey; label: string; icon: keyof typeof 
   { key: 'large-appliance', label: 'Large appliance', icon: 'cube-outline' },
   { key: 'other-bulky-item', label: 'Other item', icon: 'ellipsis-horizontal-circle-outline' },
 ];
+
+type BookingPartner = NonNullable<CouncilProfile['partners']>[number];
+
+function requestedItemKey(value?: string): BulkyBookingItemKey {
+  if (bulkyItems.some((item) => item.key === value)) return value as BulkyBookingItemKey;
+  if (value === 'furniture') return 'furniture';
+  if (value === 'mattress') return 'mattress';
+  if (value === 'large-appliances' || value === 'electrical-appliances') return 'large-appliance';
+  return 'other-bulky-item';
+}
 
 function money(pence: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100);
@@ -44,16 +55,19 @@ export default function BulkyBookingScreen() {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { activeAddress } = useAppData();
   const profile = useCouncilProfile(activeAddress?.providerId);
-  const params = useLocalSearchParams<{ booking?: string; reference?: string }>();
-  const [itemKey, setItemKey] = useState<BulkyBookingItemKey>('mattress');
+  const params = useLocalSearchParams<{ booking?: string; reference?: string; item?: string; partner?: string }>();
+  const [itemKey, setItemKey] = useState<BulkyBookingItemKey>(() => params.item ? requestedItemKey(params.item) : 'mattress');
   const [quantity, setQuantity] = useState(1);
   const [busy, setBusy] = useState<string>();
   const [booking, setBooking] = useState<BulkyBookingStatus>();
   const [statusError, setStatusError] = useState<string>();
-  const partners = profile?.providerId === activeAddress?.providerId
+  const [reviewPartner, setReviewPartner] = useState<BookingPartner>();
+  const partners = (profile?.providerId === activeAddress?.providerId
     && profile?.featureFlags?.bulkyWasteBooking
     ? profile?.partners?.filter((partner) => partner.category === 'bulky-waste' && partner.bookingMode !== undefined)
-    : undefined;
+    : undefined)?.slice().sort((left, right) => Number(right.id === params.partner) - Number(left.id === params.partner));
+  const hasManagedBookings = partners?.some((partner) => partner.bookingMode === 'stripe-connect') ?? false;
+  const hasExternalReferrals = partners?.some((partner) => partner.bookingMode === 'external-referral') ?? false;
 
   useEffect(() => {
     if (params.booking !== 'success' || !params.reference) return;
@@ -110,6 +124,13 @@ export default function BulkyBookingScreen() {
     }
   }
 
+  function confirmPartnerBooking() {
+    if (!reviewPartner) return;
+    const partnerId = reviewPartner.id;
+    setReviewPartner(undefined);
+    void begin(partnerId);
+  }
+
   return (
     <AppShell activeRoute="/bulky-booking">
       <RouteHead title="Bulky-waste booking" description="Compare official and approved bulky-waste collection options." path="/bulky-booking" />
@@ -121,7 +142,7 @@ export default function BulkyBookingScreen() {
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.intro}>
-            <Text style={styles.kicker}>BOOK THE RIGHT SERVICE</Text>
+            <Text style={styles.kicker}>Choose a collection service</Text>
             <Text style={styles.title}>What needs collecting?</Text>
             <Text style={styles.subtitle}>The official council route always appears first. Paid services are clearly labelled and only count as revenue after a real booking is confirmed.</Text>
           </View>
@@ -142,7 +163,7 @@ export default function BulkyBookingScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Item</Text>
-            <View style={styles.itemGrid}>{bulkyItems.map((item) => {
+            <View accessibilityLabel="Bulky item type" accessibilityRole="radiogroup" style={styles.itemGrid}>{bulkyItems.map((item) => {
               const selected = item.key === itemKey;
               return <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} key={item.key} onPress={() => setItemKey(item.key)} style={[styles.item, selected && styles.itemSelected]}><Ionicons color={selected ? theme.accent : theme.secondaryText} name={item.icon} size={21} /><Text style={[styles.itemText, selected && styles.itemTextSelected]}>{item.label}</Text></Pressable>;
             })}</View>
@@ -153,27 +174,66 @@ export default function BulkyBookingScreen() {
             <Text style={styles.sectionLabel}>Collection options</Text>
             <View style={styles.officialCard}>
               <View style={styles.optionIcon}><Ionicons color={theme.accent} name="business-outline" size={23} /></View>
-              <View style={styles.flex}><Text style={styles.optionEyebrow}>OFFICIAL COUNCIL SERVICE</Text><Text style={styles.cardTitle}>{activeAddress?.councilName ?? 'Find your council service'}</Text><Text style={styles.cardBody}>The council’s own booking route and price. What Bin does not take commission from this option.</Text></View>
+              <View style={styles.flex}><Text style={styles.optionEyebrow}>Official council service</Text><Text style={styles.cardTitle}>{activeAddress?.councilName ?? 'Find your council service'}</Text><Text style={styles.cardBody}>The council’s own booking route and price. What Bin does not take commission from this option.</Text></View>
               <Pressable accessibilityRole="link" disabled={Boolean(busy)} onPress={() => void begin()} style={styles.optionButton}>{busy === 'official' ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.optionButtonText}>Continue</Text>}</Pressable>
             </View>
 
             <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/guide', params: { q: itemKey } })} style={styles.reuseCard}>
               <View style={styles.optionIcon}><Ionicons color={theme.success} name="heart-outline" size={23} /></View>
-              <View style={styles.flex}><Text style={styles.optionEyebrow}>REUSE FIRST</Text><Text style={styles.cardTitle}>Donate an item in usable condition</Text><Text style={styles.cardBody}>Check charity, reuse and retailer take-back options before paying for disposal.</Text></View><Ionicons color={theme.tertiaryText} name="chevron-forward" size={19} />
+              <View style={styles.flex}><Text style={styles.optionEyebrow}>Reuse first</Text><Text style={styles.cardTitle}>Donate an item in usable condition</Text><Text style={styles.cardBody}>Check charity, reuse and retailer take-back options before paying for disposal.</Text></View><Ionicons color={theme.tertiaryText} name="chevron-forward" size={19} />
             </Pressable>
 
             {partners?.map((partner) => (
               <View key={partner.id} style={styles.partnerCard}>
                 <View style={styles.optionIcon}><Ionicons color={theme.accent} name="car-outline" size={23} /></View>
-                <View style={styles.flex}><Text style={styles.sponsored}>SPONSORED PAID COLLECTION</Text><Text style={styles.cardTitle}>{partner.name}</Text><Text style={styles.cardBody}>{partner.description}</Text>{partner.bookingPricePence ? <Text style={styles.price}>{money(partner.bookingPricePence * quantity)}</Text> : <Text style={styles.cardBody}>Price confirmed by provider</Text>}{partner.bookingMode === 'stripe-connect' ? <Text style={styles.marketplaceNote}>Pay What Bin securely. We confirm the collector and release their payout after collection.</Text> : null}{partner.providerAcceptanceSlaHours ? <Text style={styles.cardBody}>Provider response within {partner.providerAcceptanceSlaHours} hours.</Text> : null}{partner.termsUrl ? <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(partner.termsUrl!)}><Text style={styles.termsLink}>Booking terms</Text></Pressable> : null}</View>
-                <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => void begin(partner.id)} style={styles.optionButton}>{busy === partner.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.optionButtonText}>{partner.bookingMode === 'stripe-connect' ? 'Book in app' : 'Book'}</Text>}</Pressable>
+                <View style={styles.flex}><Text style={styles.sponsored}>Sponsored · Paid service</Text><Text style={styles.cardTitle}>{partner.name}</Text><Text style={styles.cardBody}>{partner.description}</Text>{partner.bookingPricePence ? <Text style={styles.price}>{money(partner.bookingPricePence * quantity)}</Text> : <Text style={styles.cardBody}>Price confirmed by provider</Text>}<Text style={styles.marketplaceNote}>{partner.bookingMode === 'stripe-connect' ? 'Pay What Bin securely. We confirm the collector and release their payout after collection.' : 'Payment, cancellation, refunds and terms are handled by the provider. What Bin only records the referral.'}</Text>{partner.providerAcceptanceSlaHours ? <Text style={styles.cardBody}>Provider response within {partner.providerAcceptanceSlaHours} hours.</Text> : null}{partner.termsUrl ? <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(partner.termsUrl!)}><Text style={styles.termsLink}>{partner.bookingMode === 'stripe-connect' ? 'Booking terms' : 'Provider terms'}</Text></Pressable> : null}</View>
+                <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => setReviewPartner(partner)} style={styles.optionButton}>{busy === partner.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.optionButtonText}>{partner.bookingMode === 'stripe-connect' ? 'Review' : 'Continue'}</Text>}</Pressable>
               </View>
             ))}
             {!partners?.length ? <View style={styles.noPartners}><Ionicons color={theme.secondaryText} name="shield-checkmark-outline" size={20} /><Text style={styles.noPartnersText}>No paid bulky-waste partner is approved for this council yet. Only the official and reuse routes are shown.</Text></View> : null}
           </View>
 
-          <View style={styles.privacyCard}><Ionicons color={theme.secondaryText} name="lock-closed-outline" size={19} /><Text style={styles.privacyText}>What Bin records an anonymous booking reference, item type, amount and outcome. Stripe securely holds the contact and collection-address details needed for fulfilment. What Bin confirms the approved collector, refunds you if they decline, and releases their payout after the collection is completed.</Text></View>
+          <View style={styles.privacyCard}><Ionicons color={theme.secondaryText} name="lock-closed-outline" size={19} /><Text style={styles.privacyText}>What Bin records an anonymous booking reference, item type, amount and outcome. {hasManagedBookings ? 'For in-app bookings, Stripe securely holds the contact and collection-address details needed for fulfilment; What Bin manages confirmation, eligible refunds and provider payout. ' : ''}{hasExternalReferrals ? 'For provider referrals, the provider handles payment, cancellation, refunds and terms; What Bin only records the referral.' : ''}</Text></View>
         </ScrollView>
+        <Modal
+          animationType="slide"
+          onRequestClose={() => setReviewPartner(undefined)}
+          presentationStyle="overFullScreen"
+          transparent
+          visible={Boolean(reviewPartner)}>
+          <View accessibilityViewIsModal style={styles.reviewOverlay}>
+            <Pressable accessibilityLabel="Close booking review" accessibilityRole="button" onPress={() => setReviewPartner(undefined)} style={styles.reviewBackdrop} />
+            <SafeAreaView edges={['bottom']} style={styles.reviewSheet}>
+              <View style={styles.reviewHandle} />
+              <View style={styles.reviewHeader}>
+                <View style={styles.flex}>
+                  <Text style={styles.reviewKicker}>Review your collection</Text>
+                  <Text style={styles.reviewTitle}>{reviewPartner?.name}</Text>
+                </View>
+                <Pressable accessibilityLabel="Close" accessibilityRole="button" onPress={() => setReviewPartner(undefined)} style={styles.reviewClose}><Ionicons color={theme.secondaryText} name="close" size={21} /></Pressable>
+              </View>
+              {reviewPartner ? <ScrollView contentContainerStyle={styles.reviewContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.reviewRows}>
+                  <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Item</Text><Text style={styles.reviewValue}>{bulkyItems.find((item) => item.key === itemKey)?.label}</Text></View>
+                  <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Quantity</Text><Text style={styles.reviewValue}>{quantity}</Text></View>
+                  <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Provider</Text><Text style={styles.reviewValue}>{reviewPartner.name}</Text></View>
+                  <View style={styles.reviewRow}><Text style={styles.reviewTotalLabel}>Total</Text><Text style={styles.reviewTotal}>{reviewPartner.bookingPricePence ? money(reviewPartner.bookingPricePence * quantity) : 'Confirmed before payment'}</Text></View>
+                </View>
+                <View style={styles.reviewNotice}>
+                  <Ionicons color={theme.accent} name="time-outline" size={20} />
+                  <Text style={styles.reviewNoticeText}>{reviewPartner.providerAcceptanceSlaHours ? `The provider must respond within ${reviewPartner.providerAcceptanceSlaHours} hours. ` : 'The provider response deadline will be confirmed at checkout. '}{reviewPartner.bookingMode === 'stripe-connect' ? 'If the provider declines, What Bin refunds your payment.' : 'The provider handles payment, cancellation and any refund directly.'}</Text>
+                </View>
+                <Text style={styles.reviewTerms}>{reviewPartner.bookingMode === 'stripe-connect' ? 'Cancellation rights, provider charges and collection conditions are set out in the booking terms. Check them before continuing.' : 'You are leaving What Bin to book with this provider. The provider handles payment, cancellation, refunds and terms. What Bin only records the referral.'}</Text>
+                {reviewPartner.termsUrl ? <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(reviewPartner.termsUrl!)} style={styles.reviewTermsButton}><Text style={styles.termsLink}>{reviewPartner.bookingMode === 'stripe-connect' ? 'Read booking terms' : 'Read provider terms'}</Text><Ionicons color={theme.accent} name="open-outline" size={17} /></Pressable> : null}
+                <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={confirmPartnerBooking} style={styles.confirmButton}>
+                  <Text style={styles.confirmButtonText}>{reviewPartner.bookingMode === 'stripe-connect' ? 'Confirm and pay' : 'Continue to provider'}</Text>
+                  <Ionicons color="#FFFFFF" name="arrow-forward" size={18} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => setReviewPartner(undefined)} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Not now</Text></Pressable>
+              </ScrollView> : null}
+            </SafeAreaView>
+          </View>
+        </Modal>
       </View>
     </AppShell>
   );
@@ -206,14 +266,14 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     partnerCard: { padding: 14, borderRadius: 17, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', gap: 11 },
     optionIcon: { width: 46, height: 46, borderRadius: 13, backgroundColor: theme.groupedBackground, alignItems: 'center', justifyContent: 'center' },
     flex: { flex: 1, gap: 3 },
-    optionEyebrow: { color: theme.accent, fontFamily: appFonts.text, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
-    sponsored: { color: theme.warning, fontFamily: appFonts.text, fontSize: 10, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+    optionEyebrow: { color: theme.accent, fontFamily: appFonts.text, fontSize: 12, fontWeight: '800' },
+    sponsored: { color: theme.warning, fontFamily: appFonts.text, fontSize: 12, fontWeight: '800' },
     cardTitle: { color: theme.text, fontFamily: appFonts.text, fontSize: 16, lineHeight: 20, fontWeight: '700' },
     cardBody: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, lineHeight: 18 },
     price: { color: theme.text, fontFamily: appFonts.text, fontSize: 15, fontWeight: '800', marginTop: 3 },
     marketplaceNote: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
     termsLink: { color: theme.accent, fontFamily: appFonts.text, fontSize: 12, fontWeight: '700', marginTop: 2 },
-    optionButton: { minWidth: 76, minHeight: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
+    optionButton: { minWidth: 76, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
     optionButtonText: { color: '#FFFFFF', fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
     noPartners: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 14, borderRadius: 14, backgroundColor: theme.groupedBackground },
     noPartnersText: { flex: 1, color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, lineHeight: 18 },
@@ -222,5 +282,28 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     successCard: { marginHorizontal: 16, marginBottom: 20, padding: 15, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.success, flexDirection: 'row', alignItems: 'center', gap: 11 },
     statusButton: { minHeight: 34, marginTop: 5, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6 },
     statusButtonText: { color: theme.accent, fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
+    reviewOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
+    reviewBackdrop: { position: 'absolute', inset: 0 },
+    reviewSheet: { width: '100%', maxWidth: 620, maxHeight: '90%', alignSelf: 'center', backgroundColor: theme.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
+    reviewHandle: { width: 38, height: 5, borderRadius: 3, backgroundColor: theme.separator, alignSelf: 'center', marginTop: 8 },
+    reviewHeader: { minHeight: 76, paddingHorizontal: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+    reviewKicker: { color: theme.accent, fontFamily: appFonts.text, fontSize: 12, fontWeight: '800' },
+    reviewTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 21, lineHeight: 26, fontWeight: '700', marginTop: 2 },
+    reviewClose: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.groupedBackground },
+    reviewContent: { padding: 18, paddingBottom: 28, gap: 14 },
+    reviewRows: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, overflow: 'hidden' },
+    reviewRow: { minHeight: 52, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, backgroundColor: theme.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator },
+    reviewLabel: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, fontWeight: '600' },
+    reviewValue: { flexShrink: 1, color: theme.text, fontFamily: appFonts.text, fontSize: 14, fontWeight: '700', textAlign: 'right' },
+    reviewTotalLabel: { color: theme.text, fontFamily: appFonts.text, fontSize: 15, fontWeight: '800' },
+    reviewTotal: { flexShrink: 1, color: theme.text, fontFamily: appFonts.text, fontSize: 18, fontWeight: '800', textAlign: 'right' },
+    reviewNotice: { borderRadius: 14, padding: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: theme.accentSoft },
+    reviewNoticeText: { flex: 1, color: theme.text, fontFamily: appFonts.text, fontSize: 13, lineHeight: 19, fontWeight: '600' },
+    reviewTerms: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 18 },
+    reviewTermsButton: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7 },
+    confirmButton: { minHeight: 50, borderRadius: 14, backgroundColor: theme.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    confirmButtonText: { color: '#FFFFFF', fontFamily: appFonts.text, fontSize: 15, fontWeight: '800' },
+    cancelButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    cancelButtonText: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 14, fontWeight: '700' },
   });
 }

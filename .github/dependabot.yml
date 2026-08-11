@@ -19,3 +19,22 @@ updates:
     directory: /
     schedule:
       interval: monthly
+  - package-ecosystem: npm
+    directory: /council-backoffice
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      council-console-runtime:
+        patterns:
+          - next
+          - react
+          - react-dom
+          - "@supabase/*"
+          - postgres
+          - stripe
+  - package-ecosystem: npm
+    directory: /services/council-gateway
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

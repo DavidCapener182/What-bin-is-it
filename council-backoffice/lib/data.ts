@@ -13,8 +13,9 @@ import type {
   CouncilDisruption,
   CouncilFeatureFlags,
   CouncilGuidanceItem,
-  CouncilPartner,
   CouncilOnboardingItem,
+  CouncilOperationalQueueItem,
+  CouncilPartner,
   CouncilOutcomeFunnels,
   CouncilPilotBaseline,
   CouncilSponsorshipProgramme,
@@ -453,6 +454,153 @@ export async function saveCouncilOnboardingItem(
 
 function percentage(numerator: number, denominator: number) {
   return denominator > 0 ? Math.round((numerator / denominator) * 100) : undefined;
+}
+
+export async function councilOperationalQueue(
+  session: CouncilStaffSession,
+): Promise<CouncilOperationalQueueItem[]> {
+  const sql = councilDatabase();
+  const organisationId = session.organisation.id;
+  const providerId = session.organisation.providerId;
+  const [disruptionRows, broadcastRows, gatewayRows, supportRows, bookingRows, partnerRows] = await Promise.all([
+    sql<{ active_count: number }[]>`
+      SELECT count(*)::int AS active_count
+      FROM bin_council_disruptions
+      WHERE organisation_id = ${organisationId}::uuid
+        AND status = 'published'
+        AND starts_at <= now()
+        AND (ends_at IS NULL OR ends_at > now())
+    `,
+    sql<{ queued_count: number; failed_count: number }[]>`
+      SELECT
+        count(*) FILTER (WHERE status IN ('queued', 'processing'))::int AS queued_count,
+        count(*) FILTER (WHERE status = 'failed' OR failed_count > 0)::int AS failed_count
+      FROM bin_council_broadcast_jobs
+      WHERE organisation_id = ${organisationId}::uuid
+        AND (
+          status IN ('queued', 'processing')
+          OR ((status = 'failed' OR failed_count > 0) AND requested_at >= now() - interval '7 days')
+        )
+    `,
+    sql<{ failed_count: number }[]>`
+      SELECT count(*)::int AS failed_count
+      FROM bin_gateway_checks
+      WHERE council_id = ${providerId}
+        AND NOT successful
+        AND occurred_at >= now() - interval '24 hours'
+    `,
+    sql<{ waiting_count: number; overdue_count: number }[]>`
+      SELECT
+        count(*) FILTER (WHERE last_sender = 'resident')::int AS waiting_count,
+        count(*) FILTER (WHERE sla_due_at IS NOT NULL AND sla_due_at < now())::int AS overdue_count
+      FROM bin_resident_support_threads
+      WHERE council_provider_id = ${providerId}
+        AND status NOT IN ('resolved', 'closed')
+    `,
+    sql<{ waiting_count: number; overdue_count: number }[]>`
+      SELECT
+        count(*)::int AS waiting_count,
+        count(*) FILTER (
+          WHERE booking.started_at
+            + partner.provider_acceptance_sla_hours * interval '1 hour' < now()
+        )::int AS overdue_count
+      FROM bin_bulky_bookings AS booking
+      INNER JOIN bin_council_partners AS partner ON partner.id = booking.partner_id
+      WHERE booking.organisation_id = ${organisationId}::uuid
+        AND booking.booking_channel = 'stripe-connect'
+        AND booking.status = 'awaiting-provider'
+    `,
+    sql<{ review_count: number; renewal_count: number }[]>`
+      SELECT
+        count(*) FILTER (WHERE status = 'review')::int AS review_count,
+        count(*) FILTER (
+          WHERE status = 'active'
+            AND renewal_review_at IS NOT NULL
+            AND renewal_review_at <= current_date + 30
+        )::int AS renewal_count
+      FROM bin_council_partners
+      WHERE organisation_id = ${organisationId}::uuid
+    `,
+  ]);
+
+  const items: CouncilOperationalQueueItem[] = [];
+  const activeDisruptions = disruptionRows[0]?.active_count ?? 0;
+  if (activeDisruptions > 0) {
+    items.push({
+      key: "active-disruptions",
+      label: "Active collection disruptions",
+      detail: `${activeDisruptions} published alert${activeDisruptions === 1 ? " is" : "s are"} live for this council`,
+      count: activeDisruptions,
+      href: "/disruptions",
+      tone: "amber",
+    });
+  }
+
+  const queuedBroadcasts = broadcastRows[0]?.queued_count ?? 0;
+  const failedBroadcasts = broadcastRows[0]?.failed_count ?? 0;
+  if (queuedBroadcasts + failedBroadcasts > 0) {
+    items.push({
+      key: "broadcast-delivery",
+      label: "Broadcast delivery",
+      detail: `${queuedBroadcasts} queued or processing · ${failedBroadcasts} failed or partially failed in 7 days`,
+      count: queuedBroadcasts + failedBroadcasts,
+      href: "/announcements",
+      tone: failedBroadcasts > 0 ? "red" : "blue",
+    });
+  }
+
+  const gatewayFailures = gatewayRows[0]?.failed_count ?? 0;
+  if (gatewayFailures > 0) {
+    items.push({
+      key: "gateway-failures",
+      label: "Collection-source failures",
+      detail: `${gatewayFailures} unsuccessful verified check${gatewayFailures === 1 ? "" : "s"} in the last 24 hours`,
+      count: gatewayFailures,
+      href: "/analytics",
+      tone: "red",
+    });
+  }
+
+  const waitingSupport = supportRows[0]?.waiting_count ?? 0;
+  const overdueSupport = supportRows[0]?.overdue_count ?? 0;
+  if (waitingSupport + overdueSupport > 0) {
+    items.push({
+      key: "resident-support",
+      label: "Resident conversations",
+      detail: `${waitingSupport} awaiting a staff reply · ${overdueSupport} past the recorded SLA`,
+      count: Math.max(waitingSupport, overdueSupport),
+      href: "/crm/messages",
+      tone: overdueSupport > 0 ? "red" : "amber",
+    });
+  }
+
+  const waitingBookings = bookingRows[0]?.waiting_count ?? 0;
+  const overdueBookings = bookingRows[0]?.overdue_count ?? 0;
+  if (waitingBookings > 0) {
+    items.push({
+      key: "paid-bookings",
+      label: "Paid collections awaiting provider",
+      detail: `${waitingBookings} paid booking${waitingBookings === 1 ? "" : "s"} awaiting acceptance · ${overdueBookings} past response deadline`,
+      count: waitingBookings,
+      href: "/partners#bulky-bookings",
+      tone: overdueBookings > 0 ? "red" : "amber",
+    });
+  }
+
+  const partnerReviews = partnerRows[0]?.review_count ?? 0;
+  const partnerRenewals = partnerRows[0]?.renewal_count ?? 0;
+  if (partnerReviews + partnerRenewals > 0) {
+    items.push({
+      key: "partner-review",
+      label: "Partner assurance",
+      detail: `${partnerReviews} awaiting approval · ${partnerRenewals} renewal review${partnerRenewals === 1 ? "" : "s"} due within 30 days`,
+      count: partnerReviews + partnerRenewals,
+      href: "/partners",
+      tone: "amber",
+    });
+  }
+
+  return items;
 }
 
 export async function dashboardMetrics(session: CouncilStaffSession): Promise<{

@@ -47,6 +47,21 @@ export type DashboardMetric = {
   tone?: "blue" | "teal" | "amber" | "red";
 };
 
+export type CouncilOperationalQueueItem = {
+  key:
+    | "active-disruptions"
+    | "broadcast-delivery"
+    | "gateway-failures"
+    | "resident-support"
+    | "paid-bookings"
+    | "partner-review";
+  label: string;
+  detail: string;
+  count: number;
+  href: string;
+  tone: "blue" | "amber" | "red";
+};
+
 export type OutcomeFunnelStage = {
   label: string;
   value: number;

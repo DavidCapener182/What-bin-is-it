@@ -43,3 +43,42 @@ test("the development launcher safely maps the resident workspace environment", 
   assert.match(launcher, /EXPO_PUBLIC_SUPABASE_ANON_KEY/);
   assert.doesNotMatch(launcher, /eyJ|postgres(?:ql)?:\/\//);
 });
+
+test("the council overview presents a neutral responsive operational queue", async () => {
+  const [overview, styles] = await Promise.all([
+    readFile(new URL("../components/council-overview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(overview, /Operational queue/);
+  assert.match(overview, /operationalQueue\.map/);
+  assert.match(styles, /\.operational-queue-list/);
+  assert.match(styles, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /@media \(max-width: 780px\)[\s\S]*?\.operational-queue-list \{ grid-template-columns: 1fr; \}/);
+  assert.doesNotMatch(styles.toLowerCase(), /purple|linear-gradient/);
+});
+
+test("partner setup uses a six-step guarded wizard and honest local drafts", async () => {
+  const [wizard, page, styles] = await Promise.all([
+    readFile(new URL("../components/partner-setup-wizard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(console)/partners/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  for (const heading of [
+    "Service details",
+    "Areas and items",
+    "Compliance evidence",
+    "Price and payment",
+    "Resident preview",
+    "Approval and activation",
+  ]) assert.match(wizard, new RegExp(heading));
+  assert.match(wizard, /Save browser draft/);
+  assert.match(wizard, /No council record has been created/);
+  assert.match(wizard, /Official .* service[\s\S]*Charity or reuse service[\s\S]*resident-preview-sponsored/);
+  assert.match(wizard, /name="status"[\s\S]*value="draft"/);
+  assert.match(wizard, /name="status"[\s\S]*value="review"/);
+  assert.match(page, /<PartnerSetupWizard/);
+  assert.match(styles, /\.partner-wizard-progress/);
+  assert.doesNotMatch(styles.toLowerCase(), /purple|linear-gradient/);
+});

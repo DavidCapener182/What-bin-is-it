@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, createElement, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
 import { apiBase } from '@/lib/api-base';
 import { SupportRequest } from '@/lib/types';
@@ -27,7 +27,7 @@ export type ResidentSupportThread = {
   messages: ResidentSupportMessage[];
 };
 
-export function useResidentSupport() {
+function useResidentSupportState() {
   const { accessToken, ready: accountReady } = useAccount();
   const [threads, setThreads] = useState<ResidentSupportThread[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,4 +66,19 @@ export function useResidentSupport() {
   }, [accountReady, refresh]);
 
   return { threads, loading, error, refresh };
+}
+
+type ResidentSupportContextValue = ReturnType<typeof useResidentSupportState>;
+
+const ResidentSupportContext = createContext<ResidentSupportContextValue | undefined>(undefined);
+
+export function ResidentSupportProvider({ children }: { children: ReactNode }) {
+  const value = useResidentSupportState();
+  return createElement(ResidentSupportContext.Provider, { value }, children);
+}
+
+export function useResidentSupport() {
+  const context = useContext(ResidentSupportContext);
+  if (!context) throw new Error('useResidentSupport must be used within ResidentSupportProvider');
+  return context;
 }

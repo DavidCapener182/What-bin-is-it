@@ -49,6 +49,7 @@ test('upgrades cached schedules once to fetch council bin-colour metadata', () =
 test('uses the main source-backed bin colour for the Today hero and collection card', () => {
   const today = read('src/app/index.tsx');
   assert.match(today, /const heroColour = usesCouncilBinColour/);
+  assert.match(today, /safeCollectionHeroColour\(primaryNextMeta\.colour, theme\.hero\)/);
   assert.match(today, /colors=\{\[heroColour, heroColour\]\}/);
   assert.match(today, /contrastTextForColour\(heroColour\)/);
   assert.match(today, /style=\{\[styles\.greeting, \{ color: heroForeground \}\]\}>\{heroTitle\}/);

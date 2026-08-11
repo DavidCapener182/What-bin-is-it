@@ -4,7 +4,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 
-import { LaunchSplash } from '@/components/launch-splash';
 import { NotificationNavigation } from '@/components/notification-navigation';
 import { PwaRegistration } from '@/components/pwa-registration';
 import { ThemeSynchronizer } from '@/components/theme-synchronizer';
@@ -13,8 +12,11 @@ import { AccountProvider } from '@/lib/use-account';
 import { ProductStateProvider } from '@/lib/use-product-state';
 import { PilotAnalyticsProvider } from '@/lib/use-pilot-analytics';
 import { SubscriptionProvider } from '@/lib/use-subscription';
+import { ResidentSupportProvider } from '@/lib/use-resident-support';
 
-SplashScreen.setOptions({ duration: 800, fade: true });
+// Expo owns the launch screen. Keep the transition brief and let the first
+// rendered frame replace it as soon as the app is ready.
+SplashScreen.setOptions({ duration: 400, fade: true });
 
 export default function RootLayout() {
   return (
@@ -24,15 +26,16 @@ export default function RootLayout() {
           <AppDataProvider>
             <ProductStateProvider>
               <AccountProvider>
-                <SubscriptionProvider>
-                  <ThemeSynchronizer />
-                  <PwaRegistration />
-                  <NotificationNavigation />
-                  <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="schedule" />
-                  <Stack.Screen name="guide" />
-                  <Stack.Screen name="activity" />
+                <ResidentSupportProvider>
+                  <SubscriptionProvider>
+                    <ThemeSynchronizer />
+                    <PwaRegistration />
+                    <NotificationNavigation />
+                    <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+                  <Stack.Screen name="index" options={{ animation: 'none' }} />
+                  <Stack.Screen name="schedule" options={{ animation: 'none' }} />
+                  <Stack.Screen name="guide" options={{ animation: 'none' }} />
+                  <Stack.Screen name="activity" options={{ animation: 'none' }} />
                   <Stack.Screen name="reports" />
                   <Stack.Screen name="report-missed" />
                   <Stack.Screen name="report-incorrect" />
@@ -47,16 +50,17 @@ export default function RootLayout() {
                   <Stack.Screen name="terms" />
                   <Stack.Screen name="data-sources" />
                   <Stack.Screen name="status" />
-                  <Stack.Screen name="onboarding" />
+                  <Stack.Screen name="onboarding" options={{ animation: 'slide_from_right' }} />
                   <Stack.Screen name="calendar" />
                   <Stack.Screen name="find" />
-                  <Stack.Screen name="places" />
+                  <Stack.Screen name="places" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
                   <Stack.Screen name="settings" />
+                  <Stack.Screen name="reminder-settings" />
                   <Stack.Screen name="offline" />
                   <Stack.Screen name="+not-found" />
-                  </Stack>
-                  <LaunchSplash />
-                </SubscriptionProvider>
+                    </Stack>
+                  </SubscriptionProvider>
+                </ResidentSupportProvider>
               </AccountProvider>
             </ProductStateProvider>
           </AppDataProvider>

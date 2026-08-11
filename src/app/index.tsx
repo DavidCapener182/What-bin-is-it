@@ -31,6 +31,7 @@ import {
   formatCollectionDate,
   hasSourceCollectionColour,
   primaryCollectionForDate,
+  safeCollectionHeroColour,
   sortCollections,
 } from '@/lib/data';
 import { appFonts } from '@/lib/design-system';
@@ -49,8 +50,8 @@ import { useSubscription } from '@/lib/use-subscription';
 
 function collectionAnswer(collections: Collection[]) {
   const labels = collections.map((collection) => collectionDisplayMeta(collection).label);
-  if (labels.length <= 2) return labels.join(' + ');
-  return `${labels[0]} + ${labels.length - 1} more`;
+  if (labels.length === 1) return labels[0];
+  return `${labels.length === 2 ? 'Two' : labels.length} bins go out tonight`;
 }
 
 export default function HomeScreen() {
@@ -132,7 +133,7 @@ export default function HomeScreen() {
       : 'rgba(15,42,58,0.10)'
     : undefined;
   const heroColour = usesCouncilBinColour && primaryNextMeta
-    ? primaryNextMeta.colour
+    ? safeCollectionHeroColour(primaryNextMeta.colour, theme.hero)
     : theme.hero;
   const heroForeground = usesCouncilBinColour
     ? contrastTextForColour(heroColour)
@@ -546,7 +547,7 @@ export default function HomeScreen() {
                   </Pressable>
                 ) : null}
                 {lifecycle?.stage === 'before' ? (
-                  <Pressable accessibilityRole="button" onPress={() => router.push('/settings')} style={({ pressed }) => [styles.reminderStatus, pressed && styles.pressed]}>
+                  <Pressable accessibilityRole="button" onPress={() => router.push('/reminder-settings' as Href)} style={({ pressed }) => [styles.reminderStatus, pressed && styles.pressed]}>
                     <Ionicons color={placeReminders.enabled ? theme.success : theme.secondaryText} name={placeReminders.enabled ? 'notifications' : 'notifications-off-outline'} size={17} />
                     <Text style={styles.reminderStatusText}>{placeReminders.enabled ? 'Bin-night reminder is on' : 'Bin-night reminder is off'}</Text>
                     <Ionicons color={theme.tertiaryText} name="chevron-forward" size={16} />
@@ -660,7 +661,7 @@ export default function HomeScreen() {
                   <View style={styles.councilDemandCard}>
                     <View style={styles.councilDemandIcon}><Ionicons color={theme.accent} name="people-outline" size={22} /></View>
                     <View style={styles.councilDemandCopy}>
-                      <Text style={styles.councilDemandKicker}>COUNCIL CONNECTION</Text>
+                      <Text style={styles.councilDemandKicker}>Council connection</Text>
                       <Text style={styles.councilDemandTitle}>Ask {activeAddress.councilName} to connect</Text>
                       <Text style={styles.councilDemandBody}>Your postcode already counts once in its anonymous resident total. This request tells us you want live official dates and an availability alert.</Text>
                     </View>

@@ -8,14 +8,16 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { appFonts } from '@/lib/design-system';
+import { reportNeedsResidentAttention, supportReplyNeedsAttention } from '@/lib/activity-attention';
 import { residentAlertsForProfile } from '@/lib/resident-alerts';
 import { useAppTheme } from '@/lib/theme';
 import { useAppData } from '@/lib/use-app-data';
 import { useCouncilProfile } from '@/lib/use-council-profile';
 import { useProductState } from '@/lib/use-product-state';
+import { useResidentSupport } from '@/lib/use-resident-support';
 
 type PrimaryRoute = '/' | '/schedule' | '/guide' | '/activity';
-type AppRoute = PrimaryRoute | '/reports' | '/settings' | '/places' | '/history' | '/support' | '/partners' | '/bulky-booking' | '/report-missed' | '/report-incorrect' | '/onboarding';
+type AppRoute = PrimaryRoute | '/reports' | '/settings' | '/reminder-settings' | '/places' | '/history' | '/support' | '/partners' | '/bulky-booking' | '/report-missed' | '/report-incorrect' | '/onboarding';
 
 const tabs: { route: PrimaryRoute; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }[] = [
   { route: '/', label: 'Today', icon: 'home-outline', activeIcon: 'home' },
@@ -37,18 +39,27 @@ export function AppShell({
   const theme = useAppTheme();
   const { activeAddress, collections } = useAppData();
   const profile = useCouncilProfile(activeAddress?.providerId);
-  const { councilNotices, reports } = useProductState();
+  const {
+    councilNotices,
+    reports,
+    reportStatusSeenById,
+    supportSeenMessageIdByThreadId,
+  } = useProductState();
+  const support = useResidentSupport();
   const tabRefs = useRef<(React.ElementRef<typeof Pressable> | null)[]>([]);
   const dockBottomPadding = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, 6);
   const primaryActive = tabs.some((tab) => tab.route === activeRoute);
   const currentAlerts = residentAlertsForProfile(profile, collections)
     .filter((alert) => !councilNotices.archivedAtById[alert.id]);
   const unreadAlerts = currentAlerts.filter((alert) => !councilNotices.readAtById[alert.id]).length;
-  const openReports = reports.filter((report) => (
+  const actionableReports = reports.filter((report) => (
     (!activeAddress || report.addressId === activeAddress.id)
-    && !['resolved', 'rejected', 'cancelled', 'closed'].includes(report.status)
+    && reportNeedsResidentAttention(report, reportStatusSeenById[report.id])
   )).length;
-  const activityBadge = Math.min(99, unreadAlerts + openReports);
+  const unreadSupportReplies = support.threads.filter((thread) => (
+    supportReplyNeedsAttention(thread, supportSeenMessageIdByThreadId[thread.id])
+  )).length;
+  const activityBadge = Math.min(99, unreadAlerts + actionableReports + unreadSupportReplies);
 
   function openTab(route: PrimaryRoute) {
     if (route === activeRoute) return;

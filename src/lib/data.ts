@@ -84,6 +84,67 @@ export function contrastTextForColour(colour: string) {
   return luminance > 0.43 ? '#0F2A3A' : '#FFFFFF';
 }
 
+function channelHex(value: number) {
+  return Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, '0').toUpperCase();
+}
+
+const systemAlertColours = [
+  '#D70015',
+  '#FF453A',
+  '#FF3B30',
+  '#C93400',
+  '#FF9F0A',
+  '#FF9500',
+].map((colour) => [0, 2, 4].map((offset) => Number.parseInt(colour.slice(offset + 1, offset + 3), 16) / 255));
+
+function isNearSystemAlertColour(red: number, green: number, blue: number) {
+  const maximumDistance = 82 / 255;
+  return systemAlertColours.some(([alertRed, alertGreen, alertBlue]) => (
+    Math.hypot(red - alertRed, green - alertGreen, blue - alertBlue) <= maximumDistance
+  ));
+}
+
+/**
+ * Council feeds remain the source of truth for bin identity, but an arbitrary
+ * feed colour is not always suitable as a full-screen surface. Preserve the
+ * raw colour on the bin glyph/dot and use this restrained variant for the
+ * Today hero only.
+ */
+export function safeCollectionHeroColour(colour: string | undefined, fallback: string) {
+  const hex = colour?.replace('#', '');
+  if (!hex || !/^[0-9A-F]{6}$/i.test(hex)) return fallback;
+  const [red, green, blue] = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  if (isNearSystemAlertColour(red, green, blue)) return fallback;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  let lightness = (max + min) / 2;
+  if (lightness > 0.88) return fallback;
+
+  const delta = max - min;
+  let hue = 0;
+  let saturation = delta === 0 ? 0 : delta / (1 - Math.abs((2 * lightness) - 1));
+  if (delta !== 0) {
+    if (max === red) hue = 60 * (((green - blue) / delta) % 6);
+    else if (max === green) hue = 60 * (((blue - red) / delta) + 2);
+    else hue = 60 * (((red - green) / delta) + 4);
+  }
+  if (hue < 0) hue += 360;
+  saturation = Math.min(saturation, hue <= 45 || hue >= 345 ? 0.66 : 0.72);
+  lightness = Math.max(0.22, Math.min(lightness, 0.48));
+
+  const chroma = (1 - Math.abs((2 * lightness) - 1)) * saturation;
+  const section = hue / 60;
+  const x = chroma * (1 - Math.abs((section % 2) - 1));
+  const [r1, g1, b1] = section < 1 ? [chroma, x, 0]
+    : section < 2 ? [x, chroma, 0]
+      : section < 3 ? [0, chroma, x]
+        : section < 4 ? [0, x, chroma]
+          : section < 5 ? [x, 0, chroma]
+            : [chroma, 0, x];
+  const match = lightness - (chroma / 2);
+  return `#${channelHex((r1 + match) * 255)}${channelHex((g1 + match) * 255)}${channelHex((b1 + match) * 255)}`;
+}
+
 function dateAtStartOfDay(value: string | Date) {
   const date = typeof value === 'string' ? new Date(`${value}T12:00:00`) : new Date(value);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());

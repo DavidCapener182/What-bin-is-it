@@ -17,22 +17,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { fetchCouncilAddresses, lookupPostcode, ResolvedPlace } from '@/lib/council-provider';
+import { collectionDisplayMeta, formatCollectionDate } from '@/lib/data';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { councilIdsForResidentUse } from '@/lib/resident-adoption';
 import { syncResidentCouncilLinks } from '@/lib/resident-council-links';
 import { useAppTheme } from '@/lib/theme';
 import { CouncilAddressOption } from '@/lib/types';
-import { useAppData } from '@/lib/use-app-data';
+import { CollectionRefreshOutcome, useAppData } from '@/lib/use-app-data';
 import { usePilotAnalytics } from '@/lib/use-pilot-analytics';
 import { useProductState } from '@/lib/use-product-state';
 
-const totalSteps = 8;
+const totalSteps = 5;
 const reminderTimes = [18, 19, 20, 21];
 
 export default function OnboardingScreen() {
   const theme = useAppTheme();
-  const { addAddress } = useAppData();
+  const { addAddress, collections } = useAppData();
   const analytics = usePilotAnalytics();
   const { completeOnboarding, skipOnboarding, updatePlaceReminders } = useProductState();
   const [step, setStep] = useState(0);
@@ -40,11 +41,11 @@ export default function OnboardingScreen() {
   const [place, setPlace] = useState<ResolvedPlace>();
   const [addresses, setAddresses] = useState<CouncilAddressOption[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<CouncilAddressOption>();
-  const [name, setName] = useState('Home');
   const [reminders, setReminders] = useState(true);
   const [reminderHour, setReminderHour] = useState(19);
   const [busy, setBusy] = useState(false);
-  const [permissionReady, setPermissionReady] = useState(false);
+  const [verification, setVerification] = useState<CollectionRefreshOutcome>();
+  const [savedAddressId, setSavedAddressId] = useState<string>();
 
   function skip() {
     skipOnboarding();
@@ -87,7 +88,7 @@ export default function OnboardingScreen() {
         outcome: 'success',
         metricValue: Math.min(1000, options.length),
       });
-      setStep(2);
+      setStep(1);
     } catch (error) {
       analytics.track('postcode_lookup_failed', {
         context: 'manual',
@@ -102,30 +103,13 @@ export default function OnboardingScreen() {
     }
   }
 
-  async function askForNotifications() {
-    if (!reminders) {
-      setPermissionReady(false);
-      setStep(7);
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await requestNotificationPermission();
-      setPermissionReady(result.granted);
-      if (!result.granted) Alert.alert('You can enable this later', result.reason);
-      setStep(7);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function finish() {
+  async function checkCollection() {
     if (!place?.providerId || !place.councilName) return;
     setBusy(true);
     try {
       const line1 = selectedAddress?.line1 ?? place.line1;
       const outcome = await addAddress({
-        label: name.trim() || 'Home',
+        label: 'Home',
         line1,
         postcode: selectedAddress?.postcode ?? place.postcode,
         councilName: place.councilName,
@@ -134,16 +118,32 @@ export default function OnboardingScreen() {
         latitude: place.latitude,
         longitude: place.longitude,
       });
-      const addressId = `address-${(selectedAddress?.id || place.postcode).replace(/[^A-Z0-9]/gi, '').toLowerCase()}`;
-      updatePlaceReminders(addressId, {
-        enabled: reminders && permissionReady,
+      setSavedAddressId(`address-${(selectedAddress?.id || place.postcode).replace(/[^A-Z0-9]/gi, '').toLowerCase()}`);
+      setVerification(outcome);
+      setStep(2);
+    } catch (error) {
+      Alert.alert('Could not check this address', error instanceof Error ? error.message : 'Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finish() {
+    if (!savedAddressId) return;
+    setBusy(true);
+    try {
+      let notificationGranted = false;
+      if (reminders) {
+        const result = await requestNotificationPermission();
+        notificationGranted = result.granted;
+        if (!result.granted) Alert.alert('You can enable this later', result.reason);
+      }
+      updatePlaceReminders(savedAddressId, {
+        enabled: reminders && notificationGranted,
         reminderHour,
         reminderDayOffset: 1,
       });
       completeOnboarding();
-      if (!outcome.verified) {
-        Alert.alert('Address saved', `${outcome.message}\n\nYou can retry the live council check from Today.`);
-      }
       router.replace('/');
     } catch (error) {
       Alert.alert('Could not finish setup', error instanceof Error ? error.message : 'Try again.');
@@ -154,6 +154,7 @@ export default function OnboardingScreen() {
 
   const progress = `${Math.min(step + 1, totalSteps)} of ${totalSteps}`;
   const selectedPropertyRequired = Boolean(addresses.length && !selectedAddress);
+  const firstCollection = collections[0];
 
   return (
     <AppShell activeRoute="/onboarding" hideNavigation>
@@ -161,7 +162,7 @@ export default function OnboardingScreen() {
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={styles.safe}>
           <View style={styles.topRow}>
-            {step > 0 ? (
+            {step > 0 && step !== 2 ? (
               <Pressable accessibilityLabel="Previous setup step" accessibilityRole="button" onPress={() => setStep((current) => Math.max(0, current - 1))} style={styles.topButton}>
                 <Ionicons color={theme.accent} name="chevron-back" size={24} />
               </Pressable>
@@ -184,7 +185,7 @@ export default function OnboardingScreen() {
               </View>
               <Text style={[styles.title, { color: theme.text }]}>Never guess bin night again</Text>
               <Text style={[styles.copy, { color: theme.secondaryText }]}>
-                Add your exact property once. We will show only dates returned by its live council source and help you track what happened after collection day.
+                Enter your postcode to find the right council, property and live collection source.
               </Text>
               <View style={[styles.promise, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
                 {[
@@ -198,35 +199,6 @@ export default function OnboardingScreen() {
                   </View>
                 ))}
               </View>
-              <Pressable
-                accessibilityRole="switch"
-                accessibilityState={{ checked: analytics.enabled }}
-                onPress={() => void analytics.setEnabled(!analytics.enabled)}
-                style={[styles.evidenceChoice, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-                <View style={styles.evidenceCopy}>
-                  <Text style={[styles.evidenceTitle, { color: theme.text }]}>Help improve local bin services</Text>
-                  <Text style={[styles.evidenceText, { color: theme.secondaryText }]}>
-                    Optional app-improvement events only, such as whether a lookup worked. Your council resident count is separate and never includes your postcode, address, location, search words or report notes.
-                  </Text>
-                </View>
-                <Switch
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
-                  pointerEvents="none"
-                  trackColor={{ false: theme.tertiaryText, true: theme.accent }}
-                  value={analytics.enabled}
-                />
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setStep(1)} style={[styles.primary, { backgroundColor: theme.accent }]}>
-                <Text style={styles.primaryText}>Get started</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {step === 1 ? (
-            <View style={styles.step}>
-              <Text style={[styles.title, { color: theme.text }]}>What is your postcode?</Text>
-              <Text style={[styles.copy, { color: theme.secondaryText }]}>A postcode finds the local authority. Your exact property selects the correct collection round.</Text>
               <TextInput
                 accessibilityLabel="UK postcode"
                 autoCapitalize="characters"
@@ -240,12 +212,12 @@ export default function OnboardingScreen() {
                 value={postcode}
               />
               <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => void findAddress()} style={[styles.primary, { backgroundColor: theme.accent }, busy && styles.disabled]}>
-                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>Find my council</Text>}
+                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>Find my collection</Text>}
               </Pressable>
             </View>
           ) : null}
 
-          {step === 2 ? (
+          {step === 1 ? (
             <View style={styles.step}>
               <Text style={[styles.title, { color: theme.text }]}>{addresses.length ? 'Choose your property' : 'Confirm your area'}</Text>
               <Text style={[styles.copy, { color: theme.secondaryText }]}>
@@ -273,36 +245,54 @@ export default function OnboardingScreen() {
                   )}
                 />
               ) : null}
+              <View style={[styles.coverageCard, { backgroundColor: theme.accentSoft }]}>
+                <Ionicons color={theme.accent} name="checkmark-circle-outline" size={22} />
+                <View style={styles.coverageCopy}>
+                  <Text style={[styles.coverageTitle, { color: theme.text }]}>Council source available to check</Text>
+                  <Text style={[styles.coverageDetail, { color: theme.secondaryText }]}>We will now ask {place?.councilName} for this property’s collection dates. If live dates are unavailable, setup will still finish successfully.</Text>
+                </View>
+              </View>
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ disabled: selectedPropertyRequired }}
-                disabled={selectedPropertyRequired}
-                onPress={() => setStep(3)}
-                style={[styles.primary, { backgroundColor: theme.accent }, selectedPropertyRequired && styles.disabled]}>
+                accessibilityState={{ disabled: selectedPropertyRequired || busy }}
+                disabled={selectedPropertyRequired || busy}
+                onPress={() => void checkCollection()}
+                style={[styles.primary, { backgroundColor: theme.accent }, (selectedPropertyRequired || busy) && styles.disabled]}>
+                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>Check collection dates</Text>}
+              </Pressable>
+            </View>
+          ) : null}
+
+          {step === 2 ? (
+            <View style={styles.step}>
+              <View style={[styles.heroIcon, { backgroundColor: verification?.verified ? `${theme.success}18` : theme.accentSoft }]}>
+                <Ionicons color={verification?.verified ? theme.success : theme.accent} name={verification?.verified ? 'checkmark' : 'link-outline'} size={40} />
+              </View>
+              <Text style={[styles.title, { color: theme.text }]}>{verification?.verified ? 'Your first collection is ready' : 'Your address is saved'}</Text>
+              <Text style={[styles.copy, { color: theme.secondaryText }]}>{verification?.message}</Text>
+              {firstCollection ? (
+                <View style={[styles.resultCard, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                  <View style={[styles.resultIcon, { backgroundColor: collectionDisplayMeta(firstCollection).tint }]}>
+                    <Ionicons color={collectionDisplayMeta(firstCollection).colour} name="calendar-outline" size={24} />
+                  </View>
+                  <View style={styles.coverageCopy}>
+                    <Text style={[styles.resultDate, { color: theme.text }]}>{formatCollectionDate(firstCollection.date, 'weekday')}</Text>
+                    <Text style={[styles.resultBin, { color: theme.secondaryText }]}>{collectionDisplayMeta(firstCollection).label}</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={[styles.coverageCard, { backgroundColor: theme.groupedBackground }]}>
+                  <Ionicons color={theme.secondaryText} name="information-circle-outline" size={22} />
+                  <Text style={[styles.coverageDetail, { color: theme.secondaryText }]}>You can retry the official source from Today. The app will never invent collection dates.</Text>
+                </View>
+              )}
+              <Pressable accessibilityRole="button" onPress={() => setStep(3)} style={[styles.primary, { backgroundColor: theme.accent }]}>
                 <Text style={styles.primaryText}>Continue</Text>
               </Pressable>
             </View>
           ) : null}
 
           {step === 3 ? (
-            <View style={styles.step}>
-              <Text style={[styles.title, { color: theme.text }]}>Name this place</Text>
-              <Text style={[styles.copy, { color: theme.secondaryText }]}>Use a short name you will recognise in reminders and when switching addresses.</Text>
-              <TextInput
-                accessibilityLabel="Place name"
-                onChangeText={setName}
-                placeholder="Home"
-                placeholderTextColor={theme.tertiaryText}
-                style={[styles.postcodeInput, { backgroundColor: theme.surface, borderColor: theme.separator, color: theme.text }]}
-                value={name}
-              />
-              <Pressable accessibilityRole="button" onPress={() => setStep(4)} style={[styles.primary, { backgroundColor: theme.accent }]}>
-                <Text style={styles.primaryText}>Continue</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {step === 4 ? (
             <View style={styles.step}>
               <Text style={[styles.title, { color: theme.text }]}>Would you like bin-night reminders?</Text>
               <Text style={[styles.copy, { color: theme.secondaryText }]}>The app schedules alerts only for verified collection dates. You can change each place separately later.</Text>
@@ -320,17 +310,7 @@ export default function OnboardingScreen() {
                 </View>
                 <Switch pointerEvents="none" value={reminders} trackColor={{ false: theme.tertiaryText, true: theme.accent }} />
               </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setStep(reminders ? 5 : 6)} style={[styles.primary, { backgroundColor: theme.accent }]}>
-                <Text style={styles.primaryText}>Continue</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {step === 5 ? (
-            <View style={styles.step}>
-              <Text style={[styles.title, { color: theme.text }]}>What time should we remind you?</Text>
-              <Text style={[styles.copy, { color: theme.secondaryText }]}>This reminder arrives the evening before collection.</Text>
-              <View style={[styles.timePicker, { backgroundColor: theme.groupedBackground }]}>
+              {reminders ? <View accessibilityRole="radiogroup" style={[styles.timePicker, { backgroundColor: theme.groupedBackground }]}>
                 {reminderTimes.map((hour) => (
                   <Pressable
                     accessibilityRole="radio"
@@ -341,14 +321,14 @@ export default function OnboardingScreen() {
                     <Text style={[styles.timeText, { color: reminderHour === hour ? theme.accent : theme.secondaryText }]}>{hour}:00</Text>
                   </Pressable>
                 ))}
-              </View>
-              <Pressable accessibilityRole="button" onPress={() => setStep(6)} style={[styles.primary, { backgroundColor: theme.accent }]}>
+              </View> : null}
+              <Pressable accessibilityRole="button" onPress={() => setStep(4)} style={[styles.primary, { backgroundColor: theme.accent }]}>
                 <Text style={styles.primaryText}>Continue</Text>
               </Pressable>
             </View>
           ) : null}
 
-          {step === 6 ? (
+          {step === 4 ? (
             <View style={styles.step}>
               <View style={[styles.heroIcon, { backgroundColor: theme.accentSoft }]}>
                 <Ionicons color={theme.accent} name="notifications-outline" size={38} />
@@ -359,28 +339,15 @@ export default function OnboardingScreen() {
                   ? 'Your phone or browser will show its own permission prompt. On iPhone web, install the app to the Home Screen first.'
                   : 'You can turn reminders on for any saved place from Settings.'}
               </Text>
-              <Pressable accessibilityRole="button" onPress={() => void askForNotifications()} style={[styles.primary, { backgroundColor: theme.accent }]}>
-                <Text style={styles.primaryText}>{reminders ? 'Continue to permission' : 'Continue'}</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {step === 7 ? (
-            <View style={styles.step}>
-              <View style={[styles.heroIcon, { backgroundColor: theme.accentSoft }]}>
-                <Ionicons color={theme.success} name="checkmark" size={40} />
-              </View>
-              <Text style={[styles.title, { color: theme.text }]}>You are ready</Text>
-              <Text style={[styles.copy, { color: theme.secondaryText }]}>We will now save {name || 'this place'} and check its live {place?.councilName} collection source.</Text>
               <View style={[styles.confirmation, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
                 <Text style={[styles.confirmTitle, { color: theme.text }]}>{selectedAddress?.line1 ?? place?.line1}</Text>
                 <Text style={[styles.confirmDetail, { color: theme.secondaryText }]}>{place?.postcode} · {place?.councilName}</Text>
                 <Text style={[styles.confirmDetail, { color: theme.secondaryText }]}>
-                  Reminders: {reminders && permissionReady ? `${reminderHour}:00 the night before` : 'Not enabled'}
+                  Reminders: {reminders ? `${reminderHour}:00 the night before` : 'Not enabled'}
                 </Text>
               </View>
               <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => void finish()} style={[styles.primary, { backgroundColor: theme.accent }, busy && styles.disabled]}>
-                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>Check my collection dates</Text>}
+                {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>{reminders ? 'Allow notifications and finish' : 'Finish setup'}</Text>}
               </Pressable>
             </View>
           ) : null}
@@ -420,6 +387,14 @@ const styles = StyleSheet.create({
   addressCopy: { flex: 1 },
   addressTitle: { fontSize: 14, lineHeight: 19, fontWeight: '600' },
   addressPostcode: { fontSize: 13, marginTop: 3 },
+  coverageCard: { minHeight: 68, borderRadius: 15, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
+  coverageCopy: { flex: 1 },
+  coverageTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  coverageDetail: { flex: 1, fontSize: 13, lineHeight: 18, marginTop: 2 },
+  resultCard: { minHeight: 84, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  resultIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  resultDate: { fontSize: 17, lineHeight: 22, fontWeight: '700' },
+  resultBin: { fontSize: 14, lineHeight: 19, marginTop: 3 },
   switchCard: { minHeight: 82, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   switchIcon: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   switchCopy: { flex: 1 },

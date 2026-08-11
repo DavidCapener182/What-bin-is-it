@@ -47,3 +47,39 @@ jobs:
 
       - name: Web and server build
         run: npm run build
+
+  verify-council-console:
+    name: Verify council console
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: council-backoffice
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: council-backoffice/package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Production dependency audit
+        run: npm run audit:production
+
+      - name: Production build
+        run: npm run build

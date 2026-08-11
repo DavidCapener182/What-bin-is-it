@@ -22,6 +22,7 @@ import { SupportRequest } from '@/lib/types';
 import { useAccount } from '@/lib/use-account';
 import { useAppData } from '@/lib/use-app-data';
 import { useCouncilProfile } from '@/lib/use-council-profile';
+import { useProductState } from '@/lib/use-product-state';
 
 const topics: { value: SupportRequest['topic']; label: string }[] = [
   { value: 'app-help', label: 'Using the app' },
@@ -87,6 +88,7 @@ export default function SupportScreen() {
   const councilProfile = useCouncilProfile(activeAddress?.providerId);
   const councilSupportEnabled = councilProfile?.featureFlags?.supportInbox === true;
   const { accessToken, configured, ready: accountReady, user } = useAccount();
+  const { markSupportThreadSeen, supportSeenMessageIdByThreadId } = useProductState();
   const initialTopic = topics.some((item) => item.value === params.topic)
     ? params.topic as SupportRequest['topic']
     : 'app-help';
@@ -104,6 +106,17 @@ export default function SupportScreen() {
     () => threads.find((thread) => thread.id === selectedThreadId) ?? threads[0],
     [selectedThreadId, threads],
   );
+
+  useEffect(() => {
+    const latestMessageId = selectedThread?.messages.at(-1)?.id;
+    if (
+      selectedThread?.lastSender === 'support'
+      && latestMessageId
+      && supportSeenMessageIdByThreadId[selectedThread.id] !== latestMessageId
+    ) {
+      markSupportThreadSeen(selectedThread.id, latestMessageId);
+    }
+  }, [markSupportThreadSeen, selectedThread, supportSeenMessageIdByThreadId]);
 
   const acceptThreads = useCallback((next: SupportThread[]) => {
     setThreads(next);
