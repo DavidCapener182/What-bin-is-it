@@ -713,6 +713,8 @@ export async function confirmExternalBulkyBookingAction(formData: FormData) {
   const path = "/partners";
   try {
     const session = await requireCouncilAction("partners:approve");
+    assertExpectedOrganisation(formData, session);
+    assertHighRiskConfirmation(formData);
     const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
     if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
     await confirmExternalBulkyBooking(

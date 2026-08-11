@@ -50,10 +50,14 @@ export type DashboardMetric = {
 export type CouncilOperationalQueueItem = {
   key:
     | "active-disruptions"
+    | "scheduled-broadcasts"
     | "broadcast-delivery"
     | "gateway-failures"
     | "resident-support"
     | "paid-bookings"
+    | "paid-bookings-approaching"
+    | "paid-bookings-overdue"
+    | "missed-report-patterns"
     | "partner-review";
   label: string;
   detail: string;

@@ -3,10 +3,16 @@
 import { AlertTriangle, Bell, CalendarDays, Smartphone } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  overlappingDisruptionTitles,
+  type ActiveDisruptionContext,
+} from "@/lib/message-preview";
+
 type PreviewState = {
   title: string;
   body: string;
   sourceUrl: string;
+  startsAt: string;
   endsAt: string;
   audienceScope: string;
   collectionTypes: string[];
@@ -18,6 +24,7 @@ const initial: PreviewState = {
   title: "Collection service update",
   body: "Verified council information will appear here.",
   sourceUrl: "",
+  startsAt: "",
   endsAt: "",
   audienceScope: "council",
   collectionTypes: [],
@@ -34,11 +41,13 @@ export function CouncilMessagePreview({
   councilName,
   mode,
   existingTitles = [],
+  activeDisruptions = [],
 }: {
   formId: string;
   councilName: string;
   mode: "announcement" | "disruption";
   existingTitles?: string[];
+  activeDisruptions?: ActiveDisruptionContext[];
 }) {
   const [preview, setPreview] = useState(initial);
   const [recipientEstimate, setRecipientEstimate] = useState<number>();
@@ -59,6 +68,7 @@ export function CouncilMessagePreview({
         title: title || initial.title,
         body: detail || initial.body,
         sourceUrl: String(data.get("sourceUrl") ?? "").trim(),
+        startsAt: String(data.get("startsAt") ?? "").trim(),
         endsAt: String(data.get("endsAt") ?? "").trim(),
         audienceScope: String(data.get("audienceScope") ?? "council"),
         collectionTypes: data.getAll("audienceCollectionTypes").map(String),
@@ -120,8 +130,12 @@ export function CouncilMessagePreview({
     if (existingTitles.some((title) => title.toLowerCase() === preview.title.toLowerCase())) {
       items.push("A message with this title already exists. Check for a duplicate.");
     }
+    const overlaps = overlappingDisruptionTitles(preview, activeDisruptions);
+    if (overlaps.length) {
+      items.push(`This publishing window overlaps the active disruption “${overlaps[0]}”${overlaps.length > 1 ? ` and ${overlaps.length - 1} other active disruption${overlaps.length === 2 ? "" : "s"}` : ""}.`);
+    }
     return items;
-  }, [existingTitles, preview]);
+  }, [activeDisruptions, existingTitles, preview]);
 
   return (
     <section aria-label="Resident message preview" className="panel message-preview-panel">
@@ -143,6 +157,18 @@ export function CouncilMessagePreview({
           <strong>{preview.title}</strong>
           <p>{preview.body}</p>
           <small>{councilName} · Updated now</small>
+        </article>
+        <article className="surface-preview">
+          <span>Schedule banner</span>
+          <strong>{preview.title}</strong>
+          <p>{preview.body}</p>
+          <small>{councilName} · Collection service update</small>
+        </article>
+        <article className="surface-preview">
+          <span>Guide notice</span>
+          <strong>{preview.title}</strong>
+          <p>{preview.body}</p>
+          <small>Official guidance from {councilName}</small>
         </article>
         <article className="surface-preview activity-preview">
           <span>Activity</span>

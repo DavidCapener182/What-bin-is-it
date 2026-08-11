@@ -6,8 +6,9 @@ import { CouncilMessagePreview } from "@/components/council-message-preview";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { requireCouncilSession } from "@/lib/auth";
-import { listAnnouncements, listCouncilBroadcasts } from "@/lib/data";
+import { listAnnouncements, listCouncilBroadcasts, listDisruptions } from "@/lib/data";
 import { formatDateTime, humanise } from "@/lib/format";
+import { publishedDisruptionContexts } from "@/lib/message-preview";
 import { councilRoleCan } from "@/lib/permissions";
 
 export default async function AnnouncementsPage({
@@ -18,9 +19,10 @@ export default async function AnnouncementsPage({
   const session = await requireCouncilSession("dashboard:view");
   const canWrite = councilRoleCan(session.role, "content:write");
   const canPublish = councilRoleCan(session.role, "content:publish");
-  const [items, broadcasts, params] = await Promise.all([
+  const [items, broadcasts, disruptions, params] = await Promise.all([
     listAnnouncements(session),
     listCouncilBroadcasts(session),
+    listDisruptions(session),
     searchParams,
   ]);
   const broadcastsByContentId = new Map<string, (typeof broadcasts)[number]>();
@@ -68,6 +70,7 @@ export default async function AnnouncementsPage({
               </div>
             </form>
             <CouncilMessagePreview
+              activeDisruptions={publishedDisruptionContexts(disruptions)}
               councilName={session.organisation.name}
               existingTitles={items.map((item) => item.title)}
               formId="announcement-compose"

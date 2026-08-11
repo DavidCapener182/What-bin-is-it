@@ -4,67 +4,17 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Check, ChevronLeft, ChevronRight, CloudUpload, Save, ShieldCheck } from "lucide-react";
 
 import { savePartnerAction } from "@/app/actions";
-
-const steps = [
-  { title: "Service details", detail: "Describe the organisation and the resident service." },
-  { title: "Areas and items", detail: "Choose when and where this listing is relevant." },
-  { title: "Compliance evidence", detail: "Record the evidence and resident complaint route." },
-  { title: "Price and payment", detail: "Set the commercial model and booking route." },
-  { title: "Resident preview", detail: "Check the exact service order and disclosure." },
-  { title: "Approval and activation", detail: "Set campaign dates, then create a draft or send for review." },
-] as const;
-
-type PartnerDraft = {
-  name: string;
-  category: string;
-  description: string;
-  serviceUrl: string;
-  itemKeys: string;
-  supportedAreaLabels: string;
-  disclosureLabel: string;
-  referralModel: string;
-  commissionPence: string;
-  bookingMode: string;
-  bookingPricePence: string;
-  platformFeePence: string;
-  stripeAccountId: string;
-  providerAcceptanceSlaHours: string;
-  termsUrl: string;
-  priority: string;
-  licenceReference: string;
-  evidenceUrl: string;
-  complaintContact: string;
-  budgetPence: string;
-  renewalReviewAt: string;
-  startsAt: string;
-  endsAt: string;
-};
-
-const initialDraft: PartnerDraft = {
-  name: "",
-  category: "bulky-waste",
-  description: "",
-  serviceUrl: "",
-  itemKeys: "",
-  supportedAreaLabels: "",
-  disclosureLabel: "Sponsored partner",
-  referralModel: "none",
-  commissionPence: "",
-  bookingMode: "external-referral",
-  bookingPricePence: "",
-  platformFeePence: "",
-  stripeAccountId: "",
-  providerAcceptanceSlaHours: "24",
-  termsUrl: "",
-  priority: "100",
-  licenceReference: "",
-  evidenceUrl: "",
-  complaintContact: "",
-  budgetPence: "",
-  renewalReviewAt: "",
-  startsAt: "",
-  endsAt: "",
-};
+import {
+  firstInvalidPartnerWizardStep,
+  initialPartnerDraft,
+  partnerDraftStorageKey,
+  partnerWizardSteps,
+  restorePartnerDraft,
+  serialisePartnerDraft,
+  shouldWarnPartnerWizardBeforeLeave,
+  validatePartnerWizardStep,
+  type PartnerDraft,
+} from "@/lib/partner-wizard";
 
 const categories = ["bulky-waste", "reuse", "electricals", "batteries", "paint", "garden", "bin-cleaning", "replacement-bins", "other"];
 const referralModels = ["none", "flat-fee", "commission", "sponsored-placement"];
@@ -73,61 +23,10 @@ function humanise(value: string) {
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function isHttpsUrl(value: string) {
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 function poundValue(pence: string) {
   const value = Number(pence);
   if (!Number.isFinite(value) || value < 0) return "Price confirmed during booking";
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value / 100);
-}
-
-function validationForStep(step: number, draft: PartnerDraft) {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  if (step === 0) {
-    if (!draft.name.trim()) errors.push("Add the partner name.");
-    if (!draft.description.trim()) errors.push("Add the resident-facing description.");
-    if (!isHttpsUrl(draft.serviceUrl)) errors.push("Add a secure https booking or service URL.");
-  }
-  if (step === 1 && !draft.itemKeys.split("\n").some((value) => value.trim())) {
-    errors.push("Add at least one resident guide item key.");
-  }
-  if (step === 2) {
-    if (!draft.licenceReference.trim() && !draft.evidenceUrl.trim()) warnings.push("No waste-carrier or compliance evidence is recorded yet.");
-    if (draft.evidenceUrl && !isHttpsUrl(draft.evidenceUrl)) errors.push("The evidence link must use https.");
-    if (!draft.complaintContact.trim()) warnings.push("Add a complaint route before approval.");
-  }
-  if (step === 3) {
-    const sla = Number(draft.providerAcceptanceSlaHours);
-    if (!Number.isInteger(sla) || sla < 1 || sla > 168) errors.push("Provider response time must be between 1 and 168 hours.");
-    if (!draft.disclosureLabel.trim()) errors.push("Add the resident sponsorship disclosure.");
-    if (draft.termsUrl && !isHttpsUrl(draft.termsUrl)) errors.push("The booking terms link must use https.");
-    if (draft.commissionPence && (Number(draft.commissionPence) < 0 || Number(draft.commissionPence) > 100000)) errors.push("Commission must be between 0 and 100,000 pence.");
-    if (draft.bookingPricePence && (Number(draft.bookingPricePence) < 100 || Number(draft.bookingPricePence) > 1000000)) errors.push("Fixed item price must be between 100 and 1,000,000 pence.");
-    if (draft.platformFeePence && (Number(draft.platformFeePence) < 0 || Number(draft.platformFeePence) > 100000)) errors.push("What Bin fee must be between 0 and 100,000 pence.");
-    if (draft.budgetPence && (Number(draft.budgetPence) < 0 || Number(draft.budgetPence) > 100000000)) errors.push("Campaign budget must be between 0 and 100,000,000 pence.");
-    if (draft.stripeAccountId && !draft.stripeAccountId.match(/^acct_[A-Za-z0-9]{8,}$/)) errors.push("The Stripe connected-account ID is not valid.");
-    if (draft.bookingMode === "stripe-connect") {
-      if (!draft.bookingPricePence) warnings.push("A fixed item price is required before in-app checkout can be activated.");
-      if (!draft.stripeAccountId) warnings.push("A Stripe connected-account ID is required before in-app checkout can be activated.");
-      if (!draft.termsUrl) warnings.push("Booking terms are required before in-app checkout can be activated.");
-    }
-  }
-  if (step === 5) {
-    const priority = Number(draft.priority);
-    if (!Number.isInteger(priority) || priority < 1 || priority > 1000) errors.push("Display order must be between 1 and 1,000.");
-    if (draft.startsAt && draft.endsAt && new Date(draft.endsAt) <= new Date(draft.startsAt)) errors.push("The campaign end must be after its start.");
-    if (!draft.renewalReviewAt) warnings.push("No renewal-review date is set.");
-  }
-
-  return { errors, warnings };
 }
 
 export function PartnerSetupWizard({
@@ -140,13 +39,13 @@ export function PartnerSetupWizard({
   organisationName: string;
 }) {
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<PartnerDraft>(initialDraft);
+  const [draft, setDraft] = useState<PartnerDraft>(initialPartnerDraft);
   const [dirty, setDirty] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string>();
   const [validationVisible, setValidationVisible] = useState(false);
   const submitting = useRef(false);
-  const storageKey = `what-bin-partner-wizard:${organisationId}`;
-  const validation = useMemo(() => validationForStep(step, draft), [draft, step]);
+  const storageKey = partnerDraftStorageKey(organisationId);
+  const validation = useMemo(() => validatePartnerWizardStep(step, draft), [draft, step]);
 
   useEffect(() => {
     try {
@@ -156,7 +55,11 @@ export function PartnerSetupWizard({
       }
       const saved = window.localStorage.getItem(storageKey);
       if (!saved) return;
-      const restored = { ...initialDraft, ...(JSON.parse(saved) as Partial<PartnerDraft>) };
+      const restored = restorePartnerDraft(saved);
+      if (!restored) {
+        window.localStorage.removeItem(storageKey);
+        return;
+      }
       const timer = window.setTimeout(() => {
         setDraft(restored);
         setDraftMessage("Browser draft restored on this device.");
@@ -169,7 +72,7 @@ export function PartnerSetupWizard({
 
   useEffect(() => {
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
-      if (!dirty || submitting.current) return;
+      if (!shouldWarnPartnerWizardBeforeLeave(dirty, submitting.current)) return;
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warnBeforeLeaving);
@@ -185,13 +88,13 @@ export function PartnerSetupWizard({
   function continueToNextStep() {
     setValidationVisible(true);
     if (validation.errors.length) return;
-    setStep((current) => Math.min(current + 1, steps.length - 1));
+    setStep((current) => Math.min(current + 1, partnerWizardSteps.length - 1));
     setValidationVisible(false);
   }
 
   function persistBrowserDraft(message: string) {
     try {
-      window.localStorage.setItem(storageKey, JSON.stringify(draft));
+      window.localStorage.setItem(storageKey, serialisePartnerDraft(draft));
       setDirty(false);
       setDraftMessage(message);
       return true;
@@ -206,8 +109,7 @@ export function PartnerSetupWizard({
   }
 
   function validateSubmission(event: FormEvent<HTMLFormElement>) {
-    const validations = steps.map((_, index) => validationForStep(index, draft));
-    const firstInvalidStep = validations.findIndex(({ errors }) => errors.length > 0);
+    const firstInvalidStep = firstInvalidPartnerWizardStep(draft);
     if (firstInvalidStep < 0) {
       persistBrowserDraft("Submitting this record to the council workspace.");
       submitting.current = true;
@@ -232,7 +134,7 @@ export function PartnerSetupWizard({
       </div>
 
       <ol className="partner-wizard-progress" aria-label="Partner setup progress">
-        {steps.map((item, index) => (
+        {partnerWizardSteps.map((item, index) => (
           <li className={index === step ? "current" : index < step ? "complete" : ""} key={item.title}>
             <button onClick={() => setStep(index)} type="button">
               <span>{index < step ? <Check aria-hidden="true" size={15} /> : index + 1}</span>
@@ -243,9 +145,9 @@ export function PartnerSetupWizard({
       </ol>
 
       <div className="partner-wizard-step-heading">
-        <span>Step {step + 1} of {steps.length}</span>
-        <h3>{steps[step].title}</h3>
-        <p>{steps[step].detail}</p>
+        <span>Step {step + 1} of {partnerWizardSteps.length}</span>
+        <h3>{partnerWizardSteps[step].title}</h3>
+        <p>{partnerWizardSteps[step].detail}</p>
       </div>
 
       {(validationVisible || validation.warnings.length > 0) && (validation.errors.length > 0 || validation.warnings.length > 0) ? (
@@ -317,7 +219,7 @@ export function PartnerSetupWizard({
         <div className="partner-wizard-actions">
           <button className="secondary-button" disabled={step === 0} onClick={() => { setStep((current) => Math.max(0, current - 1)); setValidationVisible(false); }} type="button"><ChevronLeft aria-hidden="true" size={17} /> Previous</button>
           <button className="secondary-button" onClick={saveBrowserDraft} type="button"><Save aria-hidden="true" size={17} /> Save browser draft</button>
-          {step < steps.length - 1 ? <button className="primary-button" onClick={continueToNextStep} type="button">Continue <ChevronRight aria-hidden="true" size={17} /></button> : <><button className="secondary-button" name="status" type="submit" value="draft">Create council draft</button><button className="primary-button" name="status" type="submit" value="review">Send for review <ChevronRight aria-hidden="true" size={17} /></button></>}
+          {step < partnerWizardSteps.length - 1 ? <button className="primary-button" onClick={continueToNextStep} type="button">Continue <ChevronRight aria-hidden="true" size={17} /></button> : <><button className="secondary-button" name="status" type="submit" value="draft">Create council draft</button><button className="primary-button" name="status" type="submit" value="review">Send for review <ChevronRight aria-hidden="true" size={17} /></button></>}
         </div>
         {draftMessage ? <p className="wizard-draft-message" role="status">{draftMessage}</p> : null}
         <p className="wizard-local-note">Browser drafts stay only on this device and are not suitable for shared computers. They do not create a council record, reserve a campaign or enter the approval queue.</p>

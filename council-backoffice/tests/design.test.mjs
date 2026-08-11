@@ -58,9 +58,10 @@ test("the council overview presents a neutral responsive operational queue", asy
   assert.doesNotMatch(styles.toLowerCase(), /purple|linear-gradient/);
 });
 
-test("partner setup uses a six-step guarded wizard and honest local drafts", async () => {
-  const [wizard, page, styles] = await Promise.all([
+test("partner setup renders the shared six-step contract and honest local drafts", async () => {
+  const [wizard, wizardContract, page, styles] = await Promise.all([
     readFile(new URL("../components/partner-setup-wizard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/partner-wizard.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/(console)/partners/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
@@ -72,7 +73,7 @@ test("partner setup uses a six-step guarded wizard and honest local drafts", asy
     "Price and payment",
     "Resident preview",
     "Approval and activation",
-  ]) assert.match(wizard, new RegExp(heading));
+  ]) assert.match(wizardContract, new RegExp(heading));
   assert.match(wizard, /Save browser draft/);
   assert.match(wizard, /No council record has been created/);
   assert.match(wizard, /Official .* service[\s\S]*Charity or reuse service[\s\S]*resident-preview-sponsored/);

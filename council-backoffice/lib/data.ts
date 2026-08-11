@@ -462,7 +462,16 @@ export async function councilOperationalQueue(
   const sql = councilDatabase();
   const organisationId = session.organisation.id;
   const providerId = session.organisation.providerId;
-  const [disruptionRows, broadcastRows, gatewayRows, supportRows, bookingRows, partnerRows] = await Promise.all([
+  const [
+    disruptionRows,
+    scheduledBroadcastRows,
+    broadcastRows,
+    gatewayRows,
+    supportRows,
+    bookingRows,
+    missedReportRows,
+    partnerRows,
+  ] = await Promise.all([
     sql<{ active_count: number }[]>`
       SELECT count(*)::int AS active_count
       FROM bin_council_disruptions
@@ -470,6 +479,16 @@ export async function councilOperationalQueue(
         AND status = 'published'
         AND starts_at <= now()
         AND (ends_at IS NULL OR ends_at > now())
+    `,
+    sql<{ scheduled_count: number }[]>`
+      SELECT count(*)::int AS scheduled_count
+      FROM bin_council_announcements
+      WHERE organisation_id = ${organisationId}::uuid
+        AND status IN ('published', 'scheduled')
+        AND starts_at > now()
+        AND starts_at < (
+          date_trunc('day', now() AT TIME ZONE 'Europe/London') + interval '1 day'
+        ) AT TIME ZONE 'Europe/London'
     `,
     sql<{ queued_count: number; failed_count: number }[]>`
       SELECT
@@ -497,9 +516,15 @@ export async function councilOperationalQueue(
       WHERE council_provider_id = ${providerId}
         AND status NOT IN ('resolved', 'closed')
     `,
-    sql<{ waiting_count: number; overdue_count: number }[]>`
+    sql<{ waiting_count: number; approaching_count: number; overdue_count: number }[]>`
       SELECT
         count(*)::int AS waiting_count,
+        count(*) FILTER (
+          WHERE booking.started_at
+              + partner.provider_acceptance_sla_hours * interval '1 hour' >= now()
+            AND booking.started_at
+              + partner.provider_acceptance_sla_hours * interval '1 hour' <= now() + interval '4 hours'
+        )::int AS approaching_count,
         count(*) FILTER (
           WHERE booking.started_at
             + partner.provider_acceptance_sla_hours * interval '1 hour' < now()
@@ -509,6 +534,33 @@ export async function councilOperationalQueue(
       WHERE booking.organisation_id = ${organisationId}::uuid
         AND booking.booking_channel = 'stripe-connect'
         AND booking.status = 'awaiting-provider'
+    `,
+    sql<{
+      start_count: number;
+      participant_count: number;
+      leading_context: string | null;
+      leading_count: number | null;
+    }[]>`
+      WITH recent AS (
+        SELECT participant_id, context
+        FROM bin_analytics_events
+        WHERE council_id = ${providerId}
+          AND event_name = 'missed_report_started'
+          AND occurred_at >= now() - interval '24 hours'
+      ), context_counts AS (
+        SELECT context, count(*)::int AS context_count
+        FROM recent
+        WHERE context IS NOT NULL AND context <> ''
+        GROUP BY context
+        ORDER BY context_count DESC, context ASC
+        LIMIT 1
+      )
+      SELECT
+        count(*)::int AS start_count,
+        count(DISTINCT participant_id)::int AS participant_count,
+        (SELECT context FROM context_counts) AS leading_context,
+        (SELECT context_count FROM context_counts) AS leading_count
+      FROM recent
     `,
     sql<{ review_count: number; renewal_count: number }[]>`
       SELECT
@@ -533,6 +585,18 @@ export async function councilOperationalQueue(
       count: activeDisruptions,
       href: "/disruptions",
       tone: "amber",
+    });
+  }
+
+  const scheduledBroadcasts = scheduledBroadcastRows[0]?.scheduled_count ?? 0;
+  if (scheduledBroadcasts > 0) {
+    items.push({
+      key: "scheduled-broadcasts",
+      label: "Resident messages scheduled today",
+      detail: `${scheduledBroadcasts} published resident message${scheduledBroadcasts === 1 ? " is" : "s are"} due to start later today`,
+      count: scheduledBroadcasts,
+      href: "/announcements",
+      tone: "blue",
     });
   }
 
@@ -575,15 +639,55 @@ export async function councilOperationalQueue(
   }
 
   const waitingBookings = bookingRows[0]?.waiting_count ?? 0;
+  const approachingBookings = bookingRows[0]?.approaching_count ?? 0;
   const overdueBookings = bookingRows[0]?.overdue_count ?? 0;
-  if (waitingBookings > 0) {
+  const ordinaryWaitingBookings = Math.max(0, waitingBookings - approachingBookings - overdueBookings);
+  if (overdueBookings > 0) {
+    items.push({
+      key: "paid-bookings-overdue",
+      label: "Paid collections past provider deadline",
+      detail: `${overdueBookings} paid booking${overdueBookings === 1 ? " has" : "s have"} passed the approved provider response SLA`,
+      count: overdueBookings,
+      href: "/partners#bulky-bookings",
+      tone: "red",
+    });
+  }
+  if (approachingBookings > 0) {
+    items.push({
+      key: "paid-bookings-approaching",
+      label: "Provider response deadlines approaching",
+      detail: `${approachingBookings} paid booking${approachingBookings === 1 ? " is" : "s are"} due for a provider response within 4 hours`,
+      count: approachingBookings,
+      href: "/partners#bulky-bookings",
+      tone: "amber",
+    });
+  }
+  if (ordinaryWaitingBookings > 0) {
     items.push({
       key: "paid-bookings",
       label: "Paid collections awaiting provider",
-      detail: `${waitingBookings} paid booking${waitingBookings === 1 ? "" : "s"} awaiting acceptance · ${overdueBookings} past response deadline`,
-      count: waitingBookings,
+      detail: `${ordinaryWaitingBookings} paid booking${ordinaryWaitingBookings === 1 ? " is" : "s are"} awaiting acceptance within the approved response window`,
+      count: ordinaryWaitingBookings,
       href: "/partners#bulky-bookings",
-      tone: overdueBookings > 0 ? "red" : "amber",
+      tone: "blue",
+    });
+  }
+
+  const missedReportStarts = missedReportRows[0]?.start_count ?? 0;
+  if (missedReportStarts > 0) {
+    const affectedParticipants = missedReportRows[0]?.participant_count ?? 0;
+    const leadingContext = missedReportRows[0]?.leading_context;
+    const leadingCount = missedReportRows[0]?.leading_count ?? 0;
+    const leadingDetail = leadingContext
+      ? ` · most frequent recorded type: ${leadingContext} (${leadingCount})`
+      : "";
+    items.push({
+      key: "missed-report-patterns",
+      label: "Missed-report activity",
+      detail: `${missedReportStarts} opted-in report start${missedReportStarts === 1 ? "" : "s"} from ${affectedParticipants} installation${affectedParticipants === 1 ? "" : "s"} in 24 hours${leadingDetail}`,
+      count: missedReportStarts,
+      href: "/reports",
+      tone: "amber",
     });
   }
 

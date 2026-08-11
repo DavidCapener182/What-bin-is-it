@@ -206,6 +206,7 @@ test("high-risk council mutations bind the submitted and authenticated council c
     "saveDisruptionAction",
     "changeDisruptionStatusAction",
     "changePartnerStatusAction",
+    "confirmExternalBulkyBookingAction",
     "acceptMarketplaceBulkyBookingAction",
     "declineMarketplaceBulkyBookingAction",
     "completeMarketplaceBulkyBookingAction",
@@ -221,6 +222,7 @@ test("high-risk council mutations bind the submitted and authenticated council c
     [disruptionsPage, "saveDisruptionAction"],
     [disruptionsPage, "changeDisruptionStatusAction"],
     [partnersPage, "changePartnerStatusAction"],
+    [partnersPage, "confirmExternalBulkyBookingAction"],
     [partnersPage, "acceptMarketplaceBulkyBookingAction"],
     [partnersPage, "declineMarketplaceBulkyBookingAction"],
     [partnersPage, "completeMarketplaceBulkyBookingAction"],
@@ -243,10 +245,12 @@ test("council operational work is queried from real tenant-scoped records", asyn
   assert.match(data, /export async function councilOperationalQueue/);
   for (const table of [
     "bin_council_disruptions",
+    "bin_council_announcements",
     "bin_council_broadcast_jobs",
     "bin_gateway_checks",
     "bin_resident_support_threads",
     "bin_bulky_bookings",
+    "bin_analytics_events",
     "bin_council_partners",
   ]) {
     assert.match(data, new RegExp(table));
@@ -254,6 +258,12 @@ test("council operational work is queried from real tenant-scoped records", asyn
   assert.match(data, /organisation_id = \$\{organisationId\}::uuid/);
   assert.match(data, /council_id = \$\{providerId\}/);
   assert.match(data, /council_provider_id = \$\{providerId\}/);
+  assert.match(data, /event_name = 'missed_report_started'/);
+  assert.match(data, /status IN \('published', 'scheduled'\)/);
+  assert.match(data, /starts_at > now\(\)/);
+  assert.match(data, /now\(\) AT TIME ZONE 'Europe\/London'/);
+  assert.match(data, /approaching_count/);
+  assert.match(data, /overdue_count/);
   assert.doesNotMatch(data, /operationalQueue[\s\S]*?Math\.random/);
   assert.match(overview, /Selected council · \{session\.organisation\.name\}/);
   assert.match(overview, /No evidenced items need action/);

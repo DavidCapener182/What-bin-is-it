@@ -8,6 +8,7 @@ import { StatusPill } from "@/components/status-pill";
 import { requireCouncilSession } from "@/lib/auth";
 import { listCouncilBroadcasts, listDisruptions } from "@/lib/data";
 import { formatDateTime, humanise } from "@/lib/format";
+import { publishedDisruptionContexts } from "@/lib/message-preview";
 import { councilRoleCan } from "@/lib/permissions";
 
 const collectionTypes = ["all", "general", "recycling", "garden", "food", "other"];
@@ -54,6 +55,7 @@ export default async function DisruptionsPage({ searchParams }: { searchParams: 
             <div className="form-actions"><button className="secondary-button" name="status" value="draft">Save draft</button>{canPublish ? <button className="primary-button" name="status" value="published">Publish alert</button> : null}</div>
           </form>
           <CouncilMessagePreview
+            activeDisruptions={publishedDisruptionContexts(items)}
             councilName={session.organisation.name}
             existingTitles={items.map((item) => item.title)}
             formId="disruption-compose"
