@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, type ViewStyle } from 'react-native';
 
 const webSystemFont = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif';
 const webDisplayFont = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif';
@@ -36,3 +36,9 @@ export const appColours = {
   separator: '#D1D1D6',
   material: 'rgba(249, 249, 251, 0.86)',
 };
+
+export const nonInteractiveStyle = { pointerEvents: 'none' } satisfies ViewStyle;
+
+export function platformShadow(webBoxShadow: string, nativeShadow: ViewStyle): ViewStyle {
+  return Platform.OS === 'web' ? { boxShadow: webBoxShadow } : nativeShadow;
+}

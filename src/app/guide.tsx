@@ -9,7 +9,7 @@ import { CouncilNotices } from '@/components/council-notices';
 import { RouteHead } from '@/components/route-head';
 import { collectionMeta } from '@/lib/data';
 import { CouncilProfile, fetchNearbyServices } from '@/lib/council-provider';
-import { appFonts } from '@/lib/design-system';
+import { appFonts, platformShadow } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { GuideDestination, GuideItem, guideItemCount, searchGuide } from '@/lib/household-guide';
 import { recyclingMaterialsLabel } from '@/lib/recycling-materials';
@@ -532,7 +532,7 @@ function createStyles(theme: AppTheme) {
   hiddenPanel: { display: 'none' },
   modePicker: { flexDirection: 'row', padding: 3, backgroundColor: theme.groupedBackground, borderRadius: 12, gap: 2 },
   mode: { flex: 1, minHeight: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 7 },
-  modeActive: { backgroundColor: theme.surface, shadowColor: '#000000', shadowOpacity: 0.11, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  modeActive: { backgroundColor: theme.surface, ...platformShadow('0 2px 4px rgba(0, 0, 0, 0.11)', { shadowColor: '#000000', shadowOpacity: 0.11, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 }) },
   modeText: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, fontWeight: '600' },
   modeTextActive: { color: theme.accent, fontWeight: '700' },
   searchBox: { height: 51, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, paddingHorizontal: 14, alignItems: 'center', flexDirection: 'row', gap: 9 },

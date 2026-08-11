@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
-import { appFonts } from '@/lib/design-system';
+import { appFonts, platformShadow } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { useAppData } from '@/lib/use-app-data';
 import { buildCollectionWidgetSnapshot } from '@/widgets/widget-data';
@@ -78,7 +78,7 @@ function createStyles(theme: AppTheme) {
     copy: { flex: 1 },
     title: { color: theme.text, fontFamily: appFonts.text, fontSize: 14, fontWeight: '700', letterSpacing: -0.15 },
     text: { color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, marginTop: 3, fontWeight: '500' },
-    preview: { minHeight: 122, marginHorizontal: 14, marginBottom: 14, borderRadius: 22, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000000', shadowOpacity: 0.13, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+    preview: { minHeight: 122, marginHorizontal: 14, marginBottom: 14, borderRadius: 22, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12, ...platformShadow('0 5px 10px rgba(0, 0, 0, 0.13)', { shadowColor: '#000000', shadowOpacity: 0.13, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 }) },
     previewCopy: { flex: 1, minWidth: 0, gap: 3 },
     previewKicker: { fontSize: 10, letterSpacing: 0.5, fontWeight: '800' },
     previewHeadline: { fontFamily: appFonts.rounded, fontSize: 19, lineHeight: 22, letterSpacing: -0.45, fontWeight: '800' },

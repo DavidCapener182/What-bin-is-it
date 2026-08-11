@@ -34,7 +34,7 @@ import {
   safeCollectionHeroColour,
   sortCollections,
 } from '@/lib/data';
-import { appFonts } from '@/lib/design-system';
+import { appFonts, platformShadow } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { residentAlertsForProfile } from '@/lib/resident-alerts';
@@ -843,7 +843,7 @@ function createStyles(theme: AppTheme) {
   content: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 120, gap: 20 },
   setupRequiredCard: { minHeight: 92, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', padding: 15, gap: 13 },
   actionIcon: { height: 46, width: 46, borderRadius: 15, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
-  actionCard: { backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, padding: 17, gap: 14, shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  actionCard: { backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, padding: 17, gap: 14, ...platformShadow('0 5px 12px rgba(0, 0, 0, 0.06)', { shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 }) },
   actionCardComplete: { backgroundColor: theme.accentSoft, borderColor: theme.separator },
   actionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   actionTitle: { color: theme.text, fontFamily: appFonts.display, fontSize: 22, lineHeight: 27, fontWeight: '700', letterSpacing: -0.5, marginTop: 3 },
@@ -868,7 +868,7 @@ function createStyles(theme: AppTheme) {
   missedButtonText: { color: theme.danger, fontSize: 16, fontWeight: '700' },
   actionDisabled: { opacity: 0.45 },
   blockedReason: { color: theme.secondaryText, fontSize: 12.5, lineHeight: 18, textAlign: 'center' },
-  collectionCard: { overflow: 'hidden', minHeight: 94, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', paddingRight: 16, shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  collectionCard: { overflow: 'hidden', minHeight: 94, backgroundColor: theme.surface, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator, flexDirection: 'row', alignItems: 'center', paddingRight: 16, ...platformShadow('0 5px 12px rgba(0, 0, 0, 0.06)', { shadowColor: '#000000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 }) },
   collectionColour: { width: 7, alignSelf: 'stretch', marginRight: 13 },
   collectionBinMark: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   cardCopy: { flex: 1, marginLeft: 12 },

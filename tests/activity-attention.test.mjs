@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { activityHistoryForFilter, reportNeedsResidentAttention, supportReplyNeedsAttention } from '../src/lib/activity-attention.ts';
+import { activityHistoryForFilter, formatActivityDetail, reportNeedsResidentAttention, supportReplyNeedsAttention } from '../src/lib/activity-attention.ts';
 
 test('keeps resident-action report states actionable and clears terminal states', () => {
   assert.equal(reportNeedsResidentAttention({ status: 'draft' }, 'draft'), true);
@@ -40,4 +40,10 @@ test('filters the complete Activity history by selected section and place', () =
   assert.deepEqual(activityHistoryForFilter(entries, 'reports', 'home').map(({ id }) => id), ['report']);
   assert.deepEqual(activityHistoryForFilter(entries, 'council', 'home'), []);
   assert.deepEqual(activityHistoryForFilter(entries, 'support', 'home'), []);
+});
+
+test('presents collection-date details without raw ISO copy', () => {
+  assert.equal(formatActivityDetail('2026-08-05'), 'Wed 5 Aug');
+  assert.equal(formatActivityDetail('Council reference 123'), 'Council reference 123');
+  assert.equal(formatActivityDetail(), undefined);
 });

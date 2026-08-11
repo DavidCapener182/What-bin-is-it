@@ -7,7 +7,7 @@ import { ReactNode, useRef } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { appFonts } from '@/lib/design-system';
+import { appFonts, nonInteractiveStyle, platformShadow } from '@/lib/design-system';
 import { reportNeedsResidentAttention, supportReplyNeedsAttention } from '@/lib/activity-attention';
 import { residentAlertsForProfile } from '@/lib/resident-alerts';
 import { useAppTheme } from '@/lib/theme';
@@ -141,8 +141,7 @@ export function AppShell({
             {Platform.OS === 'web' ? (
               <View
                 nativeID="app-bottom-safe-area-fill"
-                pointerEvents="none"
-                style={[styles.bottomSafeAreaFill, { backgroundColor: theme.material }]}
+                style={[styles.bottomSafeAreaFill, nonInteractiveStyle, { backgroundColor: theme.material }]}
               />
             ) : null}
           </View>
@@ -158,10 +157,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     maxWidth: Platform.OS === 'web' ? 560 : undefined,
-    shadowColor: '#071A2B',
-    shadowOpacity: Platform.OS === 'web' ? 0.14 : 0,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 0 },
+    ...platformShadow('0 0 24px rgba(7, 26, 43, 0.14)', {}),
   },
   screen: { flex: 1 },
   hiddenPanel: { display: 'none' },
@@ -173,11 +169,13 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#071A2B',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
+    ...platformShadow('0 8px 20px rgba(7, 26, 43, 0.16)', {
+      shadowColor: '#071A2B',
+      shadowOpacity: 0.16,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 12,
+    }),
   },
   tabBar: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 58, gap: 1 },

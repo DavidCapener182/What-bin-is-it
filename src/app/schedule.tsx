@@ -10,7 +10,7 @@ import { CouncilNotices } from '@/components/council-notices';
 import { WasteIcon } from '@/components/bin-glyph';
 import { RouteHead } from '@/components/route-head';
 import { collectionDisplayMeta, collectionMeta, dayDifference, formatCollectionDate, sortCollections, wasteTypes } from '@/lib/data';
-import { appFonts } from '@/lib/design-system';
+import { appFonts, platformShadow } from '@/lib/design-system';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import {
@@ -373,7 +373,7 @@ function createStyles(theme: AppTheme) {
   statusText: { flex: 1, color: theme.secondaryText, fontSize: 12.5, lineHeight: 17, fontWeight: '600' },
   viewPicker: { minHeight: 44, padding: 3, borderRadius: 14, backgroundColor: theme.groupedBackground, flexDirection: 'row', gap: 3 },
   viewOption: { flex: 1, minHeight: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  viewOptionSelected: { backgroundColor: theme.surface, shadowColor: '#000000', shadowOpacity: 0.08, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
+  viewOptionSelected: { backgroundColor: theme.surface, ...platformShadow('0 2px 5px rgba(0, 0, 0, 0.08)', { shadowColor: '#000000', shadowOpacity: 0.08, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } }) },
   viewOptionText: { color: theme.secondaryText, fontSize: 13, fontWeight: '700' },
   viewOptionTextSelected: { color: theme.text },
   changeNotice: { borderRadius: 14, padding: 14, backgroundColor: `${theme.warning}14`, flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: `${theme.warning}45` },

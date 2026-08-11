@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { collectionDisplayMeta, formatCollectionDate, sortCollections } from '@/lib/data';
+import { nonInteractiveStyle } from '@/lib/design-system';
 import {
   buildMissedReport,
   evaluateMissedReportEligibility,
@@ -282,7 +283,7 @@ export default function ReportMissedScreen() {
                 <Switch
                   accessibilityElementsHidden
                   importantForAccessibility="no-hide-descendants"
-                  pointerEvents="none"
+                  style={nonInteractiveStyle}
                   trackColor={{ false: theme.tertiaryText, true: theme.accent }}
                   value={value}
                 />

@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
-import { activityHistoryForFilter, ActivityFilter, reportNeedsResidentAttention, supportReplyNeedsAttention } from '@/lib/activity-attention';
+import { activityHistoryForFilter, ActivityFilter, formatActivityDetail, reportNeedsResidentAttention, supportReplyNeedsAttention } from '@/lib/activity-attention';
+import { nonInteractiveStyle } from '@/lib/design-system';
 import { residentAlertsForProfile, ResidentAlert } from '@/lib/resident-alerts';
 import { AppTheme, useAppTheme } from '@/lib/theme';
 import { ActivityEntry } from '@/lib/types';
@@ -228,7 +229,7 @@ export default function ActivityScreen() {
                 <Switch
                   accessibilityElementsHidden
                   importantForAccessibility="no-hide-descendants"
-                  pointerEvents="none"
+                  style={nonInteractiveStyle}
                   trackColor={{ false: theme.tertiaryText, true: theme.accent }}
                   value={!muted}
                 />
@@ -267,7 +268,7 @@ export default function ActivityScreen() {
                 {recentHistory.map((entry, index) => (
                   <View key={entry.id} style={[styles.historyRow, index < recentHistory.length - 1 && styles.listBorder]}>
                     <View style={styles.smallIcon}><Ionicons color={theme.accent} name={activityIcons[entry.type]} size={19} /></View>
-                    <View style={styles.listCopy}><Text style={styles.listTitle}>{entry.title}</Text>{entry.detail ? <Text style={styles.listDetail}>{entry.detail}</Text> : null}<Text style={styles.listDate}>{friendlyDate(entry.occurredAt)}</Text></View>
+                    <View style={styles.listCopy}><Text style={styles.listTitle}>{entry.title}</Text>{formatActivityDetail(entry.detail) ? <Text style={styles.listDetail}>{formatActivityDetail(entry.detail)}</Text> : null}<Text style={styles.listDate}>{friendlyDate(entry.occurredAt)}</Text></View>
                   </View>
                 ))}
               </View>

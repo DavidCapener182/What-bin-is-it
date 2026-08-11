@@ -18,6 +18,7 @@ import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { fetchCouncilAddresses, lookupPostcode, ResolvedPlace } from '@/lib/council-provider';
 import { collectionDisplayMeta, formatCollectionDate } from '@/lib/data';
+import { nonInteractiveStyle } from '@/lib/design-system';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { requiresExactCouncilAddress } from '@/lib/place-resolution';
 import { councilIdsForResidentUse } from '@/lib/resident-adoption';
@@ -308,7 +309,7 @@ export default function OnboardingScreen() {
                   <Text style={[styles.switchTitle, { color: theme.text }]}>Bin-night reminders</Text>
                   <Text style={[styles.switchDetail, { color: theme.secondaryText }]}>{reminders ? 'On' : 'Off'}</Text>
                 </View>
-                <Switch pointerEvents="none" value={reminders} trackColor={{ false: theme.tertiaryText, true: theme.accent }} />
+                <Switch style={nonInteractiveStyle} value={reminders} trackColor={{ false: theme.tertiaryText, true: theme.accent }} />
               </Pressable>
               {reminders ? <View accessibilityRole="radiogroup" style={[styles.timePicker, { backgroundColor: theme.groupedBackground }]}>
                 {reminderTimes.map((hour) => (

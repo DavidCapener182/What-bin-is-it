@@ -8,6 +8,7 @@ import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
 import { residentPaymentsEnabled } from '@/lib/commercial-offer';
 import { collectionMeta, wasteTypes } from '@/lib/data';
+import { nonInteractiveStyle } from '@/lib/design-system';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { useAppTheme } from '@/lib/theme';
 import { PlaceReminderPreferences, WasteType } from '@/lib/types';
@@ -50,7 +51,7 @@ function ToggleRow({
       <Switch
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        pointerEvents="none"
+        style={nonInteractiveStyle}
         trackColor={{ false: theme.tertiaryText, true: theme.accent }}
         value={value}
       />
@@ -138,7 +139,7 @@ export default function ReminderSettingsScreen() {
       <RouteHead title="Reminder settings" description="Choose collection reminder timing and follow-up alerts for this place." path="/reminder-settings" />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
-          <Pressable accessibilityLabel="Back to Settings" accessibilityRole="button" onPress={() => router.back()} style={styles.headerButton}>
+          <Pressable accessibilityLabel="Go back" accessibilityRole="button" onPress={() => router.back()} style={styles.headerButton}>
             <Ionicons color={theme.accent} name="chevron-back" size={25} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Reminder settings</Text>
@@ -225,7 +226,7 @@ export default function ReminderSettingsScreen() {
                   <Pressable accessibilityRole="switch" accessibilityState={{ checked: placePreferences.wasteTypes[type] }} key={type} onPress={() => changeWasteType(type)} style={[styles.binRow, { borderBottomColor: theme.separator }]}>
                     <View style={[styles.dot, { backgroundColor: collectionMeta[type].colour }]} />
                     <Text style={[styles.binLabel, { color: theme.text }]}>{collectionMeta[type].label}</Text>
-                    <Switch accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" trackColor={{ false: theme.tertiaryText, true: theme.accent }} value={placePreferences.wasteTypes[type]} />
+                    <Switch accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={nonInteractiveStyle} trackColor={{ false: theme.tertiaryText, true: theme.accent }} value={placePreferences.wasteTypes[type]} />
                   </Pressable>
                 ))}
               </View>

@@ -17,6 +17,7 @@ import { PwaSettingsCard } from '@/components/pwa-settings-card';
 import { HomeScreenWidgetCard } from '@/components/home-screen-widget-card';
 import { RouteHead } from '@/components/route-head';
 import { residentPaymentsEnabled } from '@/lib/commercial-offer';
+import { nonInteractiveStyle } from '@/lib/design-system';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { useAppTheme } from '@/lib/theme';
 import { AppearancePreference } from '@/lib/types';
@@ -83,7 +84,7 @@ function ToggleRow({
       <Switch
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        pointerEvents="none"
+        style={nonInteractiveStyle}
         trackColor={{ false: theme.tertiaryText, true: theme.accent }}
         value={value}
       />
