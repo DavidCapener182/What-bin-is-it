@@ -48,7 +48,7 @@
     "react-native-worklets": "0.10.1",
     "stripe": "^22.3.2",
     "web-push": "^3.6.7",
-    "workflow": "^4.6.2"
+    "workflow": "^4.8.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
