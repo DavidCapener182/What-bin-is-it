@@ -30,6 +30,7 @@ export function createTodayStyles(theme: AppTheme, mode: AdaptiveLayoutMode) {
     privacyLine: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', paddingHorizontal: 5 },
     privacyText: { color: theme.secondaryText, fontSize: 13, lineHeight: 18, flex: 1 },
     hero: { paddingHorizontal: roomy ? appLayout.residentWideGutter : 20, paddingBottom: roomy ? 20 : 16, borderBottomLeftRadius: roomy ? 24 : 34, borderBottomRightRadius: roomy ? 24 : 34 },
+    heroSafeArea: { paddingTop: 12 },
     heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingTop: 4 },
     heroBrand: { flex: 1, paddingRight: 8 },
     heroActions: { flexDirection: 'row', gap: 8 },
