@@ -139,6 +139,8 @@ test('keeps the installed iOS web app outside both system safe areas', () => {
   assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
   assert.doesNotMatch(html, /viewport-fit=cover/);
   assert.match(html, /@media \(display-mode: standalone\)/);
+  assert.match(html, /id="ios-pwa-top-edge"/);
+  assert.match(html, /#ios-pwa-top-edge \{[^}]*position: fixed;[^}]*top: 0;[^}]*height: 1px;/s);
   assert.match(html, /height: 100lvh/);
   assert.doesNotMatch(html, /-webkit-fill-available/);
   assert.match(todaySections, /<SafeAreaView edges=\{\['top'\]\} style=\{styles\.heroSafeArea\}>/);

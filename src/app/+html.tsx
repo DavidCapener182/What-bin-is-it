@@ -28,6 +28,7 @@ export default function Root({ children }: PropsWithChildren) {
           }
           html, body { background: #F9F9FB; }
           #root { background: #F2F2F7; }
+          #ios-pwa-top-edge { display: none; }
           @supports (height: 100dvh) {
             html, body, #root {
               height: 100dvh;
@@ -38,6 +39,17 @@ export default function Root({ children }: PropsWithChildren) {
             html, body, #root {
               height: 100vh;
               min-height: 100vh;
+            }
+            #ios-pwa-top-edge {
+              position: fixed;
+              top: 0;
+              right: 0;
+              left: 0;
+              z-index: 2147483647;
+              display: block;
+              height: 1px;
+              background: #F9F9FB;
+              pointer-events: none;
             }
           }
           @supports (height: 100lvh) {
@@ -51,6 +63,7 @@ export default function Root({ children }: PropsWithChildren) {
           @media (prefers-color-scheme: dark) {
             html, body { background: #1C1C1E; }
             #root { background: #000000; }
+            #ios-pwa-top-edge { background: #1C1C1E; }
           }
           html { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
           body {
@@ -88,7 +101,7 @@ export default function Root({ children }: PropsWithChildren) {
           }
         ` }} />
       </head>
-      <body>{children}</body>
+      <body><div aria-hidden="true" id="ios-pwa-top-edge" />{children}</body>
     </html>
   );
 }
