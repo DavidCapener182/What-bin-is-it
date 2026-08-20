@@ -15,7 +15,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="What Bin?" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -32,6 +32,16 @@ export default function Root({ children }: PropsWithChildren) {
             html, body, #root {
               height: 100dvh;
               min-height: 100dvh;
+            }
+          }
+          @media (display-mode: standalone) {
+            html {
+              height: -webkit-fill-available;
+              min-height: -webkit-fill-available;
+            }
+            body, #root {
+              height: 100%;
+              min-height: 100%;
             }
           }
           @media (prefers-color-scheme: dark) {

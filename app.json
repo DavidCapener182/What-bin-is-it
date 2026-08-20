@@ -52,7 +52,7 @@
       "startUrl": "/",
       "scope": "/",
       "orientation": "any",
-      "barStyle": "black-translucent",
+      "barStyle": "default",
       "themeColor": "#F2F2F7",
       "backgroundColor": "#F2F2F7",
       "description": "UK bin collection reminders, local recycling guidance, and nearby waste services."
