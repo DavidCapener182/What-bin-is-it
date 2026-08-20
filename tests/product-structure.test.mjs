@@ -137,6 +137,7 @@ test('keeps the installed iOS web app outside both system safe areas', () => {
   const todayStyles = read('src/features/collections/today-styles.ts');
   assert.match(appConfig, /"barStyle": "default"/);
   assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
+  assert.doesNotMatch(html, /viewport-fit=cover/);
   assert.match(html, /@media \(display-mode: standalone\)/);
   assert.match(html, /height: 100lvh/);
   assert.doesNotMatch(html, /-webkit-fill-available/);
