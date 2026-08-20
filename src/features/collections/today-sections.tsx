@@ -23,7 +23,7 @@ export function TodaySetup({ error, onChange, onContinue, postcode, styles, them
   return (
     <View style={styles.page}>
       <LinearGradient colors={[theme.hero, theme.hero]} style={styles.setupHero}>
-        <SafeAreaView edges={['top']}>
+        <SafeAreaView edges={['top']} style={styles.heroSafeArea}>
           <Text style={styles.eyebrow}>What Bin Is It Tonight?</Text>
           <Text style={styles.setupTitle}>Find your collection dates.</Text>
           <Text style={styles.setupSubtitle}>Add one UK postcode and we’ll check its live council source.</Text>
@@ -54,7 +54,7 @@ export function TodayHero({
 }: { activeAddress: SavedAddress; daysAway: number | null; heroAccent: string; heroColour: string; heroControl: string; heroForeground: string; heroOrb: string; heroSecondary: string; heroSubtitle: string; heroTitle: string; onChooseAddress(): void; styles: TodayStyles; tonight: boolean; unreadAlertCount: number }) {
   return (
     <LinearGradient colors={[heroColour, heroColour]} nativeID="today-hero" style={styles.hero}>
-      <SafeAreaView edges={['top']}>
+      <SafeAreaView edges={['top']} style={styles.heroSafeArea}>
         <View style={styles.heroTop}>
           <View style={styles.heroBrand}><Text style={[styles.eyebrow, { color: heroAccent }]}>What Bin Is It Tonight?</Text><Text accessibilityLiveRegion="polite" style={[styles.greeting, { color: heroForeground }]}>{heroTitle}</Text></View>
           <View style={styles.heroActions}>

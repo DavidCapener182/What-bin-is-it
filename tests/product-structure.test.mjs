@@ -133,11 +133,15 @@ test('uses an adaptive navigation rail and a zoomable 1440px web shell', () => {
 test('keeps the installed iOS web app outside both system safe areas', () => {
   const appConfig = read('app.json');
   const html = read('src/app/+html.tsx');
+  const todaySections = read('src/features/collections/today-sections.tsx');
+  const todayStyles = read('src/features/collections/today-styles.ts');
   assert.match(appConfig, /"barStyle": "default"/);
   assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
   assert.match(html, /@media \(display-mode: standalone\)/);
-  assert.match(html, /height: -webkit-fill-available/);
-  assert.match(html, /body, #root \{[\s\S]*?height: 100%;[\s\S]*?min-height: 100%;/);
+  assert.match(html, /height: 100lvh/);
+  assert.doesNotMatch(html, /-webkit-fill-available/);
+  assert.match(todaySections, /<SafeAreaView edges=\{\['top'\]\} style=\{styles\.heroSafeArea\}>/);
+  assert.match(todayStyles, /heroSafeArea: \{ paddingTop: 12 \}/);
 });
 
 test('all main routes provide route-specific metadata', () => {

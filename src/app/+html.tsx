@@ -35,13 +35,17 @@ export default function Root({ children }: PropsWithChildren) {
             }
           }
           @media (display-mode: standalone) {
-            html {
-              height: -webkit-fill-available;
-              min-height: -webkit-fill-available;
+            html, body, #root {
+              height: 100vh;
+              min-height: 100vh;
             }
-            body, #root {
-              height: 100%;
-              min-height: 100%;
+          }
+          @supports (height: 100lvh) {
+            @media (display-mode: standalone) {
+              html, body, #root {
+                height: 100lvh;
+                min-height: 100lvh;
+              }
             }
           }
           @media (prefers-color-scheme: dark) {
