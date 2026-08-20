@@ -186,7 +186,8 @@ test("sponsored collection money movement is restricted to platform superadmins"
   assert.match(payments, /source_transaction: input\.chargeId/);
   assert.match(payments, /idempotencyKey: `bulky-payout-/);
   assert.match(payments, /idempotencyKey: `bulky-refund-/);
-  assert.match(partnerPage, /SPONSORED PAID COLLECTION|controlled marketplace/i);
+  assert.match(partnerPage, /canSettle = session\.platformAdmin && marketplacePaymentsConfigured\(\)/);
+  assert.match(partnerPage, /canSettle && booking\.channel === "stripe-connect"/);
 });
 
 test("high-risk council mutations bind the submitted and authenticated council context", async () => {

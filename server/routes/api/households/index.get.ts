@@ -1,18 +1,16 @@
 import { defineHandler } from 'nitro';
 
 import { requireBinAccount } from '../../../lib/bin-auth';
+import { apiAuthenticationErrorResponse, apiJson, apiRequestId, apiUnexpectedErrorResponse } from '../../../lib/api-http';
 import { listResidentHouseholds } from '../../../lib/resident-households';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
   try {
     const user = await requireBinAccount(event.req);
-    return Response.json({ households: await listResidentHouseholds(user.id) }, {
-      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
+    return apiJson(requestId, { households: await listResidentHouseholds(user.id) });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Households could not be loaded.' }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiAuthenticationErrorResponse(requestId, error)
+      ?? apiUnexpectedErrorResponse(requestId, '/api/households', error, 'Households could not be loaded.');
   }
 });

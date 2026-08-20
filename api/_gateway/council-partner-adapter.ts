@@ -4,6 +4,12 @@ import type {
   CouncilAddress,
   CouncilService,
 } from './adapter-registry.ts';
+import {
+  isUpstreamResponseError,
+  readBoundedUpstreamJson,
+  upstreamResponseErrorCodes,
+} from './upstream-response.ts';
+import { gatewayProviderBudgets } from './release-budget.ts';
 
 export type CouncilPartnerCapability = 'addresses' | 'collections' | 'services';
 
@@ -24,6 +30,7 @@ const providerIdPattern = /^lad-[ensw]\d{8}$/;
 const environmentNamePattern = /^[A-Z][A-Z0-9_]{2,100}$/;
 const headerNamePattern = /^[A-Za-z0-9-]{1,80}$/;
 const allowedCapabilities = new Set<CouncilPartnerCapability>(['addresses', 'collections', 'services']);
+const maximumPartnerResponseBytes = 1024 * 1024;
 
 function safeBaseUrl(value: unknown) {
   if (typeof value !== 'string' || value.length > 500) return undefined;
@@ -125,7 +132,7 @@ async function partnerJson(
   fetcher: Fetcher,
 ) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), gatewayProviderBudgets.councilPartnerMs);
   try {
     const response = await fetcher(url, {
       ...init,
@@ -135,8 +142,9 @@ async function partnerJson(
     });
     let payload: unknown;
     try {
-      payload = await response.json();
-    } catch {
+      payload = await readBoundedUpstreamJson(response, maximumPartnerResponseBytes);
+    } catch (error) {
+      if (!isUpstreamResponseError(error, upstreamResponseErrorCodes.invalidJson)) throw error;
       payload = undefined;
     }
     if (!response.ok) {
@@ -248,12 +256,12 @@ export function councilPartnerRegistryStatus(environment: Environment = process.
       providerIds: configs.map((config) => config.providerId),
       valid: true,
     };
-  } catch (error) {
+  } catch {
     return {
       configured: 0,
       providerIds: [] as string[],
       valid: false,
-      error: error instanceof Error ? error.message : 'The council partner registry is invalid.',
+      errorCode: 'COUNCIL_PARTNER_REGISTRY_INVALID' as const,
     };
   }
 }

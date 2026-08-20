@@ -75,8 +75,9 @@ test("resident inbox is council-scoped while platform superadmins retain the com
   ]);
 
   assert.match(messagesPage, /requireCouncilSession\("support:view"\)/);
-  assert.match(messagesPage, /listResidentSupportThreads\(session/);
-  assert.match(messagesPage, /residentSupportThread\(session, selectedThreadId\)/);
+  assert.match(messagesPage, /listResidentSupportThreadsPage\(session, params\)/);
+  assert.match(messagesPage, /operationalQueueStateFromServerPage\(serverPage\)/);
+  assert.match(messagesPage, /residentSupportThread\(session, selectedThreadId, requestedHistoryPage\)/);
   assert.match(actions, /replyToResidentSupportAction[\s\S]*?requireCouncilAction\("support:reply"\)/);
   assert.match(actions, /changeResidentSupportStatusAction[\s\S]*?requireCouncilAction\("support:reply"\)/);
   assert.match(support, /session\.platformAdmin \? null : session\.organisation\.providerId/);

@@ -29,7 +29,7 @@ export function providerGrantIsActive(
   }
   if (['active', 'trialing', 'past_due', 'grace'].includes(grant.status)) {
     const periodEnd = validDate(grant.current_period_end);
-    return !periodEnd || periodEnd > now;
+    return Boolean(periodEnd && periodEnd > now);
   }
   if (grant.status === 'cancelled' || grant.status === 'canceled') {
     const periodEnd = validDate(grant.current_period_end);

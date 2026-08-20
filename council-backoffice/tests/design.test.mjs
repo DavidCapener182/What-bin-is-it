@@ -9,7 +9,7 @@ test("uses the resident app Apple system palette and typography", async () => {
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
   ]);
 
-  for (const colour of ["#f2f2f7", "#ffffff", "#1c1c1e", "#636366", "#007aff", "#d1d1d6"]) {
+  for (const colour of ["#f2f2f7", "#ffffff", "#1c1c1e", "#636366", "#0062cc", "#d1d1d6"]) {
     assert.match(consoleStyles.toLowerCase(), new RegExp(colour));
     assert.match(residentTokens.toLowerCase(), new RegExp(colour));
   }
@@ -82,4 +82,27 @@ test("partner setup renders the shared six-step contract and honest local drafts
   assert.match(page, /<PartnerSetupWizard/);
   assert.match(styles, /\.partner-wizard-progress/);
   assert.doesNotMatch(styles.toLowerCase(), /purple|linear-gradient/);
+});
+
+test("operational queues provide semantic tables, responsive labels, saved URL views and focused drawers", async () => {
+  const [queue, drawer, savedView, shell, styles] = await Promise.all([
+    readFile(new URL("../components/operational-queue.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/operational-drawer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/saved-view-controls.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/console-shell-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(queue, /<caption>\{caption\}<\/caption>/);
+  assert.match(queue, /aria-sort=/);
+  assert.match(queue, /role="search"/);
+  assert.match(savedView, /window\.localStorage/);
+  assert.match(savedView, /router\.replace/);
+  assert.match(drawer, /<dialog/);
+  assert.match(drawer, /showModal\(\)/);
+  assert.match(drawer, /triggerRef\.current\?\.focus\(\)/);
+  assert.match(shell, /href="#console-main"/);
+  assert.match(shell, /id="console-main" tabIndex=\{-1\}/);
+  assert.match(styles, /\.operational-table td::before\s*\{\s*content:\s*attr\(data-label\)/);
+  assert.match(styles, /\.operational-drawer-body[^}]*overscroll-behavior:\s*contain/);
 });

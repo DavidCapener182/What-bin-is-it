@@ -12,7 +12,7 @@ This is a truthful pilot-stage statement, not a certification. Update it wheneve
 | Collection data | Exact dated results only; no generated runtime schedules |
 | Resident account | None in the current free release |
 | Address storage | Device-local saved places and schedules |
-| Server request | Postcode, provider ID and opaque property reference when a lookup is requested |
+| Server request | Postcode, provider ID and opaque property reference when a lookup is requested; the experimental Bin Day fallback also requires the selected street address |
 | Location | Foreground, user-initiated, used to find a postcode; no background tracking |
 | Advertising | None |
 | Address-data sale | Prohibited by product policy |
@@ -27,11 +27,11 @@ This is a truthful pilot-stage statement, not a certification. Update it wheneve
 2. Postcodes.io resolves the postcode and ONS authority code.
 3. The resident selects the exact property where the source requires it.
 4. The app sends postcode, provider ID and opaque property reference to the gateway.
-5. The gateway calls the approved council or nationwide source.
+5. The gateway calls the approved council or nationwide source. The experimental Bin Day fallback also receives the selected street address because its collection endpoint requires it.
 6. The app stores returned dates and preferences on the device.
 7. Native reminders are scheduled locally. When the resident enables notifications and council service alerts, the resident service stores only an opaque installation ID, council provider IDs and the private browser/Expo delivery credential. It stores no postcode, address, property reference, account or email in that registration.
 
-The gateway code does not persist full addresses. Infrastructure access logs and processor behavior must be covered by the production retention schedule and DPA.
+The gateway code does not persist full addresses. Bin Day states that lookup data may be cached or stored under its privacy policy. Infrastructure access logs and every source's processor behavior must be covered by the production retention schedule and DPA; verify Bin Day's contract, retention and logging before enabling that fallback in a council production service.
 
 ## Roles to agree
 
@@ -47,6 +47,7 @@ Obtain legal and information-governance review; this repository is not legal adv
 ## Data minimization
 
 - Use an opaque property reference after selection.
+- Treat the selected street address sent to the experimental Bin Day fallback as a disclosed, purpose-limited exception; remove that fallback if its contract and retention cannot be approved.
 - Do not include a full address in reminder payloads.
 - Do not collect continuous or background location.
 - Do not use advertising identifiers.

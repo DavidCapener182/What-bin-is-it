@@ -1,52 +1,33 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { type BinAccountUser, requireBinAccount } from '../../../lib/bin-auth';
+import { apiAuthenticationErrorResponse, apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../lib/api-http';
 import {
   createResidentSupportThread,
   parseNewResidentSupportThread,
 } from '../../../lib/resident-support';
 
 export default defineHandler(async (event) => {
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 16_384) {
-    return Response.json({ error: 'The support message is too large.' }, { status: 413 });
-  }
-  let user;
+  const requestId = apiRequestId(event.req);
+  let user: BinAccountUser;
   try {
     user = await requireBinAccount(event.req);
-  } catch {
-    return Response.json({ error: 'Sign in to message support.' }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
-  }
-  let input;
-  try {
-    input = parseNewResidentSupportThread(await event.req.json());
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'The support message is invalid.',
-    }, {
-      status: 400,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiAuthenticationErrorResponse(requestId, error)
+      ?? apiUnexpectedErrorResponse(requestId, '/api/support/threads', error, 'Account verification is unavailable.', 503);
+  }
+  let input: ReturnType<typeof parseNewResidentSupportThread>;
+  try {
+    input = parseNewResidentSupportThread(await readBoundedJson(event.req, 16_384));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error)
+      ?? apiError(requestId, 400, 'INVALID_SUPPORT_MESSAGE', 'The support message is invalid.');
   }
   try {
-    return Response.json({
+    return apiJson(requestId, {
       threads: await createResidentSupportThread(user, input),
-    }, {
-      status: 201,
-      headers: {
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      },
-    });
-  } catch {
-    return Response.json({
-      error: 'Your support message could not be sent. Try again shortly.',
-    }, {
-      status: 500,
-      headers: { 'cache-control': 'no-store' },
-    });
+    }, { status: 201 });
+  } catch (error) {
+    return apiUnexpectedErrorResponse(requestId, '/api/support/threads', error, 'Your support message could not be sent. Try again shortly.');
   }
 });

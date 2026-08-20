@@ -257,6 +257,7 @@ export type ReportingRule = {
 
 export type AuditEvent = {
   id: string;
+  actorLabel?: string;
   actorUserId: string;
   action: string;
   entityType: string;

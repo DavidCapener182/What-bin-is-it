@@ -16,6 +16,8 @@ npm run dev
 
 Set the app’s `EXPO_PUBLIC_COUNCIL_API_BASE` to the tunnel/deployment URL. The adapter registry contains live-source integrations only; generated or demonstration collection dates are prohibited.
 
+The Worker export is optional and independently release-gated. Configure `WHAT_BIN_ENABLE_PUBLIC_GATEWAY=true`, `EXPO_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a 32-byte-or-longer `WHAT_BIN_GATEWAY_RATE_LIMIT_SECRET` as Worker secrets/bindings only after the release-security migration exists. Its Cloudflare trust mode uses only the platform-protected `cf-connecting-ip` header and fails closed if durable rate/circuit RPCs are unavailable. The Wrangler compatibility flag is required because the shared registry reads bindings through `process.env`; Web Crypto performs HMAC operations. Production Vercel uses the Nitro database-backed controls and does not require the service-role key.
+
 ## Add a council
 
 1. Confirm the council’s authorised collection-calendar source and terms of use.

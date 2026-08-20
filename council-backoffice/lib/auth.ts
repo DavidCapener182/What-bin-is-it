@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { consoleE2eFixtureSession } from "./console-e2e-fixtures";
 import { councilDatabase } from "./database";
 import { assertCouncilPermission } from "./permissions";
 import { createCouncilSupabaseServerClient } from "./supabase/server";
@@ -153,6 +154,10 @@ function organisationFromRow(row: StaffRow): CouncilOrganisation {
 }
 
 export async function authenticatedCouncilIdentity() {
+  const fixtureSession = await consoleE2eFixtureSession();
+  if (fixtureSession) {
+    return { userId: fixtureSession.userId, email: fixtureSession.email };
+  }
   const developmentIdentity = await developmentSuperadminIdentity();
   if (developmentIdentity) return developmentIdentity;
   try {
@@ -170,6 +175,25 @@ export async function authenticatedCouncilIdentity() {
 }
 
 export async function councilMemberships(userId: string) {
+  const fixtureSession = await consoleE2eFixtureSession();
+  if (fixtureSession?.userId === userId) {
+    return [{
+      staff_id: fixtureSession.staffId,
+      role: fixtureSession.role,
+      platform_admin: fixtureSession.platformAdmin,
+      organisation_id: fixtureSession.organisation.id,
+      provider_id: fixtureSession.organisation.providerId,
+      slug: fixtureSession.organisation.slug,
+      organisation_name: fixtureSession.organisation.name,
+      organisation_status: fixtureSession.organisation.status,
+      plan_tier: fixtureSession.organisation.planTier,
+      brand_name: fixtureSession.organisation.brandName ?? null,
+      logo_url: fixtureSession.organisation.logoUrl ?? null,
+      primary_colour: fixtureSession.organisation.primaryColour,
+      secondary_colour: fixtureSession.organisation.secondaryColour,
+      sponsorship_label: fixtureSession.organisation.sponsorshipLabel ?? null,
+    }] satisfies StaffRow[];
+  }
   const sql = councilDatabase();
   const platformRows = await sql<{ id: string }[]>`
     SELECT id

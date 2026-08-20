@@ -4,28 +4,19 @@ import {
   fetchNationwideCollections,
 } from './nationwide-bin-source.ts';
 import { councilPartnerAdapterFor } from './council-partner-adapter.ts';
+import { gatewayProviderBudgets } from './release-budget.ts';
+import { readBoundedUpstreamText, withUpstreamTimeout } from './upstream-response.ts';
+import type {
+  CouncilAddressContract,
+  CouncilCollectionResponse,
+  CouncilWasteType,
+} from '../../shared/api-contracts.ts';
 
-export type WasteType = 'general' | 'recycling' | 'garden' | 'food' | 'other';
+export type WasteType = CouncilWasteType;
 
 export type CollectionInput = { postcode: string; addressId?: string };
-export type CollectionOutput = {
-  councilName: string;
-  providerId: string;
-  verifiedAt: string;
-  collections: { date: string; wasteType: WasteType; label?: string; colour?: string }[];
-  notice?: string;
-  alerts?: {
-    id: string;
-    title: string;
-    detail: string;
-    sourceUrl: string;
-    startsAt: string;
-    endsAt?: string;
-    expectedRecollectionDate?: string;
-    verifiedAt: string;
-  }[];
-};
-export type CouncilAddress = { id: string; line1: string; postcode: string };
+export type CollectionOutput = CouncilCollectionResponse;
+export type CouncilAddress = CouncilAddressContract;
 export type CouncilService = {
   id: string;
   name: string;
@@ -62,6 +53,8 @@ type KnowsleyCollectionPayload = {
   Nextgrey?: unknown;
   Nextblue?: unknown;
 };
+
+const maximumKnowsleyAddressResponseBytes = 1024 * 1024;
 
 function normalisePostcode(value: string) {
   const compact = value.trim().toUpperCase().replace(/\s+/g, '');
@@ -173,31 +166,34 @@ export function parseKnowsleyCollections(
   });
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 20_000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
+async function fetchTextWithTimeout(url: string, timeoutMs = gatewayProviderBudgets.knowsleyAddressMs) {
+  return withUpstreamTimeout(timeoutMs, async (signal) => {
+    const response = await fetch(url, {
+      signal,
       headers: {
         accept: 'application/json, text/javascript, */*; q=0.01',
         'user-agent': 'What Bin Is It Tonight?/1.0',
       },
     });
-  } finally {
-    clearTimeout(timeout);
-  }
+    return {
+      response,
+      text: response.ok
+        ? await readBoundedUpstreamText(response, maximumKnowsleyAddressResponseBytes)
+        : undefined,
+    };
+  });
 }
 
 const knowsleyAdapter: CouncilAdapter = {
   id: 'lad-e08000011',
   async getAddresses(postcode) {
     const search = `${normalisePostcode(postcode).split(' ').join('*')}*`;
-    const response = await fetchWithTimeout(
+    const result = await fetchTextWithTimeout(
       `https://address.knowsley.gov.uk/api/addressSearchstatutory?addresssearch=${encodeURIComponent(search)}`,
     );
+    const response = result.response;
     if (!response.ok) throw new Error(`Knowsley address search returned ${response.status}.`);
-    const addresses = parseKnowsleyAddresses(await response.text());
+    const addresses = parseKnowsleyAddresses(result.text);
     return addresses.filter((address) => address.postcode === normalisePostcode(postcode));
   },
   async getCollections(input) {
@@ -227,12 +223,20 @@ const adapters: Record<string, CouncilAdapter> = {
   [knowsleyAdapter.id]: knowsleyAdapter,
 };
 
+export function nationwideFallbackEnabled() {
+  return process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK === 'true';
+}
+
 export function getAdapter(providerId: string): CouncilAdapter | undefined {
   const directAdapter = adapters[providerId];
   if (directAdapter) return directAdapter;
   const partnerAdapter = councilPartnerAdapterFor(providerId);
   if (partnerAdapter) return partnerAdapter;
   if (!/^lad-[ensw]\d{8}$/.test(providerId)) return undefined;
+  // This route forwards the resident-selected street address to Bin Day. It
+  // remains unavailable until the provider contract, retention and store
+  // disclosures have been approved and the server-only gate is enabled.
+  if (!nationwideFallbackEnabled()) return undefined;
   return {
     id: providerId,
     async getAddresses(postcode) {

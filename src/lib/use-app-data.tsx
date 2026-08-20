@@ -6,7 +6,13 @@ import { verifiedCollectionsOnly } from '@/lib/collection-safety';
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
 import { sortCollections } from '@/lib/data';
 import { removeAddressFromState } from '@/lib/address-state';
+import { eraseDataQualityClientId } from '@/lib/data-quality-client';
 import { matchingAddressId, normalisePostcode } from '@/lib/place-resolution';
+import {
+  nativeE2EFixtureAddress,
+  nativeE2EFixtureCollections,
+  nativeE2EFixturesEnabled,
+} from '@/lib/native-e2e-fixtures';
 import { councilIdsForResidentUse } from '@/lib/resident-adoption';
 import { eraseResidentCouncilRecord, syncResidentCouncilLinks } from '@/lib/resident-council-links';
 import { Collection, DisruptionAlert, NotificationPreferences, SavedAddress, WasteType } from '@/lib/types';
@@ -86,6 +92,22 @@ type AppDataContextValue = {
 const AppDataContext = createContext<AppDataContextValue | undefined>(undefined);
 
 function buildInitialState(): State {
+  if (nativeE2EFixturesEnabled()) {
+    const collections = nativeE2EFixtureCollections();
+    return {
+      addresses: [nativeE2EFixtureAddress],
+      activeAddressId: nativeE2EFixtureAddress.id,
+      schedulesByAddressId: {
+        [nativeE2EFixtureAddress.id]: {
+          collections,
+          sourceStatus: 'Internal proof fixture · no production lookup',
+          metadataVersion: collectionMetadataVersion,
+          lastVerifiedAt: new Date().toISOString(),
+        },
+      },
+      preferences: defaultPreferences,
+    };
+  }
   return {
     addresses: [],
     activeAddressId: '',
@@ -295,6 +317,7 @@ function collectionChangeNotice(previous: Collection[], next: Collection[]) {
 }
 
 async function loadState() {
+  if (nativeE2EFixturesEnabled()) return buildInitialState();
   const entries = await AsyncStorage.multiGet([storageKey, previousStorageKey, olderStorageKey, legacyStorageKey]);
   const current = entries[0]?.[1];
   const previous = entries[1]?.[1];
@@ -650,6 +673,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     clearAllAppData: async () => {
       await Promise.all([
         eraseAnalytics(true),
+        eraseDataQualityClientId(),
         eraseResidentCouncilRecord().catch(() => undefined),
       ]);
       await AsyncStorage.multiRemove([storageKey, previousStorageKey, olderStorageKey, legacyStorageKey]);

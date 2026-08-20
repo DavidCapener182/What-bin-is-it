@@ -13,13 +13,17 @@ test('keeps the verified static council profile when the private database is not
 });
 
 test('resident surfaces consume published council messages through the gateway profile only', async () => {
-  const [gateway, home, schedule, guide, activity] = await Promise.all([
+  const [gateway, homeRoute, homeFeature, scheduleRoute, scheduleFeature, guide, activity] = await Promise.all([
     readFile(new URL('../api/_gateway/index.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../src/app/index.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../src/app/schedule.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../src/app/guide.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../src/app/activity.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/(tabs)/(today)/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/collections/today-screen.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/(tabs)/schedule/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/collections/schedule-screen.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/(tabs)/guide/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/(tabs)/activity/index.tsx', import.meta.url), 'utf8'),
   ]);
+  const home = `${homeRoute}\n${homeFeature}`;
+  const schedule = `${scheduleRoute}\n${scheduleFeature}`;
   assert.match(gateway, /councilPlatformProfile/);
   assert.match(home, /residentAlertsForProfile\(councilProfile\)/);
   assert.match(schedule, /CouncilNotices placement="schedule"/);
@@ -32,7 +36,11 @@ test('resident surfaces consume published council messages through the gateway p
 });
 
 test('partner results are disclosed and follow official guidance', async () => {
-  const source = await readFile(new URL('../src/app/guide.tsx', import.meta.url), 'utf8');
+  const [guide, detail] = await Promise.all([
+    readFile(new URL('../src/app/(tabs)/guide/index.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/guide-detail.tsx', import.meta.url), 'utf8'),
+  ]);
+  const source = `${guide}\n${detail}`;
   assert.match(source, /Council and free options come first/);
   assert.match(source, /partner\.disclosureLabel/);
   assert.match(source, /itemKeys\.includes\(item\.id\)/);

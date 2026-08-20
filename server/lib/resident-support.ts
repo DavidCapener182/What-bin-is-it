@@ -49,6 +49,22 @@ const topicLabels: Record<ResidentSupportTopic, string> = {
   other: 'Something else',
 };
 
+export class ResidentSupportOperationError extends Error {
+  readonly code: 'SUPPORT_THREAD_NOT_FOUND' | 'SUPPORT_THREAD_CLOSED' | 'SUPPORT_RATING_NOT_ALLOWED';
+  readonly status: 404 | 409;
+
+  constructor(
+    code: 'SUPPORT_THREAD_NOT_FOUND' | 'SUPPORT_THREAD_CLOSED' | 'SUPPORT_RATING_NOT_ALLOWED',
+    message: string,
+    status: 404 | 409,
+  ) {
+    super(message);
+    this.name = 'ResidentSupportOperationError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 function publicMessage(row: MessageRow) {
   return {
     id: row.id,
@@ -185,9 +201,17 @@ export async function replyToResidentSupportThread(
       FOR UPDATE
     `;
     const thread = threads[0];
-    if (!thread) throw new Error('That conversation could not be found.');
+    if (!thread) throw new ResidentSupportOperationError(
+      'SUPPORT_THREAD_NOT_FOUND',
+      'That conversation could not be found.',
+      404,
+    );
     if (thread.status === 'closed') {
-      throw new Error('This conversation is closed. Start a new message if you still need help.');
+      throw new ResidentSupportOperationError(
+        'SUPPORT_THREAD_CLOSED',
+        'This conversation is closed. Start a new message if you still need help.',
+        409,
+      );
     }
     const insertedMessages = await transaction<{ id: string }[]>`
       INSERT INTO bin_resident_support_messages (
@@ -239,6 +263,10 @@ export async function rateResidentSupportThread(
       AND satisfaction_score IS NULL
     RETURNING id
   `;
-  if (!rows[0]) throw new Error('This conversation cannot be rated.');
+  if (!rows[0]) throw new ResidentSupportOperationError(
+    'SUPPORT_RATING_NOT_ALLOWED',
+    'This conversation cannot be rated.',
+    409,
+  );
   return listResidentSupportThreads(user.id);
 }

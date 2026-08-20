@@ -1,3 +1,10 @@
+import {
+  isUpstreamResponseError,
+  readBoundedUpstreamJson,
+  upstreamResponseErrorCodes,
+} from './upstream-response.ts';
+import { gatewayProviderBudgets } from './release-budget.ts';
+
 export type NationwideWasteType = 'general' | 'recycling' | 'garden' | 'food' | 'other';
 
 export type NationwideCollection = {
@@ -47,6 +54,15 @@ type CollectionPayload = {
     colour?: unknown;
   }[];
 };
+
+const maximumNationwideResponseBytes = 1024 * 1024;
+export const nationwideFetchTimeoutMs = gatewayProviderBudgets.nationwideFetchMs;
+export const nationwideCollectionAttemptLimit = 2;
+export const nationwideRetryDelayMs = gatewayProviderBudgets.nationwideRetryDelayMs;
+export const nationwideMaximumOperationMs = (
+  nationwideFetchTimeoutMs * (1 + nationwideCollectionAttemptLimit)
+  + nationwideRetryDelayMs * (nationwideCollectionAttemptLimit - 1)
+);
 
 function normalisePostcode(value: string) {
   const compact = value.trim().toUpperCase().replace(/\s+/g, '');
@@ -182,7 +198,7 @@ export function parseNationwideCollections(value: unknown): NationwideCollection
   }, []);
 }
 
-async function fetchJson(url: string, timeoutMs = 20_000) {
+async function fetchJson(url: string, timeoutMs = nationwideFetchTimeoutMs) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -195,8 +211,9 @@ async function fetchJson(url: string, timeoutMs = 20_000) {
     });
     let payload: unknown;
     try {
-      payload = await response.json();
-    } catch {
+      payload = await readBoundedUpstreamJson(response, maximumNationwideResponseBytes);
+    } catch (error) {
+      if (!isUpstreamResponseError(error, upstreamResponseErrorCodes.invalidJson)) throw error;
       payload = undefined;
     }
     return { response, payload };
@@ -240,16 +257,20 @@ export async function fetchNationwideCollections(
   const url = new URL('https://binday.org.uk/api/collections');
   url.searchParams.set('postcode', address.postcode);
   url.searchParams.set('uprn', address.id);
+  // Bin Day currently requires the selected human-readable address as well as the UPRN.
+  // Keep the resident privacy notice and store declarations aligned with this data flow.
   url.searchParams.set('address', `${address.line1} ${address.postcode}`);
   url.searchParams.set('council', lookup.councilSlug);
 
   let payload: unknown;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < nationwideCollectionAttemptLimit; attempt += 1) {
     const result = await fetchJson(url.toString());
     payload = result.payload;
     if (result.response.status === 202) {
-      if (attempt === 7) throw new Error('The council lookup is still processing. Please try again shortly.');
-      await wait(1_500);
+      if (attempt === nationwideCollectionAttemptLimit - 1) {
+        throw new Error('The council lookup is still processing. Please try again shortly.');
+      }
+      await wait(nationwideRetryDelayMs);
       continue;
     }
     if (!result.response.ok) {

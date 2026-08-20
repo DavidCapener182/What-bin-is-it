@@ -1,0 +1,46 @@
+appId: uk.whatbinistonight.app
+name: Proof-safe notification permission and local reminder lifecycle
+tags:
+  - proof-safe
+  - notification-permission
+  - reminder-scheduling
+---
+- setAirplaneMode: disabled
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- openLink:
+    link: whatbinistonight:///reminder-settings
+- tapOn:
+    text: Open
+    optional: true
+- extendedWaitUntil:
+    visible: Reminder settings
+    timeout: 20000
+- tapOn: Bin-night reminder
+- assertVisible: Permission was not granted. You can enable it in your phone settings.
+- setPermissions:
+    permissions:
+      notifications: allow
+- tapOn: Bin-night reminder
+- assertVisible: Bin-night reminders are on for this place.
+- scrollUntilVisible:
+    element:
+      text: Next scheduled reminders
+    direction: DOWN
+- assertVisible: Next scheduled reminders
+- assertVisible: Mixed recycling
+- launchApp
+- openLink:
+    link: whatbinistonight:///reminder-settings
+- tapOn:
+    text: Open
+    optional: true
+- assertVisible: Bin-night reminders are on for this place.
+- tapOn: Bin-night reminder
+- assertVisible: Bin-night reminders are off for this place.
+- setPermissions:
+    permissions:
+      notifications: deny

@@ -1,6 +1,5 @@
 import type { Session, User } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import {
   ReactNode,
@@ -14,6 +13,7 @@ import {
 import { AppState, Platform } from 'react-native';
 
 import { apiBase } from '@/lib/api-base';
+import { fetchBoundedResponseJson } from '@/lib/bounded-response';
 import {
   AccountEntitlement,
   EntitlementSource,
@@ -21,6 +21,8 @@ import {
   isEntitlementPlan,
 } from '@/lib/entitlements';
 import { accountServiceConfigured, supabase } from '@/lib/supabase-client';
+import { presentAccountExport } from '@/features/account/account-export';
+import { readBrowserAccountFixture } from '@/features/account/browser-account-fixture';
 
 type AccountContextValue = {
   configured: boolean;
@@ -34,6 +36,7 @@ type AccountContextValue = {
   sendSignInLink: (email: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   refreshEntitlement: () => Promise<void>;
+  preparePlusReEnrolment: () => Promise<void>;
   exportAccountData: () => Promise<void>;
   removeAccountData: () => Promise<boolean>;
 };
@@ -49,6 +52,19 @@ type EntitlementResponse = {
   };
   error?: string;
 };
+
+type AccountDataRemovalResponse = {
+  removed?: boolean;
+  identityRetained?: boolean;
+  code?: unknown;
+  error?: unknown;
+  guidance?: unknown;
+  retryable?: unknown;
+  retained?: unknown;
+  requestId?: unknown;
+};
+
+class AccountDataRemovalRequestError extends Error {}
 
 const AccountContext = createContext<AccountContextValue | undefined>(undefined);
 const signInCooldownKey = 'what-bin:account:last-sign-in-request';
@@ -99,9 +115,10 @@ async function acceptNativeSession(url: string) {
 }
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [browserFixture] = useState(readBrowserAccountFixture);
+  const [session, setSession] = useState<Session | null>(browserFixture ?? null);
   const [entitlement, setEntitlement] = useState<AccountEntitlement>(freeEntitlement);
-  const [ready, setReady] = useState(!accountServiceConfigured);
+  const [ready, setReady] = useState(Boolean(browserFixture) || !accountServiceConfigured);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<string>();
@@ -123,7 +140,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (browserFixture || !supabase) return;
     let active = true;
     void supabase.auth.getSession()
       .then(async ({ data, error: sessionError }) => {
@@ -150,7 +167,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadEntitlement]);
+  }, [browserFixture, loadEntitlement]);
 
   useEffect(() => {
     if (!supabase || Platform.OS === 'web') return;
@@ -211,7 +228,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase || browserFixture) {
+      if (browserFixture) {
+        setSession(null);
+        setEntitlement(freeEntitlement);
+        setMessage('Signed out. The free bin-day features still work on this device.');
+      }
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
@@ -225,7 +249,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [browserFixture]);
 
   const refreshEntitlement = useCallback(async () => {
     setBusy(true);
@@ -239,6 +263,27 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
   }, [loadEntitlement, session]);
 
+  const preparePlusReEnrolment = useCallback(async () => {
+    if (!session) throw new Error('Sign in before buying or restoring What Bin Plus.');
+    const response = await fetch(`${apiBase}/account/re-enrol`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${session.access_token}`,
+        'x-bin-confirm-re-enrol': 'plus-purchase-or-restore',
+      },
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      intentRecorded?: unknown;
+      error?: unknown;
+    };
+    if (!response.ok || payload.intentRecorded !== true) {
+      throw new Error(typeof payload.error === 'string'
+        ? payload.error
+        : 'What Bin re-enrolment could not be prepared right now.');
+    }
+  }, [session]);
+
   const exportAccountData = useCallback(async () => {
     if (!session) {
       setError('Sign in before exporting your account data.');
@@ -247,16 +292,36 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(undefined);
     try {
-      const response = await fetch(`${apiBase}/account/export`, {
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${session.access_token}`,
+      const { response, payload } = await fetchBoundedResponseJson(
+        `${apiBase}/account/export`,
+        {
+          init: {
+            headers: {
+              accept: 'application/json',
+              authorization: `Bearer ${session.access_token}`,
+            },
+          },
+          maximumBytes: 8 * 1024 * 1024,
+          timeoutMs: 30_000,
         },
-      });
-      const payload = await response.json() as Record<string, unknown> & { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? 'Your account export could not be created.');
-      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
-      setMessage('Your What Bin account export was copied to the clipboard.');
+      );
+      const accountExport = payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload as Record<string, unknown> & { error?: unknown }
+        : undefined;
+      if (!response.ok || !accountExport) {
+        const publicError = typeof accountExport?.error === 'string'
+          ? accountExport.error.slice(0, 180)
+          : 'Your account export could not be created.';
+        const requestId = response.headers.get('x-request-id');
+        const reference = requestId && /^[0-9a-f-]{36}$/i.test(requestId)
+          ? ` Reference: ${requestId}.`
+          : '';
+        throw new Error(`${publicError}${reference}`);
+      }
+      const result = await presentAccountExport(accountExport);
+      setMessage(result === 'downloaded'
+        ? 'Your What Bin account export was downloaded as a JSON file.'
+        : 'Choose where to save or send your What Bin account export.');
     } catch (caught) {
       setError(messageFor(caught));
     } finally {
@@ -265,8 +330,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const removeAccountData = useCallback(async () => {
-    if (!session || !supabase) {
-      setError('Sign in before removing your account data.');
+    if (!session || (!supabase && !browserFixture)) {
+      setError('Sign in before removing your What Bin account data.');
       return false;
     }
     setBusy(true);
@@ -280,24 +345,56 @@ export function AccountProvider({ children }: { children: ReactNode }) {
           'x-bin-confirm-delete': 'remove-what-bin-account',
         },
       });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? 'Your What Bin account data could not be removed.');
-      const { error: signOutError } = await supabase.auth.signOut();
-      if (signOutError) throw signOutError;
+      const payload = await response.json()
+        .catch(() => ({})) as AccountDataRemovalResponse;
+      if (!response.ok) {
+        const errorMessage = typeof payload.error === 'string'
+          ? payload.error
+          : 'Your What Bin account data could not be removed.';
+        const guidance = typeof payload.guidance === 'string' ? payload.guidance : undefined;
+        const requestId = typeof payload.requestId === 'string'
+          && /^[0-9a-f-]{36}$/i.test(payload.requestId)
+          ? payload.requestId
+          : undefined;
+        throw new AccountDataRemovalRequestError(
+          [errorMessage, guidance, requestId ? `Reference: ${requestId}.` : undefined]
+            .filter(Boolean)
+            .join(' '),
+        );
+      }
+      if (payload.removed !== true || payload.identityRetained !== true) {
+        throw new AccountDataRemovalRequestError('Your What Bin account-data removal could not be confirmed.');
+      }
+      let signedOutLocally = false;
+      if (supabase && !browserFixture) {
+        try {
+          const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+          signedOutLocally = !signOutError;
+        } catch {
+          // Product data has already been removed. Clear this app's in-memory
+          // session even if its local auth cleanup call cannot complete.
+        }
+      } else {
+        signedOutLocally = true;
+      }
       setSession(null);
       setEntitlement(freeEntitlement);
-      setMessage('Your What Bin account and plan record were removed. Local addresses remain on this device.');
+      setMessage(signedOutLocally
+        ? 'Your What Bin plan, support and eligible household data were removed, and this device was signed out. Saved addresses remain on this device. Your shared Supabase sign-in identity was retained.'
+        : 'Your What Bin plan, support and eligible household data were removed. Local sign-out could not be confirmed, so sign out again when online. Your shared Supabase sign-in identity was retained.');
       return true;
     } catch (caught) {
-      setError(messageFor(caught));
+      setError(caught instanceof AccountDataRemovalRequestError
+        ? caught.message
+        : 'Your What Bin account data could not be removed right now. Please try again.');
       return false;
     } finally {
       setBusy(false);
     }
-  }, [session]);
+  }, [browserFixture, session]);
 
   const value = useMemo<AccountContextValue>(() => ({
-    configured: accountServiceConfigured,
+    configured: accountServiceConfigured || Boolean(browserFixture),
     ready,
     busy,
     user: session?.user,
@@ -308,15 +405,18 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     sendSignInLink,
     signOut,
     refreshEntitlement,
+    preparePlusReEnrolment,
     exportAccountData,
     removeAccountData,
   }), [
+    browserFixture,
     busy,
     entitlement,
     error,
     message,
     ready,
     refreshEntitlement,
+    preparePlusReEnrolment,
     exportAccountData,
     removeAccountData,
     sendSignInLink,

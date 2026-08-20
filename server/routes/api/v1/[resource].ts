@@ -1,24 +1,19 @@
 import { defineHandler } from 'nitro';
 import * as Crypto from 'node:crypto';
 
-import gateway from '../../../../api/_gateway/index.ts';
+import { createCouncilGateway } from '../../../../api/_gateway/index.ts';
+import { serverGatewaySecurityControls } from '../../../lib/gateway-security-controls';
 import { pilotAnalyticsConfigured, recordPilotGatewayCheck } from '../../../lib/pilot-analytics';
 
 const providerPattern = /^lad-[ensw]\d{8}$/;
+const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const gateway = createCouncilGateway(serverGatewaySecurityControls);
 
-async function providerFromRequest(request: Request, resource: string) {
+function providerFromRequest(request: Request) {
   const url = new URL(request.url);
   const queryProvider = url.searchParams.get('providerId');
   if (queryProvider && providerPattern.test(queryProvider)) return queryProvider;
-  if (resource !== 'collections' || request.method !== 'POST') return undefined;
-  try {
-    const body = await request.clone().json() as { providerId?: unknown };
-    return typeof body.providerId === 'string' && providerPattern.test(body.providerId)
-      ? body.providerId
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 export default defineHandler(async (event) => {
@@ -30,11 +25,21 @@ export default defineHandler(async (event) => {
     || resourceName === 'collections'
     || resourceName === 'services'
   ) ? resourceName : 'unknown';
-  const providerId = await providerFromRequest(request, resource);
+  const queryProviderId = providerFromRequest(request);
   const response = await gateway.fetch(event.req);
+  const responseProviderId = response.headers.get('x-council-provider-id');
+  const responseRequestId = response.headers.get('x-request-id');
+  const requestId = responseRequestId && requestIdPattern.test(responseRequestId)
+    ? responseRequestId
+    : Crypto.randomUUID();
+  const providerId = responseProviderId && providerPattern.test(responseProviderId)
+    ? responseProviderId
+    : queryProviderId;
   if (pilotAnalyticsConfigured()) {
-    await recordPilotGatewayCheck({
-      id: Crypto.randomUUID(),
+    // Gateway availability is authoritative; best-effort analytics must never
+    // consume the remaining serverless response budget after a slow provider.
+    void recordPilotGatewayCheck({
+      id: requestId,
       occurredAt: new Date().toISOString(),
       councilId: providerId,
       resource,

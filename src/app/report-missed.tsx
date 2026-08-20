@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Href, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
 import { RouteHead } from '@/components/route-head';
+import { ToggleIndicator } from '@/components/toggle-indicator';
 import { collectionDisplayMeta, formatCollectionDate, sortCollections } from '@/lib/data';
-import { nonInteractiveStyle } from '@/lib/design-system';
 import {
   buildMissedReport,
   evaluateMissedReportEligibility,
@@ -75,12 +75,12 @@ export default function ReportMissedScreen() {
   if (!activeAddress || !collection) {
     return (
       <AppShell activeRoute="/report-missed">
-        <RouteHead title="Report a Missed Collection" description="Check council eligibility and continue to the official missed-bin reporting service." path="/report-missed" />
+        <RouteHead title="Report a Missed Collection" description="Check council eligibility and continue to the official missed-bin reporting service." path="/report-missed" private />
         <View style={[styles.center, { backgroundColor: theme.background }]}>
           <Ionicons color={theme.accent} name="calendar-outline" size={36} />
           <Text style={[styles.centerTitle, { color: theme.text }]}>No eligible collection selected</Text>
           <Text style={[styles.centerCopy, { color: theme.secondaryText }]}>Open Today after a collection window to report a missed bin.</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.replace('/')} style={[styles.cta, { backgroundColor: theme.accent }]}>
+          <Pressable accessibilityRole="button" onPress={() => router.replace('/')} style={[styles.cta, { backgroundColor: theme.accentFill }]}>
             <Text style={styles.ctaText}>Back to Today</Text>
           </Pressable>
         </View>
@@ -91,12 +91,12 @@ export default function ReportMissedScreen() {
   if (councilProfile?.featureFlags?.missedCollection === false) {
     return (
       <AppShell activeRoute="/activity">
-        <RouteHead title="Missed Collection" description="Missed-collection reporting availability for the selected council." path="/report-missed" />
+        <RouteHead title="Missed Collection" description="Missed-collection reporting availability for the selected council." path="/report-missed" private />
         <View style={[styles.center, { backgroundColor: theme.background }]}>
           <Ionicons color={theme.secondaryText} name="shield-outline" size={36} />
           <Text style={[styles.centerTitle, { color: theme.text }]}>Reporting is not enabled here</Text>
           <Text style={[styles.centerCopy, { color: theme.secondaryText }]}>This council has not enabled a missed-collection route inside What Bin. No report has been created.</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.replace('/activity' as Href)} style={[styles.cta, { backgroundColor: theme.accent }]}>
+          <Pressable accessibilityRole="button" onPress={() => router.replace('/activity' as Href)} style={[styles.cta, { backgroundColor: theme.accentFill }]}>
             <Text style={styles.ctaText}>Back to Activity</Text>
           </Pressable>
         </View>
@@ -107,14 +107,14 @@ export default function ReportMissedScreen() {
   if (existingReport) {
     return (
       <AppShell activeRoute="/report-missed">
-        <RouteHead title="Report Already Tracked" description="Open the existing local missed-collection record and official council service." path="/report-missed" />
+        <RouteHead title="Report Already Tracked" description="Open the existing local missed-collection record and official council service." path="/report-missed" private />
         <View style={[styles.center, { backgroundColor: theme.background }]}>
           <Ionicons color={theme.accent} name="document-text-outline" size={36} />
           <Text style={[styles.centerTitle, { color: theme.text }]}>This report is already tracked</Text>
           <Text style={[styles.centerCopy, { color: theme.secondaryText }]}>
             Open Activity to copy its reference, add an update or return to the official council service.
           </Text>
-          <Pressable accessibilityRole="button" onPress={() => router.replace('/activity' as Href)} style={[styles.cta, { backgroundColor: theme.accent }]}>
+          <Pressable accessibilityRole="button" onPress={() => router.replace('/activity' as Href)} style={[styles.cta, { backgroundColor: theme.accentFill }]}>
             <Text style={styles.ctaText}>View report</Text>
           </Pressable>
         </View>
@@ -205,7 +205,7 @@ export default function ReportMissedScreen() {
 
   return (
     <AppShell activeRoute="/report-missed">
-      <RouteHead title="Report a Missed Collection" description="Check council eligibility and continue to the official missed-bin reporting service." path="/report-missed" />
+      <RouteHead title="Report a Missed Collection" description="Check council eligibility and continue to the official missed-bin reporting service." path="/report-missed" private />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
           <View style={styles.navRow}>
@@ -274,19 +274,14 @@ export default function ReportMissedScreen() {
           <View style={[styles.formCard, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
             {checks.map(([label, value, setter], index) => (
               <Pressable
+                aria-checked={value}
                 accessibilityRole="switch"
                 accessibilityState={{ checked: value }}
                 key={label}
                 onPress={() => setter(!value)}
                 style={[styles.toggleRow, index < checks.length - 1 && { borderBottomColor: theme.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
                 <Text style={[styles.toggleLabel, { color: theme.text }]}>{label}</Text>
-                <Switch
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
-                  style={nonInteractiveStyle}
-                  trackColor={{ false: theme.tertiaryText, true: theme.accent }}
-                  value={value}
-                />
+                <ToggleIndicator value={value} />
               </Pressable>
             ))}
           </View>
@@ -295,6 +290,7 @@ export default function ReportMissedScreen() {
           <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
             {(['yes', 'no', 'unknown'] as const).map((value) => (
               <Pressable
+                aria-checked={neighboursCollected === value}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: neighboursCollected === value }}
                 key={value}
@@ -332,7 +328,7 @@ export default function ReportMissedScreen() {
             accessibilityState={{ disabled: !eligible || !canContinue }}
             disabled={!eligible || !canContinue}
             onPress={() => void continueToCouncil()}
-            style={({ pressed }) => [styles.cta, { backgroundColor: theme.accent }, (!eligible || !canContinue) && styles.disabled, pressed && styles.pressed]}>
+            style={({ pressed }) => [styles.cta, { backgroundColor: theme.accentFill }, (!eligible || !canContinue) && styles.disabled, pressed && styles.pressed]}>
             <Text style={styles.ctaText}>Continue to official council service</Text>
             <Ionicons color="#FFFFFF" name="open-outline" size={18} />
           </Pressable>

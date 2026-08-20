@@ -156,7 +156,7 @@ export default function PartnersScreen() {
               onPress={contact}
               style={({ pressed }) => [
                 styles.cta,
-                { backgroundColor: theme.accent },
+                { backgroundColor: theme.accentFill },
                 pressed && styles.pressed,
               ]}>
               <Ionicons color="#FFFFFF" name="mail" size={20} />

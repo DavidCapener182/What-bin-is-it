@@ -4,6 +4,12 @@ import type postgres from "postgres";
 
 import { councilDatabase } from "./database";
 import { refundMarketplacePayment, releaseMarketplacePayout } from "./marketplace-payments";
+import {
+  clampOperationalQueueRequest,
+  operationalQueueRequest,
+  type OperationalQueueSearchParams,
+  type OperationalQueueServerPage,
+} from "./operational-queue";
 import type {
   AuditEvent,
   CouncilAnnouncement,
@@ -155,7 +161,8 @@ export async function estimateCouncilAudience(
   return estimateCouncilAudienceWithSql(councilDatabase(), session, audience);
 }
 
-export async function listCouncilBroadcasts(session: CouncilStaffSession) {
+export async function listCouncilBroadcastsForContent(session: CouncilStaffSession, contentIds: string[]) {
+  if (!contentIds.length) return [];
   const sql = councilDatabase();
   const rows = await sql<{
     id: string;
@@ -168,7 +175,7 @@ export async function listCouncilBroadcasts(session: CouncilStaffSession) {
     requested_at: Date;
     completed_at: Date | null;
   }[]>`
-    SELECT
+    SELECT DISTINCT ON (coalesce(announcement_id, disruption_id))
       id,
       coalesce(announcement_id, disruption_id) AS content_id,
       status,
@@ -180,8 +187,8 @@ export async function listCouncilBroadcasts(session: CouncilStaffSession) {
       completed_at
     FROM bin_council_broadcast_jobs
     WHERE organisation_id = ${session.organisation.id}::uuid
-    ORDER BY requested_at DESC
-    LIMIT 200
+      AND coalesce(announcement_id, disruption_id) = ANY(${contentIds}::uuid[])
+    ORDER BY coalesce(announcement_id, disruption_id), requested_at DESC
   `;
   return rows.map((row): CouncilBroadcastSummary => ({
     id: row.id,
@@ -196,8 +203,32 @@ export async function listCouncilBroadcasts(session: CouncilStaffSession) {
   }));
 }
 
-export async function listSponsorshipProgrammes(session: CouncilStaffSession) {
+export async function listSponsorshipProgrammesPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CouncilSponsorshipProgramme>> {
   const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "starts",
+    filterValues: ["council", "housing"],
+    sortValues: ["created", "ends", "label", "renewal", "starts"],
+    statusValues: ["draft", "active", "paused", "ended"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_sponsorship_programmes
+      WHERE organisation_id = ${session.organisation.id}::uuid
+        AND (${request.status} = '' OR status = ${request.status})
+        AND (${request.filter} = '' OR sponsor_type = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', resident_label, sponsor_type, status, features::text) ILIKE ${pattern})
+    `,
+    sql<CountRow[]>`SELECT count(*)::int AS count FROM bin_sponsorship_programmes WHERE organisation_id = ${session.organisation.id}::uuid`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<{
     id: string; sponsor_type: CouncilSponsorshipProgramme["sponsorType"];
     status: CouncilSponsorshipProgramme["status"]; resident_label: string; features: string[];
@@ -206,11 +237,26 @@ export async function listSponsorshipProgrammes(session: CouncilStaffSession) {
     SELECT id, sponsor_type, status, resident_label, features, starts_at, ends_at, renewal_at, created_at
     FROM bin_sponsorship_programmes
     WHERE organisation_id = ${session.organisation.id}::uuid
-    ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,
-      starts_at DESC
-    LIMIT 100
+      AND (${clampedRequest.status} = '' OR status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR sponsor_type = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', resident_label, sponsor_type, status, features::text) ILIKE ${`%${clampedRequest.query}%`})
+    ORDER BY
+      CASE WHEN ${clampedRequest.sort} = 'created' AND ${clampedRequest.direction} = 'asc' THEN created_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'created' AND ${clampedRequest.direction} = 'desc' THEN created_at END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'ends' AND ${clampedRequest.direction} = 'asc' THEN ends_at END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'ends' AND ${clampedRequest.direction} = 'desc' THEN ends_at END DESC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'label' AND ${clampedRequest.direction} = 'asc' THEN resident_label END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'label' AND ${clampedRequest.direction} = 'desc' THEN resident_label END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'renewal' AND ${clampedRequest.direction} = 'asc' THEN renewal_at END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'renewal' AND ${clampedRequest.direction} = 'desc' THEN renewal_at END DESC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'starts' AND ${clampedRequest.direction} = 'asc' THEN starts_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'starts' AND ${clampedRequest.direction} = 'desc' THEN starts_at END DESC,
+      starts_at DESC,
+      id DESC
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row): CouncilSponsorshipProgramme => ({
+  const items = rows.map((row): CouncilSponsorshipProgramme => ({
     id: row.id,
     sponsorType: row.sponsor_type,
     status: row.status,
@@ -221,6 +267,7 @@ export async function listSponsorshipProgrammes(session: CouncilStaffSession) {
     renewalAt: row.renewal_at?.toISOString().slice(0, 10),
     createdAt: row.created_at.toISOString(),
   }));
+  return { items, request: clampedRequest, total, unfilteredTotal: unfilteredRows[0]?.count ?? 0 };
 }
 
 export async function createSponsorshipProgramme(
@@ -707,7 +754,14 @@ export async function councilOperationalQueue(
   return items;
 }
 
-export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
+export const analyticsPeriods = [7, 30, 90] as const;
+
+export function normaliseAnalyticsPeriod(value?: string | number) {
+  const period = typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
+  return analyticsPeriods.includes(period as (typeof analyticsPeriods)[number]) ? period : 30;
+}
+
+export async function dashboardMetrics(session: CouncilStaffSession, requestedPeriodDays: string | number = 30): Promise<{
   metrics: DashboardMetric[];
   outcomeFunnels: CouncilOutcomeFunnels;
   gatewayAvailability?: number;
@@ -716,7 +770,7 @@ export async function dashboardMetrics(session: CouncilStaffSession): Promise<{
 }> {
   const sql = councilDatabase();
   const providerId = session.organisation.providerId;
-  const periodDays = 30;
+  const periodDays = normaliseAnalyticsPeriod(requestedPeriodDays);
   const analyticsRows = await sql<AnalyticsCountRow[]>`
     SELECT
       count(DISTINCT participant_id)::int AS participants,
@@ -963,8 +1017,47 @@ export async function saveCouncilPilotBaseline(
   });
 }
 
-export async function listAnnouncements(session: CouncilStaffSession) {
+export async function listAnnouncementTitles(session: CouncilStaffSession) {
   const sql = councilDatabase();
+  const rows = await sql<{ title: string }[]>`
+    SELECT title
+    FROM bin_council_announcements
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    ORDER BY title
+  `;
+  return rows.map((row) => row.title);
+}
+
+export async function listAnnouncementsPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CouncilAnnouncement>> {
+  const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "updated",
+    filterValues: ["service", "education", "emergency", "seasonal"],
+    sortValues: ["status", "title", "updated"],
+    statusValues: ["published", "scheduled", "draft", "archived"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_announcements
+      WHERE organisation_id = ${session.organisation.id}::uuid
+        AND (${request.status} = '' OR status = ${request.status})
+        AND (${request.filter} = '' OR kind = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', title, body, kind, severity, placements::text) ILIKE ${pattern})
+    `,
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_announcements
+      WHERE organisation_id = ${session.organisation.id}::uuid
+    `,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<{
     id: string;
     kind: string;
@@ -994,12 +1087,22 @@ export async function listAnnouncements(session: CouncilStaffSession) {
       updated_at
     FROM bin_council_announcements
     WHERE organisation_id = ${session.organisation.id}::uuid
+      AND (${clampedRequest.status} = '' OR status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR kind = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', title, body, kind, severity, placements::text) ILIKE ${`%${clampedRequest.query}%`})
     ORDER BY
-      CASE status WHEN 'published' THEN 0 WHEN 'scheduled' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END,
-      updated_at DESC
-    LIMIT 100
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'asc' THEN status END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'desc' THEN status END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'title' AND ${clampedRequest.direction} = 'asc' THEN title END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'title' AND ${clampedRequest.direction} = 'desc' THEN title END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'updated' AND ${clampedRequest.direction} = 'asc' THEN updated_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'updated' AND ${clampedRequest.direction} = 'desc' THEN updated_at END DESC,
+      updated_at DESC,
+      id DESC
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row): CouncilAnnouncement => ({
+  const items = rows.map((row): CouncilAnnouncement => ({
     id: row.id,
     kind: row.kind,
     severity: row.severity,
@@ -1013,6 +1116,12 @@ export async function listAnnouncements(session: CouncilStaffSession) {
     audience: row.audience_criteria,
     updatedAt: row.updated_at.toISOString(),
   }));
+  return {
+    items,
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
+  };
 }
 
 export async function createAnnouncement(
@@ -1108,8 +1217,65 @@ export async function setAnnouncementStatus(
   });
 }
 
-export async function listDisruptions(session: CouncilStaffSession) {
+export async function listActiveDisruptionContexts(
+  session: CouncilStaffSession,
+): Promise<Array<Pick<CouncilDisruption, "id" | "title" | "startsAt" | "endsAt">>> {
+  const rows = await councilDatabase()<{ id: string; title: string; starts_at: Date; ends_at: Date | null }[]>`
+    SELECT id, title, starts_at, ends_at
+    FROM bin_council_disruptions
+    WHERE organisation_id = ${session.organisation.id}::uuid
+      AND status = 'published'
+      AND (ends_at IS NULL OR ends_at > now())
+    ORDER BY starts_at DESC, id DESC
+  `;
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    startsAt: row.starts_at.toISOString(),
+    endsAt: row.ends_at?.toISOString(),
+  }));
+}
+
+export async function listDisruptionTitles(session: CouncilStaffSession) {
+  const rows = await councilDatabase()<{ title: string }[]>`
+    SELECT title
+    FROM bin_council_disruptions
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    ORDER BY title
+  `;
+  return rows.map((row) => row.title);
+}
+
+export async function listDisruptionsPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CouncilDisruption>> {
   const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "starts",
+    filterValues: ["operational", "weather", "bank-holiday", "industrial-action", "vehicle", "emergency", "other"],
+    sortValues: ["starts", "status", "title"],
+    statusValues: ["published", "draft", "resolved", "archived"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_disruptions
+      WHERE organisation_id = ${session.organisation.id}::uuid
+        AND (${request.status} = '' OR status = ${request.status})
+        AND (${request.filter} = '' OR cause = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', title, detail, resident_instruction, collection_types::text, area_labels::text, cause) ILIKE ${pattern})
+    `,
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_disruptions
+      WHERE organisation_id = ${session.organisation.id}::uuid
+    `,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<{
     id: string;
     title: string;
@@ -1143,12 +1309,22 @@ export async function listDisruptions(session: CouncilStaffSession) {
       updated_at
     FROM bin_council_disruptions
     WHERE organisation_id = ${session.organisation.id}::uuid
+      AND (${clampedRequest.status} = '' OR status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR cause = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', title, detail, resident_instruction, collection_types::text, area_labels::text, cause) ILIKE ${`%${clampedRequest.query}%`})
     ORDER BY
-      CASE status WHEN 'published' THEN 0 WHEN 'draft' THEN 1 WHEN 'resolved' THEN 2 ELSE 3 END,
-      starts_at DESC
-    LIMIT 100
+      CASE WHEN ${clampedRequest.sort} = 'starts' AND ${clampedRequest.direction} = 'asc' THEN starts_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'starts' AND ${clampedRequest.direction} = 'desc' THEN starts_at END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'asc' THEN status END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'desc' THEN status END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'title' AND ${clampedRequest.direction} = 'asc' THEN title END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'title' AND ${clampedRequest.direction} = 'desc' THEN title END DESC,
+      starts_at DESC,
+      id DESC
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row): CouncilDisruption => ({
+  const items = rows.map((row): CouncilDisruption => ({
     id: row.id,
     title: row.title,
     detail: row.detail,
@@ -1164,6 +1340,12 @@ export async function listDisruptions(session: CouncilStaffSession) {
     audience: row.audience_criteria,
     updatedAt: row.updated_at.toISOString(),
   }));
+  return {
+    items,
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
+  };
 }
 
 export async function createDisruption(
@@ -1265,8 +1447,31 @@ export async function setDisruptionStatus(
   });
 }
 
-export async function listGuidance(session: CouncilStaffSession) {
+export async function listGuidancePage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CouncilGuidanceItem>> {
   const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultSort: "name",
+    filterValues: ["general", "recycling", "garden", "food", "other", "service", "check"],
+    sortValues: ["name", "status", "updated"],
+    statusValues: ["published", "draft", "archived"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_guidance_items
+      WHERE organisation_id = ${session.organisation.id}::uuid
+        AND (${request.status} = '' OR status = ${request.status})
+        AND (${request.filter} = '' OR destination = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', item_name, item_key, heading, detail, search_terms::text) ILIKE ${pattern})
+    `,
+    sql<CountRow[]>`SELECT count(*)::int AS count FROM bin_council_guidance_items WHERE organisation_id = ${session.organisation.id}::uuid`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<{
     id: string;
     item_key: string;
@@ -1292,10 +1497,22 @@ export async function listGuidance(session: CouncilStaffSession) {
       updated_at
     FROM bin_council_guidance_items
     WHERE organisation_id = ${session.organisation.id}::uuid
-    ORDER BY item_name
-    LIMIT 500
+      AND (${clampedRequest.status} = '' OR status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR destination = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', item_name, item_key, heading, detail, search_terms::text) ILIKE ${`%${clampedRequest.query}%`})
+    ORDER BY
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'asc' THEN item_name END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'desc' THEN item_name END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'asc' THEN status END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'desc' THEN status END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'updated' AND ${clampedRequest.direction} = 'asc' THEN updated_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'updated' AND ${clampedRequest.direction} = 'desc' THEN updated_at END DESC,
+      item_name,
+      id
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row): CouncilGuidanceItem => ({
+  const items = rows.map((row): CouncilGuidanceItem => ({
     id: row.id,
     itemKey: row.item_key,
     itemName: row.item_name,
@@ -1307,6 +1524,7 @@ export async function listGuidance(session: CouncilStaffSession) {
     status: row.status,
     updatedAt: row.updated_at.toISOString(),
   }));
+  return { items, request: clampedRequest, total, unfilteredTotal: unfilteredRows[0]?.count ?? 0 };
 }
 
 export async function upsertGuidance(
@@ -1373,8 +1591,42 @@ export async function upsertGuidance(
   });
 }
 
-export async function listPartners(session: CouncilStaffSession) {
+export async function listPartnersPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CouncilPartner> & { categories: string[] }> {
   const sql = councilDatabase();
+  const categoryRows = await sql<{ category: string }[]>`
+    SELECT DISTINCT category
+    FROM bin_council_partners
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    ORDER BY category
+  `;
+  const categories = categoryRows.map((row) => row.category);
+  const request = operationalQueueRequest(searchParams, {
+    defaultSort: "name",
+    filterValues: categories,
+    sortValues: ["bookings", "name", "priority", "review"],
+    statusValues: ["draft", "review", "active", "paused", "ended"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_partners AS partner
+      WHERE partner.organisation_id = ${session.organisation.id}::uuid
+        AND (${request.status} = '' OR partner.status = ${request.status})
+        AND (${request.filter} = '' OR partner.category = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', partner.name, partner.category, partner.description, partner.licence_reference, partner.supported_area_labels::text) ILIKE ${pattern})
+    `,
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_partners
+      WHERE organisation_id = ${session.organisation.id}::uuid
+    `,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<{
     id: string;
     name: string;
@@ -1403,47 +1655,68 @@ export async function listPartners(session: CouncilStaffSession) {
     starts_at: Date | null;
     ends_at: Date | null;
     updated_at: Date;
+    confirmed_booking_count: number;
   }[]>`
     SELECT
-      id,
-      name,
-      category,
-      description,
-      service_url,
-      item_keys,
-      disclosure_label,
-      referral_model,
-      commission_pence,
-      booking_mode,
-      booking_price_pence,
-      platform_fee_pence,
-      stripe_account_id,
-      provider_acceptance_sla_hours,
-      terms_url,
-      priority,
-      licence_reference,
-      supported_area_labels,
-      complaint_contact,
-      evidence_url,
-      budget_pence,
-      immediate_suspension_reason,
-      renewal_review_at::text,
-      status,
-      starts_at,
-      ends_at,
-      updated_at
-    FROM bin_council_partners
-    WHERE organisation_id = ${session.organisation.id}::uuid
+      partner.id,
+      partner.name,
+      partner.category,
+      partner.description,
+      partner.service_url,
+      partner.item_keys,
+      partner.disclosure_label,
+      partner.referral_model,
+      partner.commission_pence,
+      partner.booking_mode,
+      partner.booking_price_pence,
+      partner.platform_fee_pence,
+      partner.stripe_account_id,
+      partner.provider_acceptance_sla_hours,
+      partner.terms_url,
+      partner.priority,
+      partner.licence_reference,
+      partner.supported_area_labels,
+      partner.complaint_contact,
+      partner.evidence_url,
+      partner.budget_pence,
+      partner.immediate_suspension_reason,
+      partner.renewal_review_at::text,
+      partner.status,
+      partner.starts_at,
+      partner.ends_at,
+      partner.updated_at,
+      coalesce(booking_sort.confirmed_booking_count, 0)::int AS confirmed_booking_count
+    FROM bin_council_partners AS partner
+    LEFT JOIN (
+      SELECT partner_id, count(*) FILTER (WHERE status = 'confirmed')::int AS confirmed_booking_count
+      FROM bin_bulky_bookings
+      WHERE organisation_id = ${session.organisation.id}::uuid
+      GROUP BY partner_id
+    ) AS booking_sort ON booking_sort.partner_id = partner.id
+    WHERE partner.organisation_id = ${session.organisation.id}::uuid
+      AND (${clampedRequest.status} = '' OR partner.status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR partner.category = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', partner.name, partner.category, partner.description, partner.licence_reference, partner.supported_area_labels::text) ILIKE ${`%${clampedRequest.query}%`})
     ORDER BY
-      CASE status WHEN 'active' THEN 0 WHEN 'review' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END,
-      priority,
-      name
-    LIMIT 200
+      CASE WHEN ${clampedRequest.sort} = 'bookings' AND ${clampedRequest.direction} = 'asc' THEN coalesce(booking_sort.confirmed_booking_count, 0) END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'bookings' AND ${clampedRequest.direction} = 'desc' THEN coalesce(booking_sort.confirmed_booking_count, 0) END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'asc' THEN partner.name END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'desc' THEN partner.name END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'priority' AND ${clampedRequest.direction} = 'asc' THEN partner.priority END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'priority' AND ${clampedRequest.direction} = 'desc' THEN partner.priority END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'review' AND ${clampedRequest.direction} = 'asc' THEN partner.renewal_review_at END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'review' AND ${clampedRequest.direction} = 'desc' THEN partner.renewal_review_at END DESC NULLS LAST,
+      partner.name,
+      partner.id
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
+  const partnerIds = rows.map((row) => row.id);
   const conversionRows = await sql<{ partner_id: string; event_name: string; event_count: number }[]>`
     SELECT partner_id, event_name, count(*)::int AS event_count
     FROM bin_partner_conversion_events
     WHERE organisation_id = ${session.organisation.id}::uuid
+      AND partner_id = ANY(${partnerIds}::uuid[])
     GROUP BY partner_id, event_name
   `;
   const conversions = conversionRows.reduce<Record<string, Record<string, number>>>((result, row) => {
@@ -1465,7 +1738,8 @@ export async function listPartners(session: CouncilStaffSession) {
         'confirmed', 'completed', 'payout-released'
       )), 0)::int AS confirmed_fee_pence
     FROM bin_bulky_bookings
-    WHERE organisation_id = ${session.organisation.id}::uuid AND partner_id IS NOT NULL
+    WHERE organisation_id = ${session.organisation.id}::uuid
+      AND partner_id = ANY(${partnerIds}::uuid[])
     GROUP BY partner_id, status
   `;
   const bookingEvidence = bookingRows.reduce<Record<string, {
@@ -1480,7 +1754,7 @@ export async function listPartners(session: CouncilStaffSession) {
     result[row.partner_id] = current;
     return result;
   }, {});
-  return rows.map((row): CouncilPartner => ({
+  const items = rows.map((row): CouncilPartner => ({
     id: row.id,
     name: row.name,
     category: row.category,
@@ -1513,6 +1787,13 @@ export async function listPartners(session: CouncilStaffSession) {
     endsAt: row.ends_at?.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   }));
+  return {
+    categories,
+    items,
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
+  };
 }
 
 export async function createPartner(
@@ -1596,8 +1877,42 @@ export async function createPartner(
   });
 }
 
-export async function listBulkyBookings(session: CouncilStaffSession): Promise<CouncilBulkyBooking[]> {
-  const rows = await councilDatabase()<{
+export async function listBulkyBookingsPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CouncilBulkyBooking>> {
+  const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "started",
+    filterValues: ["official-council", "external-referral", "stripe-connect"],
+    sortValues: ["amount", "partner", "started", "status"],
+    statusValues: [
+      "official-handoff", "started", "checkout-created", "payment-pending", "awaiting-provider",
+      "provider-accepted", "scheduled", "confirmed", "completed", "payout-released",
+      "provider-declined", "cancelled", "refunded", "payment-failed",
+    ],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_bulky_bookings AS booking
+      LEFT JOIN bin_council_partners AS partner ON partner.id = booking.partner_id
+      WHERE booking.organisation_id = ${session.organisation.id}::uuid
+        AND (${request.status} = '' OR booking.status = ${request.status})
+        AND (${request.filter} = '' OR booking.booking_channel = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', booking.public_reference, partner.name, booking.partner_reference, booking.item_key, booking.booking_channel) ILIKE ${pattern})
+    `,
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_bulky_bookings
+      WHERE organisation_id = ${session.organisation.id}::uuid
+    `,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
+  const rows = await sql<{
     public_reference: string;
     partner_id: string | null;
     partner_name: string | null;
@@ -1630,10 +1945,24 @@ export async function listBulkyBookings(session: CouncilStaffSession): Promise<C
     FROM bin_bulky_bookings booking
     LEFT JOIN bin_council_partners partner ON partner.id = booking.partner_id
     WHERE booking.organisation_id = ${session.organisation.id}::uuid
-    ORDER BY booking.started_at DESC
-    LIMIT 100
+      AND (${clampedRequest.status} = '' OR booking.status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR booking.booking_channel = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', booking.public_reference, partner.name, booking.partner_reference, booking.item_key, booking.booking_channel) ILIKE ${`%${clampedRequest.query}%`})
+    ORDER BY
+      CASE WHEN ${clampedRequest.sort} = 'amount' AND ${clampedRequest.direction} = 'asc' THEN booking.amount_pence END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'amount' AND ${clampedRequest.direction} = 'desc' THEN booking.amount_pence END DESC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'partner' AND ${clampedRequest.direction} = 'asc' THEN coalesce(partner.name, 'Official council route') END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'partner' AND ${clampedRequest.direction} = 'desc' THEN coalesce(partner.name, 'Official council route') END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'started' AND ${clampedRequest.direction} = 'asc' THEN booking.started_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'started' AND ${clampedRequest.direction} = 'desc' THEN booking.started_at END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'asc' THEN booking.status END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'desc' THEN booking.status END DESC,
+      booking.started_at DESC,
+      booking.id DESC
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row) => ({
+  const items = rows.map((row): CouncilBulkyBooking => ({
     reference: row.public_reference,
     partnerId: row.partner_id ?? undefined,
     partnerName: row.partner_name ?? undefined,
@@ -1656,6 +1985,12 @@ export async function listBulkyBookings(session: CouncilStaffSession): Promise<C
     payoutReleased: Boolean(row.stripe_transfer_id),
     refunded: Boolean(row.stripe_refund_id),
   }));
+  return {
+    items,
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
+  };
 }
 
 function assertMarketplaceSuperadmin(session: CouncilStaffSession) {
@@ -2077,10 +2412,48 @@ export async function saveReportingRule(
   });
 }
 
-export async function listAuditEvents(session: CouncilStaffSession) {
+export async function listAuditEventsPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<AuditEvent> & { entityTypes: string[] }> {
   const sql = councilDatabase();
+  const entityRows = await sql<{ entity_type: string }[]>`
+    SELECT DISTINCT entity_type
+    FROM bin_council_audit_logs
+    WHERE organisation_id = ${session.organisation.id}::uuid
+    ORDER BY entity_type
+  `;
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "occurred",
+    filterValues: entityRows.map((row) => row.entity_type),
+    sortValues: ["action", "actor", "entity", "occurred"],
+  });
+  const queryPattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_audit_logs AS audit_log
+      LEFT JOIN auth.users AS user_account ON user_account.id = audit_log.actor_user_id
+      WHERE audit_log.organisation_id = ${session.organisation.id}::uuid
+        AND (${request.filter} = '' OR audit_log.entity_type = ${request.filter})
+        AND (
+          ${request.query} = ''
+          OR concat_ws(' ', audit_log.action, audit_log.entity_type, audit_log.entity_id::text, user_account.email, audit_log.summary::text)
+            ILIKE ${queryPattern}
+        )
+    `,
+    sql<CountRow[]>`
+      SELECT count(*)::int AS count
+      FROM bin_council_audit_logs
+      WHERE organisation_id = ${session.organisation.id}::uuid
+    `,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<{
     id: string;
+    actor_label: string | null;
     actor_user_id: string;
     action: string;
     entity_type: string;
@@ -2089,20 +2462,40 @@ export async function listAuditEvents(session: CouncilStaffSession) {
     occurred_at: Date;
   }[]>`
     SELECT
-      id,
-      actor_user_id,
-      action,
-      entity_type,
-      entity_id,
-      summary,
-      occurred_at
-    FROM bin_council_audit_logs
-    WHERE organisation_id = ${session.organisation.id}::uuid
-    ORDER BY occurred_at DESC
-    LIMIT 200
+      audit_log.id,
+      user_account.email AS actor_label,
+      audit_log.actor_user_id,
+      audit_log.action,
+      audit_log.entity_type,
+      audit_log.entity_id,
+      audit_log.summary,
+      audit_log.occurred_at
+    FROM bin_council_audit_logs AS audit_log
+    LEFT JOIN auth.users AS user_account ON user_account.id = audit_log.actor_user_id
+    WHERE audit_log.organisation_id = ${session.organisation.id}::uuid
+      AND (${clampedRequest.filter} = '' OR audit_log.entity_type = ${clampedRequest.filter})
+      AND (
+        ${clampedRequest.query} = ''
+        OR concat_ws(' ', audit_log.action, audit_log.entity_type, audit_log.entity_id::text, user_account.email, audit_log.summary::text)
+          ILIKE ${`%${clampedRequest.query}%`}
+      )
+    ORDER BY
+      CASE WHEN ${clampedRequest.sort} = 'action' AND ${clampedRequest.direction} = 'asc' THEN audit_log.action END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'action' AND ${clampedRequest.direction} = 'desc' THEN audit_log.action END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'actor' AND ${clampedRequest.direction} = 'asc' THEN coalesce(user_account.email, audit_log.actor_user_id::text) END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'actor' AND ${clampedRequest.direction} = 'desc' THEN coalesce(user_account.email, audit_log.actor_user_id::text) END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'entity' AND ${clampedRequest.direction} = 'asc' THEN audit_log.entity_type END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'entity' AND ${clampedRequest.direction} = 'desc' THEN audit_log.entity_type END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'occurred' AND ${clampedRequest.direction} = 'asc' THEN audit_log.occurred_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'occurred' AND ${clampedRequest.direction} = 'desc' THEN audit_log.occurred_at END DESC,
+      audit_log.occurred_at DESC,
+      audit_log.id DESC
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row): AuditEvent => ({
+  const items = rows.map((row): AuditEvent => ({
     id: row.id,
+    actorLabel: row.actor_label ?? undefined,
     actorUserId: row.actor_user_id,
     action: row.action,
     entityType: row.entity_type,
@@ -2110,6 +2503,13 @@ export async function listAuditEvents(session: CouncilStaffSession) {
     summary: row.summary,
     occurredAt: row.occurred_at.toISOString(),
   }));
+  return {
+    entityTypes: entityRows.map((row) => row.entity_type),
+    items,
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
+  };
 }
 
 export async function updateOrganisationBrand(

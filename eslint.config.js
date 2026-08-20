@@ -6,12 +6,17 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: [
-      "dist/*",
-      ".output/*",
-      ".vercel/output/*",
+      "dist/**",
+      ".output/**",
+      ".vercel/**",
+      ".expo/**",
+      ".playwright-cli/**",
+      ".playwright-mcp/**",
+      "output/**",
       "api/v1/*.js",
       "council-pilot-crm/**",
       "council-backoffice/**",
+      "services/**/node_modules/**",
     ],
   }
 ]);

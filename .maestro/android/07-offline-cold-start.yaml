@@ -1,0 +1,27 @@
+appId: uk.whatbinistonight.app
+name: Proof-safe Android offline cold start with saved dates
+tags:
+  - proof-safe
+  - android-only
+  - offline-cold-start
+---
+- setAirplaneMode: disabled
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: E2E Home
+    timeout: 20000
+- setAirplaneMode: enabled
+- killApp
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: Offline · showing your saved council dates
+    timeout: 20000
+- tapOn: Schedule
+- assertVisible: Next four collections
+- assertVisible: Offline · showing your saved council dates
+- setAirplaneMode: disabled

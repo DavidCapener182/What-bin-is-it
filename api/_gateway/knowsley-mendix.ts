@@ -1,3 +1,6 @@
+import { readBoundedUpstreamJson } from './upstream-response.ts';
+import { gatewayProviderBudgets } from './release-budget.ts';
+
 type MendixAttribute = {
   hash?: string;
   readonly?: boolean;
@@ -20,6 +23,7 @@ type MendixResponse = {
 const baseUrl = 'https://knowsleytransaction.mendixcloud.com';
 const addressSearchOperation = 'jjzer6smPUaBpVLzU7R0Tg';
 const addressSelectionOperation = 'cl7H5Z5PXk6wTiewsx2JHQ';
+const maximumXasResponseBytes = 1_048_576;
 
 function requestToken(sequence: number) {
   return `${Date.now()}-${sequence}`;
@@ -76,7 +80,7 @@ export async function fetchKnowsleyMendixDates(
 ): Promise<KnowsleyMendixDates> {
   let sequence = 0;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  const timeout = setTimeout(() => controller.abort(), gatewayProviderBudgets.knowsleyCollectionMs);
 
   try {
     const initial = await fetch(
@@ -105,7 +109,10 @@ export async function fetchKnowsleyMendixDates(
       if (!response.ok) {
         throw new Error(`Knowsley collection lookup returned ${response.status}.`);
       }
-      return response.json() as Promise<MendixResponse>;
+      return await readBoundedUpstreamJson(
+        response,
+        maximumXasResponseBytes,
+      ) as MendixResponse;
     }
 
     const session = await xas({

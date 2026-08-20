@@ -1,44 +1,44 @@
 import { defineHandler } from 'nitro';
 
 import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  apiUnexpectedErrorResponse,
+  readBoundedJson,
+} from '../../../lib/api-http';
+import {
   parseResidentCouncilLinkSync,
   pilotAnalyticsConfigured,
   syncResidentCouncilLinks,
 } from '../../../lib/pilot-analytics';
 import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
-const jsonHeaders = {
-  'cache-control': 'no-store',
-  'content-type': 'application/json; charset=utf-8',
-  'x-content-type-options': 'nosniff',
-};
-
-function json(request: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...jsonHeaders,
-      ...pilotAnalyticsCorsHeaders(request),
-    },
-  });
-}
-
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
+  const headers = pilotAnalyticsCorsHeaders(event.req);
   if (!pilotAnalyticsConfigured()) {
-    return json(event.req, { error: 'Resident council storage is not configured.' }, 503);
+    return apiError(requestId, 503, 'RESIDENT_COUNCIL_STORAGE_UNAVAILABLE', 'Resident council storage is not configured.', headers);
   }
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 4_096) {
-    return json(event.req, { error: 'The resident council update is too large.' }, 413);
+  let input: ReturnType<typeof parseResidentCouncilLinkSync>;
+  try {
+    input = parseResidentCouncilLinkSync(await readBoundedJson(event.req, 4_096));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error, headers)
+      ?? apiError(requestId, 400, 'INVALID_RESIDENT_COUNCIL_UPDATE', 'The resident council update is invalid.', headers);
   }
   try {
-    const result = await syncResidentCouncilLinks(
-      parseResidentCouncilLinkSync(await event.req.json()),
-    );
-    return json(event.req, result);
+    const result = await syncResidentCouncilLinks(input);
+    return apiJson(requestId, result, { headers });
   } catch (error) {
-    return json(event.req, {
-      error: error instanceof Error ? error.message : 'The resident council update is invalid.',
-    }, 400);
+    return apiUnexpectedErrorResponse(
+      requestId,
+      '/api/councils/resident-links',
+      error,
+      'Resident council storage is temporarily unavailable.',
+      503,
+      headers,
+    );
   }
 });

@@ -1,0 +1,39 @@
+appId: uk.whatbinistonight.app
+name: Proof-safe widget refresh and disabled purchase boundaries
+tags:
+  - proof-safe
+  - widget-refresh
+  - purchase-gate
+  - restore-gate
+---
+- setAirplaneMode: disabled
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- openLink:
+    link: whatbinistonight:///settings
+- tapOn:
+    text: Open
+    optional: true
+- extendedWaitUntil:
+    visible: Settings
+    timeout: 20000
+- tapOn: Notifications
+- scrollUntilVisible:
+    element:
+      text: Home Screen widgets
+    direction: DOWN
+- assertVisible: Home Screen widgets
+- assertVisible: What Bin Tonight? widget
+- assertVisible: E2E Home
+- openLink:
+    link: whatbinistonight:///plus
+- tapOn:
+    text: Open
+    optional: true
+- assertVisible: Free proof release
+- assertNotVisible: View App Store plans
+- assertNotVisible: Restore purchases
+- assertNotVisible: Confirm and pay

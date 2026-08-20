@@ -52,10 +52,13 @@ function ensureConfigured() {
 }
 
 export async function configureSubscriptionClient(): Promise<SubscriptionSnapshot> {
-  if (!residentPaymentsEnabled()) {
+  if (
+    !residentPaymentsEnabled()
+    || process.env.EXPO_PUBLIC_ENABLE_NATIVE_PLUS_PURCHASES !== 'true'
+  ) {
     return {
       ...unavailableSubscriptionSnapshot,
-      message: 'What Bin? Plus is not enabled in this release.',
+      message: 'Native Plus purchases are not enabled in this release.',
     };
   }
 

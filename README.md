@@ -2,11 +2,11 @@
 
 One clear answer to the most important household question: **which bin goes out next?**
 
-What Bin Is It Tonight? is an Expo 57 app for iPhone, Android, and the web. Its web build is an installable Progressive Web App (PWA), so it can live on a phone’s Home Screen and receive bin reminders even when the app is closed.
+What Bin Is It Tonight? is an Expo 57 app for iPhone, iPad, Android, and the web. Its web build is an installable Progressive Web App (PWA), so it can live on a device’s Home Screen and receive bin reminders even when the app is closed.
 
 ## What is already built
 
-- iPhone, Android, and installable web application with four persistent destinations: Today, Schedule, Guide, and Activity. Activity consolidates collection history, open missed-bin reports, council notices and support replies; address management, account, reminders, privacy, and app controls live in Settings.
+- iPhone, iPad, Android, and installable web application with four persistent destinations: Today, Schedule, Guide, and Activity. Activity consolidates collection history, open missed-bin reports, council notices and support replies; address management, account, reminders, privacy, and app controls live in Settings.
 - Private in-app support conversations let signed-in residents message their selected council and the What Bin platform team without leaving the app or exposing a saved address or postcode. Council staff are server-scoped to their own authority; the platform superadmin can see the complete cross-council inbox.
 - A local-first saved-place store, with UK postcode validation and a postcode lookup through the public Postcodes.io service.
 - Privacy-minimised council reach metrics: every saved place automatically links a random installation ID to its public council provider ID so the authority can see aggregate active, currently linked and all-time reach. The count never receives the resident’s postcode, address, property reference, account or email and is separate from optional app-improvement analytics.
@@ -129,7 +129,7 @@ npx eas-cli build --platform ios --profile preview
 npx eas-cli build --platform android --profile preview
 ```
 
-Before App Store / Play submission, register the configured bundle IDs in the relevant developer accounts, deploy the gateway, complete notification credentials, and run store builds on those accounts. The first Apple release is intentionally iPhone-only; iPad support remains disabled until its adaptive layouts have passed device testing.
+Before App Store / Play submission, register the configured bundle IDs in the relevant developer accounts, deploy the gateway, complete notification credentials, and run store builds on those accounts. iPad support and adaptive portrait/landscape layouts are enabled; physical iPad, rotation, Split View and large-text acceptance remain required before submission.
 
 The complete account, privacy, review and physical-device sequence is in [docs/store/LAUNCH-CHECKLIST.md](docs/store/LAUNCH-CHECKLIST.md). The first release stays in `proof` mode and does not show resident payment prompts.
 

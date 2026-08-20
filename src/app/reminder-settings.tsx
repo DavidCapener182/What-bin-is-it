@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { InlineNotice } from '@/components/resident-layout';
 import { RouteHead } from '@/components/route-head';
+import { ToggleIndicator } from '@/components/toggle-indicator';
 import { residentPaymentsEnabled } from '@/lib/commercial-offer';
 import { collectionMeta, wasteTypes } from '@/lib/data';
-import { nonInteractiveStyle } from '@/lib/design-system';
 import { requestNotificationPermission } from '@/lib/notifications';
 import { useAppTheme } from '@/lib/theme';
 import { PlaceReminderPreferences, WasteType } from '@/lib/types';
@@ -36,6 +37,8 @@ function ToggleRow({
   const theme = useAppTheme();
   return (
     <Pressable
+      aria-checked={value}
+      aria-disabled={disabled}
       accessibilityRole="switch"
       accessibilityState={{ checked: value, disabled }}
       disabled={disabled}
@@ -48,13 +51,7 @@ function ToggleRow({
         </View>
         <Text style={[styles.toggleDetail, { color: theme.secondaryText }]}>{detail}</Text>
       </View>
-      <Switch
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={nonInteractiveStyle}
-        trackColor={{ false: theme.tertiaryText, true: theme.accent }}
-        value={value}
-      />
+      <ToggleIndicator value={value} />
     </Pressable>
   );
 }
@@ -71,11 +68,17 @@ export default function ReminderSettingsScreen() {
   const { reminderPreferencesFor, updatePlaceReminders } = useProductState();
   const subscription = useSubscription();
   const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<string>();
+  const [feedbackError, setFeedbackError] = useState(false);
   const placePreferences = reminderPreferencesFor(activeAddress?.id);
+  const [timeDraft, setTimeDraft] = useState<string>();
   const presentWasteTypes = new Set(collections.map((collection) => collection.wasteType));
   const relevantWasteTypes = collections.length
     ? wasteTypes.filter((type) => presentWasteTypes.has(type))
     : [];
+
+  const timeInput = timeDraft
+    ?? `${String(placePreferences.reminderHour).padStart(2, '0')}:${String(placePreferences.reminderMinute).padStart(2, '0')}`;
 
   function updatePlace(next: Partial<PlaceReminderPreferences>) {
     if (!activeAddress) return;
@@ -96,18 +99,23 @@ export default function ReminderSettingsScreen() {
       return;
     }
     setBusy(true);
+    setFeedback(undefined);
     try {
       if (next) {
         const permission = await requestNotificationPermission();
         if (!permission.granted) {
-          Alert.alert('Notifications are not ready', permission.reason);
+          setFeedback(permission.reason);
+          setFeedbackError(true);
           return;
         }
       }
       updatePlace({ enabled: next });
       updatePreferences({ enabled: next });
+      setFeedback(next ? 'Bin-night reminders are on for this place.' : 'Bin-night reminders are off for this place.');
+      setFeedbackError(false);
     } catch {
-      Alert.alert('Could not update reminders', 'Please try again.');
+      setFeedback('Reminders could not be updated. Please try again.');
+      setFeedbackError(true);
     } finally {
       setBusy(false);
     }
@@ -124,6 +132,19 @@ export default function ReminderSettingsScreen() {
     changeReminderTime(Math.floor(next / 60), next % 60);
   }
 
+  function commitTimeInput() {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeInput.trim());
+    if (!match) {
+      setFeedback('Enter a 24-hour time as HH:MM, for example 19:30.');
+      setFeedbackError(true);
+      return;
+    }
+    changeReminderTime(Number(match[1]), Number(match[2]));
+    setTimeDraft(undefined);
+    setFeedback(`Reminder time saved as ${match[1]}:${match[2]}.`);
+    setFeedbackError(false);
+  }
+
   function changeWasteType(type: WasteType) {
     updatePlace({
       wasteTypes: {
@@ -136,7 +157,7 @@ export default function ReminderSettingsScreen() {
 
   return (
     <AppShell activeRoute="/reminder-settings" hideNavigation>
-      <RouteHead title="Reminder settings" description="Choose collection reminder timing and follow-up alerts for this place." path="/reminder-settings" />
+      <RouteHead title="Reminder settings" description="Choose collection reminder timing and follow-up alerts for this place." path="/reminder-settings" private />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
           <Pressable accessibilityLabel="Go back" accessibilityRole="button" onPress={() => router.back()} style={styles.headerButton}>
@@ -150,6 +171,8 @@ export default function ReminderSettingsScreen() {
             <Text style={[styles.title, { color: theme.text }]}>{activeAddress?.label ?? 'Your place'}</Text>
             <Text style={[styles.subtitle, { color: theme.secondaryText }]}>Only verified collection dates create reminders. Every place can have its own schedule.</Text>
           </View>
+
+          {feedback ? <InlineNotice title={feedback} tone={feedbackError ? 'danger' : 'success'} /> : null}
 
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Main reminder</Text>
@@ -169,6 +192,8 @@ export default function ReminderSettingsScreen() {
             <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
               {([[1, 'Day before'], [0, 'Collection day']] as const).map(([value, label]) => (
                 <Pressable
+                  aria-checked={placePreferences.reminderDayOffset === value}
+                  aria-disabled={!placePreferences.enabled}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: placePreferences.reminderDayOffset === value, disabled: !placePreferences.enabled }}
                   disabled={!placePreferences.enabled}
@@ -182,6 +207,8 @@ export default function ReminderSettingsScreen() {
             <View accessibilityRole="radiogroup" style={[styles.segment, { backgroundColor: theme.groupedBackground }]}>
               {times.map((hour) => (
                 <Pressable
+                  aria-checked={placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0}
+                  aria-disabled={!placePreferences.enabled}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: placePreferences.reminderHour === hour && placePreferences.reminderMinute === 0, disabled: !placePreferences.enabled }}
                   disabled={!placePreferences.enabled}
@@ -204,6 +231,23 @@ export default function ReminderSettingsScreen() {
                 <Ionicons color={theme.accent} name="add" size={21} />
               </Pressable>
             </View>
+            <View style={[styles.directTime, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <View style={styles.rowCopy}>
+                <Text style={[styles.timeTitle, { color: theme.text }]}>Enter a time</Text>
+                <Text style={[styles.toggleDetail, { color: theme.secondaryText }]}>24-hour format, HH:MM</Text>
+              </View>
+              <TextInput
+                accessibilityLabel="Reminder time in 24-hour format"
+                editable={placePreferences.enabled}
+                inputMode="numeric"
+                maxLength={5}
+                onBlur={commitTimeInput}
+                onChangeText={setTimeDraft}
+                onSubmitEditing={commitTimeInput}
+                style={[styles.timeInput, { borderColor: theme.separator, color: theme.text }]}
+                value={timeInput}
+              />
+            </View>
           </View>
 
           <View style={styles.section}>
@@ -223,15 +267,38 @@ export default function ReminderSettingsScreen() {
               <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Bin types</Text>
               <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
                 {relevantWasteTypes.map((type) => (
-                  <Pressable accessibilityRole="switch" accessibilityState={{ checked: placePreferences.wasteTypes[type] }} key={type} onPress={() => changeWasteType(type)} style={[styles.binRow, { borderBottomColor: theme.separator }]}>
+                  <Pressable aria-checked={placePreferences.wasteTypes[type]} accessibilityRole="switch" accessibilityState={{ checked: placePreferences.wasteTypes[type] }} key={type} onPress={() => changeWasteType(type)} style={[styles.binRow, { borderBottomColor: theme.separator }]}>
                     <View style={[styles.dot, { backgroundColor: collectionMeta[type].colour }]} />
                     <Text style={[styles.binLabel, { color: theme.text }]}>{collectionMeta[type].label}</Text>
-                    <Switch accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={nonInteractiveStyle} trackColor={{ false: theme.tertiaryText, true: theme.accent }} value={placePreferences.wasteTypes[type]} />
+                    <ToggleIndicator value={placePreferences.wasteTypes[type]} />
                   </Pressable>
                 ))}
               </View>
             </View>
           ) : null}
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Next scheduled reminders</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              {collections
+                .filter((collection) => placePreferences.wasteTypes[collection.wasteType])
+                .slice(0, 3)
+                .map((collection, index) => (
+                  <View key={collection.id} style={[styles.previewRow, index < 2 && { borderBottomColor: theme.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+                    <Ionicons color={theme.accent} name="notifications-outline" size={19} />
+                    <View style={styles.rowCopy}>
+                      <Text style={[styles.toggleTitle, { color: theme.text }]}>{collectionMeta[collection.wasteType].label}</Text>
+                      <Text style={[styles.toggleDetail, { color: theme.secondaryText }]}>{collection.date} · {timeInput} · {placePreferences.reminderDayOffset ? 'day before' : 'collection day'}</Text>
+                    </View>
+                  </View>
+                ))}
+              {!collections.length ? <Text style={[styles.previewEmpty, { color: theme.secondaryText }]}>No verified collections are available to preview yet.</Text> : null}
+            </View>
+            <Text style={[styles.timezone, { color: theme.secondaryText }]}>Times use {Intl.DateTimeFormat().resolvedOptions().timeZone || 'your device time zone'} and follow daylight-saving changes. Collection reminders are scheduled locally; council service alerts arrive separately when supported.</Text>
+            <Pressable accessibilityRole="button" onPress={() => void Linking.openSettings()} style={[styles.settingsLink, { backgroundColor: theme.accentSoft }]}>
+              <Ionicons color={theme.accent} name="settings-outline" size={19} /><Text style={[styles.settingsLinkText, { color: theme.accent }]}>Open device notification settings</Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </View>
     </AppShell>
@@ -264,9 +331,16 @@ const styles = StyleSheet.create({
   timeCopy: { alignItems: 'center' },
   timeTitle: { fontSize: 13, fontWeight: '600' },
   timeValue: { fontSize: 13, marginTop: 2, fontVariant: ['tabular-nums'] },
+  directTime: { minHeight: 70, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timeInput: { width: 90, minHeight: 46, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, textAlign: 'center', fontSize: 17, fontVariant: ['tabular-nums'], fontWeight: '700' },
   binRow: { minHeight: 56, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   dot: { width: 10, height: 10, borderRadius: 5 },
   binLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
+  previewRow: { minHeight: 64, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  previewEmpty: { padding: 14, fontSize: 13, lineHeight: 19 },
+  timezone: { fontSize: 12.5, lineHeight: 18 },
+  settingsLink: { minHeight: 48, borderRadius: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  settingsLinkText: { fontSize: 14, fontWeight: '700' },
   pressed: { opacity: 0.65 },
   disabled: { opacity: 0.45 },
 });

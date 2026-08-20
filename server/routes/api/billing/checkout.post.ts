@@ -1,6 +1,14 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { BinAccountAuthenticationError, requireBinAccount } from '../../../lib/bin-auth';
+import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  logApiFailure,
+  readBoundedJson,
+} from '../../../lib/api-http';
 import {
   createWebCheckout,
   isWebSupporterPlanId,
@@ -10,30 +18,28 @@ import {
 } from '../../../lib/web-billing';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
   if (!webBillingConfigured()) {
-    return Response.json({ error: 'Secure web checkout is not configured yet.' }, { status: 503 });
+    return apiError(requestId, 503, 'BILLING_UNAVAILABLE', 'Secure web checkout is not configured yet.');
   }
   if (!requestHasTrustedOrigin(event.req)) {
-    return Response.json({ error: 'The checkout request origin was not accepted.' }, { status: 403 });
+    return apiError(requestId, 403, 'ORIGIN_NOT_ALLOWED', 'The checkout request origin was not accepted.');
   }
   try {
     const user = await requireBinAccount(event.req);
-    const body = await event.req.json() as { planId?: unknown };
+    const body = await readBoundedJson<{ planId?: unknown }>(event.req, 2_048);
     if (!isWebSupporterPlanId(body.planId)) {
-      return Response.json({ error: 'Choose a valid web supporter plan.' }, { status: 400 });
+      return apiError(requestId, 400, 'INVALID_PLAN', 'Choose a valid web supporter plan.');
     }
     const url = await createWebCheckout(body.planId, safeCheckoutOrigin(event.req.url), user);
-    return new Response(JSON.stringify({ url }), {
-      status: 200,
-      headers: {
-        'cache-control': 'no-store',
-        'content-type': 'application/json; charset=utf-8',
-        'x-content-type-options': 'nosniff',
-      },
-    });
+    return apiJson(requestId, { url });
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'Secure checkout could not be opened.',
-    }, { status: error instanceof Error && error.message.includes('Sign in') ? 401 : 400 });
+    const bodyError = apiRequestBodyErrorResponse(requestId, error);
+    if (bodyError) return bodyError;
+    if (error instanceof BinAccountAuthenticationError) {
+      return apiError(requestId, error.status, error.code, error.message);
+    }
+    logApiFailure(requestId, '/api/billing/checkout', error);
+    return apiError(requestId, 502, 'CHECKOUT_UNAVAILABLE', 'Secure checkout could not be opened.');
   }
 });

@@ -1,35 +1,23 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { type BinAccountUser, requireBinAccount } from '../../../lib/bin-auth';
+import { apiAuthenticationErrorResponse, apiJson, apiRequestId, apiUnexpectedErrorResponse } from '../../../lib/api-http';
 import { listResidentSupportThreads } from '../../../lib/resident-support';
 
 export default defineHandler(async (event) => {
-  let user;
+  const requestId = apiRequestId(event.req);
+  let user: BinAccountUser;
   try {
     user = await requireBinAccount(event.req);
-  } catch {
-    return Response.json({
-      error: 'Sign in to view your support conversations.',
-    }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
+  } catch (error) {
+    return apiAuthenticationErrorResponse(requestId, error)
+      ?? apiUnexpectedErrorResponse(requestId, '/api/support/threads', error, 'Account verification is unavailable.', 503);
   }
   try {
-    return Response.json({
+    return apiJson(requestId, {
       threads: await listResidentSupportThreads(user.id),
-    }, {
-      headers: {
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      },
     });
-  } catch {
-    return Response.json({
-      error: 'Your conversations could not be loaded. Try again shortly.',
-    }, {
-      status: 500,
-      headers: { 'cache-control': 'no-store' },
-    });
+  } catch (error) {
+    return apiUnexpectedErrorResponse(requestId, '/api/support/threads', error, 'Your conversations could not be loaded. Try again shortly.');
   }
 });

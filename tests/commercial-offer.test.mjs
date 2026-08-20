@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -28,6 +29,12 @@ test('keeps the public-utility core permanently free', () => {
 test('ships in proof mode without resident payment prompts', () => {
   assert.equal(commercialLaunchPhase, 'proof');
   assert.equal(residentPaymentsEnabled(), false);
+});
+
+test('the Plus route keeps web checkout hidden during the proof phase', async () => {
+  const source = await readFile(new URL('../src/app/plus.tsx', import.meta.url), 'utf8');
+  assert.match(source, /paymentsEnabled && Platform\.OS === 'web'/);
+  assert.doesNotMatch(source, /subscription\.sponsoredBy \? null : Platform\.OS === 'web'/);
 });
 
 test('uses stable product identifiers and the agreed annual recommendation', () => {

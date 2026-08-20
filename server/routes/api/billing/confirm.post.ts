@@ -1,6 +1,14 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { BinAccountAuthenticationError, requireBinAccount } from '../../../lib/bin-auth';
+import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  logApiFailure,
+  readBoundedJson,
+} from '../../../lib/api-http';
 import {
   confirmWebCheckout,
   requestHasTrustedOrigin,
@@ -8,30 +16,33 @@ import {
 } from '../../../lib/web-billing';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
   if (!webBillingConfigured()) {
-    return Response.json({ error: 'Secure web checkout is not configured yet.' }, { status: 503 });
+    return apiError(requestId, 503, 'BILLING_UNAVAILABLE', 'Secure web checkout is not configured yet.');
   }
   if (!requestHasTrustedOrigin(event.req)) {
-    return Response.json({ error: 'The checkout confirmation origin was not accepted.' }, { status: 403 });
+    return apiError(requestId, 403, 'ORIGIN_NOT_ALLOWED', 'The checkout confirmation origin was not accepted.');
   }
   try {
     const user = await requireBinAccount(event.req);
-    const body = await event.req.json() as { sessionId?: unknown };
+    const body = await readBoundedJson<{ sessionId?: unknown }>(event.req, 1_024);
     if (typeof body.sessionId !== 'string') {
-      return Response.json({ error: 'The checkout session is missing.' }, { status: 400 });
+      return apiError(requestId, 400, 'CHECKOUT_SESSION_REQUIRED', 'The checkout session is missing.');
     }
     await confirmWebCheckout(body.sessionId, user.id);
-    return new Response(JSON.stringify({ active: true }), {
-      status: 200,
-      headers: {
-        'cache-control': 'no-store',
-        'content-type': 'application/json; charset=utf-8',
-        'x-content-type-options': 'nosniff',
-      },
-    });
+    return apiJson(requestId, { active: true });
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'The supporter payment could not be confirmed.',
-    }, { status: error instanceof Error && error.message.includes('Sign in') ? 401 : 400 });
+    const bodyError = apiRequestBodyErrorResponse(requestId, error);
+    if (bodyError) return bodyError;
+    if (error instanceof BinAccountAuthenticationError) {
+      return apiError(requestId, error.status, error.code, error.message);
+    }
+    logApiFailure(requestId, '/api/billing/confirm', error);
+    return apiError(
+      requestId,
+      409,
+      'CHECKOUT_NOT_ACTIVE',
+      'The verified payment is not active for this account yet.',
+    );
   }
 });

@@ -29,6 +29,19 @@ test('a cancellation keeps access only through its paid period', () => {
   }, now), false);
 });
 
+test('renewable grants fail closed without a period while lifetime remains valid', () => {
+  assert.equal(providerGrantIsActive({
+    plan_id: 'plus-yearly',
+    status: 'active',
+    current_period_end: null,
+  }), false);
+  assert.equal(providerGrantIsActive({
+    plan_id: 'plus-lifetime',
+    status: 'active',
+    current_period_end: null,
+  }), true);
+});
+
 test('an expired provider cannot remove another active provider grant', () => {
   const effective = chooseEffectiveGrant([
     {

@@ -1,6 +1,7 @@
 import { defineHandler } from 'nitro';
 import { getRun, start } from 'workflow/api';
 
+import { apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../lib/api-http';
 import {
   parsePushReminders,
   parsePushSubscription,
@@ -30,37 +31,44 @@ async function cancelPreviousRun(value: unknown, privateKey: string) {
 }
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
+  let body: {
+    subscription?: unknown;
+    reminders?: unknown;
+    previous?: unknown;
+  };
+  let privateKey: string;
+  let reminders: ReturnType<typeof parsePushReminders>;
+  let subscription: ReturnType<typeof parsePushSubscription> | undefined;
   try {
-    const body = await event.req.json() as {
-      subscription?: unknown;
-      reminders?: unknown;
-      previous?: unknown;
-    };
-    const { privateKey } = vapidConfiguration();
-    await cancelPreviousRun(body.previous, privateKey);
-    const reminders = parsePushReminders(body.reminders);
-    if (reminders.length === 0) {
-      return Response.json({ scheduledCount: 0 }, {
-        headers: { 'cache-control': 'no-store' },
-      });
+    body = await readBoundedJson(event.req, 64 * 1_024);
+    ({ privateKey } = vapidConfiguration());
+    reminders = parsePushReminders(body.reminders);
+    if (reminders.length > 0) subscription = parsePushSubscription(body.subscription);
+  } catch (error) {
+    const bodyError = apiRequestBodyErrorResponse(requestId, error);
+    if (bodyError) return bodyError;
+    if (error instanceof Error && error.message === 'Web push is not configured for this deployment.') {
+      return apiError(requestId, 503, 'PUSH_UNAVAILABLE', 'Web push is not configured for this deployment.');
     }
-    const subscription = parsePushSubscription(body.subscription);
-    const run = await start(pushReminderWorkflow, [subscription, reminders]);
-    return Response.json({
+    return apiError(requestId, 400, 'INVALID_REMINDER_SCHEDULE', 'The reminder schedule is invalid.');
+  }
+  try {
+    await cancelPreviousRun(body.previous, privateKey);
+    if (reminders.length === 0) {
+      return apiJson(requestId, { scheduledCount: 0 });
+    }
+    const run = await start(pushReminderWorkflow, [subscription!, reminders]);
+    return apiJson(requestId, {
       runId: run.runId,
       token: signRunId(run.runId, privateKey),
       scheduledCount: reminders.length,
       nextTriggerAt: reminders[0].triggerAt,
-    }, {
-      headers: { 'cache-control': 'no-store' },
     });
   } catch (error) {
-    const message = error instanceof Error
-      ? error.message
-      : 'The reminder schedule could not be updated.';
-    return Response.json({ error: message }, {
-      status: 400,
-      headers: { 'cache-control': 'no-store' },
-    });
+    if (error instanceof Error && error.message === 'The previous reminder schedule could not be verified.') {
+      return apiError(requestId, 400, 'INVALID_PREVIOUS_REMINDER', 'The previous reminder schedule could not be verified.');
+    }
+    return apiUnexpectedErrorResponse(requestId, '/api/push/reminders', error, 'The reminder schedule could not be updated.');
   }
 });

@@ -30,12 +30,55 @@ export const appColours = {
   card: '#FFFFFF',
   ink: '#1C1C1E',
   secondary: '#636366',
-  tertiary: '#8E8E93',
-  brand: '#007AFF',
-  brandPressed: '#0062CC',
+  tertiary: '#6B6B70',
+  brand: '#0062CC',
+  brandPressed: '#004C9E',
   separator: '#D1D1D6',
   material: 'rgba(249, 249, 251, 0.86)',
 };
+
+export const appSpacing = {
+  xxs: 4,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+} as const;
+
+export const appRadii = {
+  sm: 10,
+  md: 14,
+  lg: 20,
+  pill: 999,
+} as const;
+
+export const appBreakpoints = {
+  navigationRail: 720,
+  desktop: 1024,
+  wide: 1280,
+} as const;
+
+export const appLayout = {
+  shellMaxWidth: 1440,
+  compactNavigationHeight: 64,
+  mediumNavigationRailWidth: 88,
+  wideNavigationRailWidth: 224,
+  readableContentMaxWidth: 720,
+  residentMasterColumnWidth: 420,
+  residentContextColumnWidth: 320,
+  residentWideGutter: 32,
+  residentMediumGutter: 24,
+  residentCompactGutter: 16,
+  minimumTouchTarget: 44,
+} as const;
+
+export const appMotion = {
+  fast: 120,
+  standard: 220,
+  deliberate: 320,
+} as const;
 
 export const nonInteractiveStyle = { pointerEvents: 'none' } satisfies ViewStyle;
 

@@ -1,12 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
+import { InlineNotice } from '@/components/resident-layout';
 import { RouteHead } from '@/components/route-head';
+import { apiBase } from '@/lib/api-base';
+import { dataQualityClientId } from '@/lib/data-quality-client';
+import { DataQualityReportPayload, redactDataQualityText } from '@/lib/data-quality-report';
 import { useAppTheme } from '@/lib/theme';
 import { IncorrectDataFeedback } from '@/lib/types';
 import { useAppData } from '@/lib/use-app-data';
@@ -24,83 +29,125 @@ const issues: { value: IncorrectDataFeedback['issue']; label: string }[] = [
   { value: 'other', label: 'Something else' },
 ];
 
+type SubmissionResponse = {
+  trackingReference?: unknown;
+  submittedAt?: unknown;
+  error?: unknown;
+};
+
 export default function ReportIncorrectScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ issue?: string; detail?: string }>();
-  const { activeAddress, collections, lastVerifiedAt, sourceStatus } = useAppData();
+  const { activeAddress, collections, lastVerifiedAt } = useAppData();
   const online = useOnlineStatus();
   const { saveIncorrectFeedback } = useProductState();
   const initialIssue = issues.some((item) => item.value === params.issue)
     ? params.issue as IncorrectDataFeedback['issue']
     : 'wrong-date';
   const [issue, setIssue] = useState<IncorrectDataFeedback['issue']>(initialIssue);
-  const [detail, setDetail] = useState(params.detail?.slice(0, 160) ?? '');
+  const [detail, setDetail] = useState(params.detail?.slice(0, 1_000) ?? '');
   const [expectedValue, setExpectedValue] = useState('');
+  const [preview, setPreview] = useState<DataQualityReportPayload>();
+  const [preparing, setPreparing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+  const [successReference, setSuccessReference] = useState<string>();
 
-  function save() {
-    if (!detail.trim()) {
-      Alert.alert('Add a little detail', 'Tell us what the app shows and why it is wrong.');
+  function invalidatePreview() {
+    setPreview(undefined);
+    setError(undefined);
+    setSuccessReference(undefined);
+  }
+
+  async function preparePreview() {
+    const safeDetail = redactDataQualityText(detail, 1_000);
+    const safeExpectedValue = redactDataQualityText(expectedValue, 500);
+    if (!safeDetail) {
+      setError('Add a short description of what the app shows and why it is wrong. Do not include an address or postcode.');
       return;
     }
-    const technicalContext = {
-      appVersion: Constants.expoConfig?.version ?? '1.1.0',
-      place: activeAddress?.label,
-      postcode: activeAddress?.postcode,
-      council: activeAddress?.councilName,
-      providerId: activeAddress?.providerId,
-      displayedDate: collections[0]?.date,
-      lastRefreshAt: lastVerifiedAt,
-      online,
-    };
-    saveIncorrectFeedback({
-      addressId: activeAddress?.id,
-      issue,
-      detail: [
-        detail.trim(),
-        activeAddress ? `Place: ${activeAddress.line1}, ${activeAddress.postcode}` : 'No active address',
-        `Displayed source status: ${sourceStatus}`,
-      ].join('\n'),
-      expectedValue: expectedValue.trim() || undefined,
-      technicalContext,
-    });
-    const issueLabel = issues.find((item) => item.value === issue)?.label ?? 'Incorrect app information';
-    const issueBody = [
-      '## What is wrong?',
-      issueLabel,
-      '',
-      '## What the app shows',
-      detail.trim(),
-      '',
-      '## What it should show',
-      expectedValue.trim() || 'Not supplied',
-      '',
-      '## App context',
-      `- Version: ${technicalContext.appVersion}`,
-      `- Place: ${technicalContext.place ?? 'Not configured'}`,
-      `- Postcode: ${technicalContext.postcode ?? 'Not configured'}`,
-      `- Council: ${technicalContext.council ?? 'Not configured'}`,
-      `- Provider: ${technicalContext.providerId ?? 'Not configured'}`,
-      `- Displayed date: ${technicalContext.displayedDate ?? 'None'}`,
-      `- Last refresh: ${technicalContext.lastRefreshAt ?? 'Not available'}`,
-      `- Online: ${technicalContext.online ? 'Yes' : 'No'}`,
-    ].join('\n');
-    const supportUrl = `https://github.com/DavidCapener182/What-bin-is-it/issues/new?${new URLSearchParams({
-      title: `[Data] ${issueLabel}`,
-      body: issueBody,
-    }).toString()}`;
-    Alert.alert(
-      'Feedback saved on this device',
-      'To send it to the app team, continue to the support issue. Review the text before submitting and remove anything personal.',
-      [
-        { text: 'Keep local', style: 'cancel', onPress: () => router.back() },
-        { text: 'Continue to support', onPress: () => { void Linking.openURL(supportUrl); router.back(); } },
-      ],
-    );
+    setPreparing(true);
+    setError(undefined);
+    try {
+      const nextPreview: DataQualityReportPayload = {
+        issue,
+        detail: safeDetail,
+        ...(safeExpectedValue ? { expectedValue: safeExpectedValue } : {}),
+        ...(activeAddress?.providerId ? { councilProviderId: activeAddress.providerId } : {}),
+        ...(collections[0]?.date ? { displayedCollectionDate: collections[0].date } : {}),
+        ...(lastVerifiedAt ? { lastVerifiedAt } : {}),
+        appVersion: Constants.expoConfig?.version ?? '1.1.0',
+        online,
+        clientId: await dataQualityClientId(),
+        clientRequestId: Crypto.randomUUID(),
+      };
+      setDetail(safeDetail);
+      setExpectedValue(safeExpectedValue);
+      setPreview(nextPreview);
+    } catch {
+      setError('The private report preview could not be prepared. Try again.');
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  async function submitPreview() {
+    if (!preview || submitting) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`${apiBase}/data-quality/reports`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(preview),
+      });
+      const result = await response.json().catch((): SubmissionResponse => ({})) as SubmissionResponse;
+      if (!response.ok) {
+        if (response.status === 429) {
+          const retryAfter = Number(response.headers.get('retry-after') ?? 0);
+          const retryText = Number.isFinite(retryAfter) && retryAfter > 0
+            ? ` Try again in about ${Math.ceil(retryAfter / 60)} minute${retryAfter > 60 ? 's' : ''}.`
+            : ' Try again later.';
+          throw new Error(`This app installation has sent too many reports.${retryText}`);
+        }
+        throw new Error(typeof result.error === 'string' ? result.error : 'The private report could not be sent.');
+      }
+      if (
+        typeof result.trackingReference !== 'string'
+        || !/^DQ-\d{8}-[0-9A-F]{12}$/.test(result.trackingReference)
+        || typeof result.submittedAt !== 'string'
+        || !Number.isFinite(new Date(result.submittedAt).getTime())
+      ) {
+        throw new Error('The private report was not acknowledged correctly. Try again.');
+      }
+      saveIncorrectFeedback({
+        issue: preview.issue,
+        detail: preview.detail,
+        expectedValue: preview.expectedValue,
+        technicalContext: {
+          appVersion: preview.appVersion,
+          providerId: preview.councilProviderId,
+          displayedDate: preview.displayedCollectionDate,
+          lastRefreshAt: preview.lastVerifiedAt,
+          online: preview.online,
+          clientRequestId: preview.clientRequestId,
+          trackingReference: result.trackingReference,
+        },
+      });
+      setPreview(undefined);
+      setSuccessReference(result.trackingReference);
+    } catch (submissionError) {
+      setError(submissionError instanceof Error
+        ? submissionError.message
+        : 'The private report could not be sent.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <AppShell activeRoute="/report-incorrect">
-      <RouteHead title="Report Incorrect Information" description="Tell the app team when a date, bin, address, council or recycling entry looks wrong." path="/report-incorrect" />
+      <RouteHead title="Report Incorrect Information" description="Privately report an incorrect date, bin, council or recycling entry without sending your address." path="/report-incorrect" private />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
           <Pressable accessibilityLabel="Close feedback form" accessibilityRole="button" onPress={() => router.back()} style={styles.back}>
@@ -111,20 +158,30 @@ export default function ReportIncorrectScreen() {
         </SafeAreaView>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
-            <Ionicons color={theme.accent} name="information-circle-outline" size={21} />
+            <Ionicons color={theme.accent} name="shield-checkmark-outline" size={21} />
             <Text style={[styles.noticeText, { color: theme.text }]}>
-              Use this form when the app shows the wrong date, bin, address, or council. Use “Report missed” only when the council did not collect a due bin.
+              This goes to a private first-party queue. The client ID in the preview is a dedicated pseudonymous reference used only to rate-limit this queue. We do not attach your saved postcode, street address, property reference or place label. Postcode-shaped text is removed, but addresses and place names typed into these boxes cannot always be detected—remove them in the preview.
             </Text>
           </View>
+
+          {successReference ? (
+            <View accessibilityLiveRegion="polite" style={styles.successBlock}>
+              <InlineNotice body={`Tracking reference: ${successReference}`} title="Report sent privately" tone="success" />
+              <Pressable accessibilityRole="button" onPress={() => router.back()} style={[styles.button, { backgroundColor: theme.accentFill }]}>
+                <Text style={styles.buttonText}>Done</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <Text style={[styles.label, { color: theme.secondaryText }]}>What is wrong?</Text>
           <View style={[styles.options, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
             {issues.map((item, index) => (
               <Pressable
+                aria-checked={issue === item.value}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: issue === item.value }}
                 key={item.value}
-                onPress={() => setIssue(item.value)}
+                onPress={() => { setIssue(item.value); invalidatePreview(); }}
                 style={[styles.option, index < issues.length - 1 && { borderBottomColor: theme.separator, borderBottomWidth: StyleSheet.hairlineWidth }]}>
                 <Text style={[styles.optionText, { color: theme.text }]}>{item.label}</Text>
                 <Ionicons color={issue === item.value ? theme.accent : theme.tertiaryText} name={issue === item.value ? 'checkmark-circle' : 'ellipse-outline'} size={22} />
@@ -135,9 +192,10 @@ export default function ReportIncorrectScreen() {
           <Text style={[styles.label, { color: theme.secondaryText }]}>What does the app show?</Text>
           <TextInput
             accessibilityLabel="What the app shows"
+            maxLength={1_000}
             multiline
-            onChangeText={setDetail}
-            placeholder="Describe the incorrect information"
+            onChangeText={(value) => { setDetail(value); invalidatePreview(); }}
+            placeholder="Describe the incorrect information without an address or postcode"
             placeholderTextColor={theme.tertiaryText}
             style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.separator, color: theme.text }]}
             value={detail}
@@ -146,17 +204,54 @@ export default function ReportIncorrectScreen() {
           <Text style={[styles.label, { color: theme.secondaryText }]}>What should it show? (optional)</Text>
           <TextInput
             accessibilityLabel="Expected information"
+            maxLength={500}
             multiline
-            onChangeText={setExpectedValue}
-            placeholder="Add the date, bin type, or council you expected"
+            onChangeText={(value) => { setExpectedValue(value); invalidatePreview(); }}
+            placeholder="Add the expected date, bin type, council or guidance"
             placeholderTextColor={theme.tertiaryText}
             style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.separator, color: theme.text }]}
             value={expectedValue}
           />
 
-          <Pressable accessibilityRole="button" onPress={save} style={({ pressed }) => [styles.button, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
-            <Text style={styles.buttonText}>Save feedback</Text>
-          </Pressable>
+          {!preview ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={preparing}
+              onPress={() => void preparePreview()}
+              style={({ pressed }) => [styles.button, { backgroundColor: theme.accentFill }, (pressed || preparing) && styles.pressed]}>
+              <Text style={styles.buttonText}>{preparing ? 'Preparing preview…' : 'Review private report'}</Text>
+            </Pressable>
+          ) : (
+            <View style={[styles.preview, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+              <View style={styles.previewHeading}>
+                <View style={styles.previewCopy}>
+                  <Text style={[styles.previewTitle, { color: theme.text }]}>Exact payload to be sent</Text>
+                  <Text style={[styles.previewDescription, { color: theme.secondaryText }]}>Check this redacted payload before submitting. Remove any address or place name that remains; nothing else is added by the app.</Text>
+                </View>
+                <Ionicons color={theme.accent} name="eye-outline" size={22} />
+              </View>
+              <ScrollView horizontal style={[styles.codeFrame, { backgroundColor: theme.background }]}>
+                <Text selectable style={[styles.code, { color: theme.text }]}>{JSON.stringify(preview, null, 2)}</Text>
+              </ScrollView>
+              <Pressable
+                accessibilityRole="button"
+                disabled={submitting}
+                onPress={() => void submitPreview()}
+                style={({ pressed }) => [styles.button, { backgroundColor: theme.accentFill }, (pressed || submitting) && styles.pressed]}>
+                <Text style={styles.buttonText}>{submitting ? 'Sending privately…' : 'Send private report'}</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" disabled={submitting} onPress={() => setPreview(undefined)} style={styles.editButton}>
+                <Text style={[styles.editButtonText, { color: theme.accent }]}>Edit report</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {error ? (
+            <View accessibilityRole="alert" style={[styles.error, { backgroundColor: theme.accentSoft }]}>
+              <Ionicons color={theme.warning} name="alert-circle-outline" size={20} />
+              <Text style={[styles.errorText, { color: theme.text }]}>{error}</Text>
+            </View>
+          ) : null}
         </ScrollView>
       </View>
     </AppShell>
@@ -176,7 +271,19 @@ const styles = StyleSheet.create({
   option: { minHeight: 54, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   optionText: { fontSize: 14, fontWeight: '600' },
   input: { minHeight: 92, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, padding: 13, fontSize: 14, lineHeight: 20, textAlignVertical: 'top' },
-  button: { minHeight: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  button: { minHeight: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginTop: 4, paddingHorizontal: 16 },
   buttonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  pressed: { opacity: 0.68 },
+  pressed: { opacity: 0.58 },
+  preview: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, padding: 14, gap: 13 },
+  previewHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  previewCopy: { flex: 1, gap: 4 },
+  previewTitle: { fontSize: 15, fontWeight: '700' },
+  previewDescription: { fontSize: 13, lineHeight: 18 },
+  codeFrame: { borderRadius: 10, padding: 12 },
+  code: { fontFamily: 'monospace', fontSize: 12, lineHeight: 17 },
+  editButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center' },
+  editButtonText: { fontSize: 14, fontWeight: '700' },
+  error: { padding: 13, borderRadius: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
+  errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  successBlock: { gap: 8 },
 });

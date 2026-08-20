@@ -1,6 +1,7 @@
-import { Database, FileDown, ShieldCheck, UsersRound } from "lucide-react";
+import { Database, ShieldCheck, UsersRound } from "lucide-react";
 import Link from "next/link";
 
+import { OperationalReadiness } from "@/components/operational-readiness";
 import { PageHeader } from "@/components/page-header";
 import { requirePlatformAdminSession } from "@/lib/auth";
 
@@ -8,28 +9,30 @@ export default async function PlatformGovernancePage() {
   const session = await requirePlatformAdminSession();
   return (
     <>
-      <PageHeader eyebrow="Governance workspace" title="Platform controls" description="Permissions, privacy boundaries, retention and audit controls across the What Bin platform. Council workspaces remain tenant-scoped." />
+      <PageHeader eyebrow="Governance workspace" title="Platform Controls" description="Review implemented controls and explicit prerequisites across permissions, privacy, retention and audit. Council workspaces remain tenant-scoped." />
       <section className="metric-grid">
         <article className="metric-card tone-blue"><ShieldCheck aria-hidden="true" size={22} /><span className="metric-label">Authenticated administrator</span><strong className="metric-value compact-metric">{session.email ?? "Platform account"}</strong><span className="metric-detail">Explicit superadmin record; no email-domain inference</span></article>
-        <article className="metric-card tone-teal"><Database aria-hidden="true" size={22} /><span className="metric-label">Resident boundary</span><strong className="metric-value compact-metric">Local first</strong><span className="metric-detail">No household address or postcode is exposed in council analytics</span></article>
-        <article className="metric-card tone-amber"><UsersRound aria-hidden="true" size={22} /><span className="metric-label">Tenant isolation</span><strong className="metric-value compact-metric">Council scoped</strong><span className="metric-detail">Council staff can only access their assigned authority</span></article>
+        <article className="metric-card tone-teal"><Database aria-hidden="true" size={22} /><span className="metric-label">Resident boundary</span><strong className="metric-value compact-metric">Local first</strong><span className="metric-detail">No household address or postcode in council analytics</span></article>
+        <article className="metric-card tone-amber"><UsersRound aria-hidden="true" size={22} /><span className="metric-label">Tenant isolation</span><strong className="metric-value compact-metric">Council scoped</strong><span className="metric-detail">Council access is resolved server-side from an active assignment</span></article>
       </section>
-      <section className="overview-grid">
-        <article className="panel">
-          <div className="panel-heading"><h2>Controls</h2></div>
-          <div className="connection-list">
-            <div className="connection-row"><div><strong>Staff and permissions</strong><br /><span>Owner, admin, editor, analyst and support roles are checked on every server action.</span></div></div>
-            <div className="connection-row"><div><strong>Audit</strong><br /><span>Publishing, status, case, feature and commercial changes create append-only council audit entries.</span></div></div>
-            <div className="connection-row"><div><strong>Retention</strong><br /><span>Support and CRM records carry explicit lifecycle states; platform evidence contains pseudonymous identifiers only.</span></div></div>
-            <div className="connection-row"><div><strong>Data exports</strong><br /><span>Council evidence exports are aggregated and low-volume groups are suppressed.</span></div></div>
-          </div>
-        </article>
-        <aside className="panel">
-          <FileDown aria-hidden="true" color="#007AFF" size={27} />
-          <h2 className="space-top-md">Operational access</h2>
-          <p className="form-intro">Enter an individual council portal from Platform overview to inspect its staff, audit, privacy, export and retention controls. This platform view never silently assumes a council context.</p>
-          <Link className="primary-button" href="/">Choose a council workspace</Link>
-        </aside>
+      <OperationalReadiness
+        caption="Platform governance controls confirmed in the current console, plus the exact product contracts still required before those controls can be operated here."
+        rows={[
+          { area: "Role enforcement", currentState: "Owner, admin, editor, analyst and support permissions are checked by server routes and actions", status: "available", nextStep: "Keep permission tests aligned whenever a new action or route is introduced." },
+          { area: "Tenant isolation", currentState: "Council data queries and writes use the authenticated organisation scope", status: "available", nextStep: "Maintain cross-tenant negative tests for every new operational query." },
+          { area: "Change audit", currentState: "Council and CRM writes append scoped audit events", status: "partial", nextStep: "Add first-class request correlation, actor lifecycle handling and complete paginated evidence export." },
+          { area: "Staff administration", currentState: "Assignments exist, but invitation, role-change, suspension and selected-session revocation workflows are absent", status: "unavailable", nextStep: "Implement tenant-scoped staff lifecycle APIs with audited approvals and expiry." },
+          { area: "Retention operations", currentState: "No record-class schedule, legal-hold state or deletion-job evidence is represented", status: "unavailable", nextStep: "Define retention policies, executable jobs, exception approval and evidence tables." },
+          { area: "Privacy evidence exports", currentState: "Aggregated council evidence CSV is available and low-volume groups are suppressed", status: "partial", nextStep: "Add an export manifest, metric-definition version and signed completion evidence." },
+          { area: "Four-eyes publishing", currentState: "Publishing requires explicit role, council and audience confirmation but no separate approver", status: "prerequisite-required", nextStep: "Add versioned draft, approval assignment and immutable approval-decision records." },
+          { area: "Provider assurance", currentState: "Partner evidence fields and booking settlement state exist; insurance, dispute and payout-reconciliation contracts do not", status: "partial", nextStep: "Add the provider assurance and commercial reconciliation contracts before claiming full governance coverage." },
+        ]}
+        title="Governance Control Register"
+      />
+      <section className="panel space-top-lg">
+        <h2>Enter an Operational Workspace</h2>
+        <p className="form-intro">Choose a council from Platform overview before inspecting its tenant-scoped audit, setup, privacy or content controls. This view never silently assumes a council context.</p>
+        <Link className="primary-button" href="/">Choose a Council Workspace</Link>
       </section>
     </>
   );

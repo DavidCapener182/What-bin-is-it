@@ -1,6 +1,13 @@
 import type postgres from "postgres";
 
 import { councilDatabase } from "./database";
+import {
+  clampOperationalQueueRequest,
+  operationalQueueRequest,
+  type OperationalQueueSearchParams,
+  type OperationalQueueServerPage,
+} from "./operational-queue";
+import { crmAccountTypes, crmStages } from "./types";
 import type {
   CouncilStaffSession,
   CrmAccount,
@@ -8,11 +15,9 @@ import type {
   CrmActivity,
   CrmChannel,
   CrmContact,
-  CrmMailboxConnection,
   CrmMessage,
   CrmStage,
   CrmTask,
-  CrmThread,
 } from "./types";
 
 type CrmAccountRow = {
@@ -187,98 +192,161 @@ async function appendCrmAudit(
   `;
 }
 
-export async function platformOverview() {
+export async function platformOverviewPage(searchParams: OperationalQueueSearchParams) {
   const sql = councilDatabase();
-  const [councilRows, crmRows] = await Promise.all([
-    sql<{
-      id: string;
-      provider_id: string;
-      name: string;
-      status: string;
-      plan_tier: string;
-      staff_count: number;
-      live_announcement_count: number;
-      active_disruption_count: number;
-    }[]>`
-      SELECT
-        organisation.id,
-        organisation.provider_id,
-        organisation.name,
-        organisation.status,
-        organisation.plan_tier,
-        count(DISTINCT staff.id)::int AS staff_count,
-        count(DISTINCT announcement.id) FILTER (
-          WHERE announcement.status = 'published'
-            AND (announcement.starts_at IS NULL OR announcement.starts_at <= now())
-            AND (announcement.ends_at IS NULL OR announcement.ends_at > now())
-        )::int AS live_announcement_count,
-        count(DISTINCT disruption.id) FILTER (
-          WHERE disruption.status = 'published'
-            AND disruption.starts_at <= now()
-            AND (disruption.ends_at IS NULL OR disruption.ends_at > now())
-        )::int AS active_disruption_count
+  const statuses = ["prospect", "pilot", "active", "suspended", "ended"] as const;
+  const plans = ["pilot", "core", "professional", "enterprise"] as const;
+  const request = operationalQueueRequest(searchParams, {
+    defaultSort: "name",
+    filterValues: plans,
+    sortValues: ["content", "name", "staff", "status"],
+    statusValues: statuses,
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, estateMetricRows, crm] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count
       FROM bin_council_organisations AS organisation
-      LEFT JOIN bin_council_staff AS staff
-        ON staff.organisation_id = organisation.id
-        AND staff.status = 'active'
-      LEFT JOIN bin_council_announcements AS announcement
-        ON announcement.organisation_id = organisation.id
-      LEFT JOIN bin_council_disruptions AS disruption
-        ON disruption.organisation_id = organisation.id
-      GROUP BY organisation.id
-      ORDER BY organisation.name
-      LIMIT 500
+      WHERE (${request.status} = '' OR organisation.status = ${request.status})
+        AND (${request.filter} = '' OR organisation.plan_tier = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', organisation.name, organisation.provider_id, organisation.plan_tier, organisation.status) ILIKE ${pattern})
     `,
-    sql<{
-      account_count: number;
-      active_opportunities: number;
-      pipeline_value_pence: number;
-      follow_ups_due: number;
-    }[]>`
-      SELECT
-        count(*)::int AS account_count,
-        count(*) FILTER (
-          WHERE stage IN ('contacted', 'discovery', 'proposal', 'pilot')
-        )::int AS active_opportunities,
-        coalesce(sum(annual_value_pence) FILTER (
-          WHERE stage NOT IN ('lost', 'paused')
-        ), 0)::int AS pipeline_value_pence,
-        count(*) FILTER (
-          WHERE next_follow_up_at IS NOT NULL
-            AND next_follow_up_at <= now()
-            AND stage NOT IN ('won', 'lost', 'paused')
-        )::int AS follow_ups_due
-      FROM bin_crm_accounts
+    sql<{ active_count: number; total_count: number }[]>`
+      SELECT count(*)::int AS total_count, count(*) FILTER (WHERE status IN ('active', 'pilot'))::int AS active_count
+      FROM bin_council_organisations
     `,
+    platformCrmMetrics(),
   ]);
-  const crm = crmRows[0] ?? {
-    account_count: 0,
-    active_opportunities: 0,
-    pipeline_value_pence: 0,
-    follow_ups_due: 0,
-  };
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
+  const councilRows = await sql<{
+    id: string;
+    provider_id: string;
+    name: string;
+    status: string;
+    plan_tier: string;
+    staff_count: number;
+    live_announcement_count: number;
+    active_disruption_count: number;
+  }[]>`
+    SELECT
+      organisation.id,
+      organisation.provider_id,
+      organisation.name,
+      organisation.status,
+      organisation.plan_tier,
+      coalesce(staff.staff_count, 0)::int AS staff_count,
+      coalesce(announcement.live_announcement_count, 0)::int AS live_announcement_count,
+      coalesce(disruption.active_disruption_count, 0)::int AS active_disruption_count
+    FROM bin_council_organisations AS organisation
+    LEFT JOIN LATERAL (
+      SELECT count(*)::int AS staff_count
+      FROM bin_council_staff
+      WHERE organisation_id = organisation.id AND status = 'active'
+    ) AS staff ON true
+    LEFT JOIN LATERAL (
+      SELECT count(*)::int AS live_announcement_count
+      FROM bin_council_announcements
+      WHERE organisation_id = organisation.id
+        AND status = 'published'
+        AND (starts_at IS NULL OR starts_at <= now())
+        AND (ends_at IS NULL OR ends_at > now())
+    ) AS announcement ON true
+    LEFT JOIN LATERAL (
+      SELECT count(*)::int AS active_disruption_count
+      FROM bin_council_disruptions
+      WHERE organisation_id = organisation.id
+        AND status = 'published'
+        AND starts_at <= now()
+        AND (ends_at IS NULL OR ends_at > now())
+    ) AS disruption ON true
+    WHERE (${clampedRequest.status} = '' OR organisation.status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR organisation.plan_tier = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', organisation.name, organisation.provider_id, organisation.plan_tier, organisation.status) ILIKE ${`%${clampedRequest.query}%`})
+    ORDER BY
+      CASE WHEN ${clampedRequest.sort} = 'content' AND ${clampedRequest.direction} = 'asc' THEN coalesce(announcement.live_announcement_count, 0) + coalesce(disruption.active_disruption_count, 0) END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'content' AND ${clampedRequest.direction} = 'desc' THEN coalesce(announcement.live_announcement_count, 0) + coalesce(disruption.active_disruption_count, 0) END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'asc' THEN organisation.name END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'desc' THEN organisation.name END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'staff' AND ${clampedRequest.direction} = 'asc' THEN coalesce(staff.staff_count, 0) END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'staff' AND ${clampedRequest.direction} = 'desc' THEN coalesce(staff.staff_count, 0) END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'asc' THEN organisation.status END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'desc' THEN organisation.status END DESC,
+      organisation.name,
+      organisation.id
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
+  `;
+  const estateMetrics = estateMetricRows[0];
   return {
-    councils: councilRows.map((row): PlatformCouncilSummary => ({
-      id: row.id,
-      providerId: row.provider_id,
-      name: row.name,
-      status: row.status,
-      planTier: row.plan_tier,
-      staffCount: row.staff_count,
-      liveAnnouncementCount: row.live_announcement_count,
-      activeDisruptionCount: row.active_disruption_count,
-    })),
-    crm: {
-      accountCount: crm.account_count,
-      activeOpportunities: crm.active_opportunities,
-      pipelineValuePence: crm.pipeline_value_pence,
-      followUpsDue: crm.follow_ups_due,
+    activeCouncilCount: estateMetrics?.active_count ?? 0,
+    councils: {
+      items: councilRows.map((row): PlatformCouncilSummary => ({
+        id: row.id,
+        providerId: row.provider_id,
+        name: row.name,
+        status: row.status,
+        planTier: row.plan_tier,
+        staffCount: row.staff_count,
+        liveAnnouncementCount: row.live_announcement_count,
+        activeDisruptionCount: row.active_disruption_count,
+      })),
+      request: clampedRequest,
+      total,
+      unfilteredTotal: estateMetrics?.total_count ?? 0,
     },
+    crm,
+    plans,
+    statuses,
   };
 }
 
-export async function listCrmAccounts() {
+export async function platformCrmMetrics() {
+  const rows = await councilDatabase()<{
+    account_count: number;
+    active_opportunities: number;
+    pipeline_value_pence: number;
+    follow_ups_due: number;
+  }[]>`
+    SELECT
+      count(*)::int AS account_count,
+      count(*) FILTER (WHERE stage IN ('contacted', 'discovery', 'proposal', 'pilot'))::int AS active_opportunities,
+      coalesce(sum(annual_value_pence) FILTER (WHERE stage NOT IN ('lost', 'paused')), 0)::int AS pipeline_value_pence,
+      count(*) FILTER (WHERE next_follow_up_at IS NOT NULL AND next_follow_up_at <= now() AND stage NOT IN ('won', 'lost', 'paused'))::int AS follow_ups_due
+    FROM bin_crm_accounts
+  `;
+  const row = rows[0];
+  return {
+    accountCount: row?.account_count ?? 0,
+    activeOpportunities: row?.active_opportunities ?? 0,
+    pipelineValuePence: row?.pipeline_value_pence ?? 0,
+    followUpsDue: row?.follow_ups_due ?? 0,
+  };
+}
+
+export async function listCrmAccountsPage(
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<CrmAccountSummary>> {
   const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultSort: "follow-up",
+    filterValues: crmAccountTypes,
+    sortValues: ["follow-up", "name", "tasks", "value"],
+    statusValues: crmStages,
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM bin_crm_accounts AS account
+      WHERE (${request.status} = '' OR account.stage = ${request.status})
+        AND (${request.filter} = '' OR account.account_type = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', account.name, account.summary, account.account_type, account.stage) ILIKE ${pattern})
+    `,
+    sql<{ count: number }[]>`SELECT count(*)::int AS count FROM bin_crm_accounts`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<CrmAccountRow[]>`
     SELECT
       account.*,
@@ -292,269 +360,293 @@ export async function listCrmAccounts() {
     FROM bin_crm_accounts AS account
     LEFT JOIN bin_crm_tasks AS task
       ON task.account_id = account.id
+    WHERE (${clampedRequest.status} = '' OR account.stage = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR account.account_type = ${clampedRequest.filter})
+      AND (${clampedRequest.query} = '' OR concat_ws(' ', account.name, account.summary, account.account_type, account.stage) ILIKE ${`%${clampedRequest.query}%`})
     GROUP BY account.id
     ORDER BY
+      CASE WHEN ${clampedRequest.sort} = 'follow-up' AND ${clampedRequest.direction} = 'asc' THEN account.next_follow_up_at END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'follow-up' AND ${clampedRequest.direction} = 'desc' THEN account.next_follow_up_at END DESC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'asc' THEN account.name END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'name' AND ${clampedRequest.direction} = 'desc' THEN account.name END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'tasks' AND ${clampedRequest.direction} = 'asc' THEN count(task.id) FILTER (WHERE task.status IN ('open', 'in-progress')) END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'tasks' AND ${clampedRequest.direction} = 'desc' THEN count(task.id) FILTER (WHERE task.status IN ('open', 'in-progress')) END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'value' AND ${clampedRequest.direction} = 'asc' THEN account.annual_value_pence END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'value' AND ${clampedRequest.direction} = 'desc' THEN account.annual_value_pence END DESC NULLS LAST,
       account.next_follow_up_at ASC NULLS LAST,
-      account.updated_at DESC
-    LIMIT 500
+      account.updated_at DESC,
+      account.id
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map(accountFromRow);
-}
-
-export async function listCrmComposeOptions() {
-  const sql = councilDatabase();
-  const [accounts, contacts] = await Promise.all([
-    sql<{ id: string; name: string; account_type: CrmAccountType }[]>`
-      SELECT id, name, account_type
-      FROM bin_crm_accounts
-      WHERE stage <> 'lost'
-      ORDER BY name
-      LIMIT 500
-    `,
-    sql<{
-      id: string;
-      account_id: string;
-      account_name: string;
-      full_name: string;
-      do_not_contact: boolean;
-    }[]>`
-      SELECT
-        contact.id,
-        contact.account_id,
-        account.name AS account_name,
-        contact.full_name,
-        contact.do_not_contact
-      FROM bin_crm_contacts AS contact
-      INNER JOIN bin_crm_accounts AS account
-        ON account.id = contact.account_id
-      ORDER BY account.name, contact.full_name
-      LIMIT 2000
-    `,
-  ]);
   return {
-    accounts: accounts.map((account) => ({
-      id: account.id,
-      name: account.name,
-      accountType: account.account_type,
-    })),
-    contacts: contacts.map((contact) => ({
-      id: contact.id,
-      accountId: contact.account_id,
-      accountName: contact.account_name,
-      fullName: contact.full_name,
-      doNotContact: contact.do_not_contact,
-    })),
+    items: rows.map(accountFromRow),
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
   };
 }
 
-export async function listCrmMessages(filters: {
-  accountId?: string;
-  direction?: CrmMessage["direction"];
-  channel?: CrmChannel;
-  query?: string;
-} = {}) {
-  const sql = councilDatabase();
-  const query = filters.query?.trim().slice(0, 120) || null;
-  const rows = await sql<CrmMessageRow[]>`
-    SELECT
-      message.*,
-      account.name AS account_name,
-      contact.full_name AS contact_name
-    FROM bin_crm_messages AS message
-    INNER JOIN bin_crm_accounts AS account
-      ON account.id = message.account_id
-    LEFT JOIN bin_crm_contacts AS contact
-      ON contact.id = message.contact_id
-    WHERE (
-      ${filters.accountId ?? null}::uuid IS NULL
-      OR message.account_id = ${filters.accountId ?? null}::uuid
-    )
-      AND (
-        ${filters.direction ?? null}::varchar IS NULL
-        OR message.direction = ${filters.direction ?? null}
-      )
-      AND (
-        ${filters.channel ?? null}::varchar IS NULL
-        OR message.channel = ${filters.channel ?? null}
-      )
-      AND (
-        ${query}::text IS NULL
-        OR message.subject ILIKE ('%' || ${query} || '%')
-        OR message.body ILIKE ('%' || ${query} || '%')
-        OR account.name ILIKE ('%' || ${query} || '%')
-        OR contact.full_name ILIKE ('%' || ${query} || '%')
-      )
-    ORDER BY message.occurred_at DESC
-    LIMIT 1000
-  `;
-  return rows.map(messageFromRow);
-}
-
-export async function listCrmThreads() {
-  const sql = councilDatabase();
-  const rows = await sql<{
-    id: string;
-    account_id: string;
-    account_name: string;
-    contact_id: string | null;
-    contact_name: string | null;
-    channel: CrmChannel;
-    subject: string;
-    status: CrmThread["status"];
-    last_message_at: Date | null;
-    last_direction: CrmThread["lastDirection"] | null;
-    message_count: number;
-  }[]>`
-    SELECT
-      thread.id,
-      thread.account_id,
-      account.name AS account_name,
-      thread.contact_id,
-      contact.full_name AS contact_name,
-      thread.channel,
-      thread.subject,
-      thread.status,
-      thread.last_message_at,
-      thread.last_direction,
-      count(message.id)::int AS message_count
-    FROM bin_crm_threads AS thread
-    INNER JOIN bin_crm_accounts AS account
-      ON account.id = thread.account_id
-    LEFT JOIN bin_crm_contacts AS contact
-      ON contact.id = thread.contact_id
-    LEFT JOIN bin_crm_messages AS message
-      ON message.thread_id = thread.id
-    GROUP BY thread.id, account.name, contact.full_name
-    ORDER BY thread.last_message_at DESC NULLS LAST
-    LIMIT 500
-  `;
-  return rows.map((row): CrmThread => ({
+function contactFromRow(row: CrmContactRow): CrmContact {
+  return {
     id: row.id,
     accountId: row.account_id,
-    accountName: row.account_name,
+    fullName: row.full_name,
+    jobTitle: row.job_title ?? undefined,
+    professionalEmail: row.professional_email ?? undefined,
+    professionalPhone: row.professional_phone ?? undefined,
+    linkedinUrl: row.linkedin_url ?? undefined,
+    preferredChannel: row.preferred_channel,
+    lawfulBasis: row.lawful_basis,
+    source: row.source,
+    doNotContact: row.do_not_contact,
+    retentionReviewAt: row.retention_review_at.toISOString().slice(0, 10),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+function activityFromRow(row: CrmActivityRow): CrmActivity {
+  return {
+    id: row.id,
+    accountId: row.account_id,
     contactId: row.contact_id ?? undefined,
     contactName: row.contact_name ?? undefined,
-    channel: row.channel,
+    kind: row.kind,
+    direction: row.direction,
     subject: row.subject,
-    status: row.status,
-    lastMessageAt: iso(row.last_message_at),
-    lastDirection: row.last_direction ?? undefined,
-    messageCount: row.message_count,
-  }));
+    summary: row.summary,
+    occurredAt: row.occurred_at.toISOString(),
+    nextStep: row.next_step ?? undefined,
+    nextFollowUpAt: iso(row.next_follow_up_at),
+    createdAt: row.created_at.toISOString(),
+  };
 }
 
-export async function listCrmMailboxConnections() {
-  const sql = councilDatabase();
-  const rows = await sql<{
-    id: string;
-    provider: CrmMailboxConnection["provider"];
-    mailbox_email: string;
-    status: CrmMailboxConnection["status"];
-    last_synced_at: Date | null;
-    last_error_code: string | null;
-  }[]>`
-    SELECT id, provider, mailbox_email, status, last_synced_at, last_error_code
-    FROM bin_crm_mailbox_connections
-    ORDER BY provider, mailbox_email
-    LIMIT 20
-  `;
-  return rows.map((row): CrmMailboxConnection => ({
+function taskFromRow(row: CrmTaskRow): CrmTask {
+  return {
     id: row.id,
-    provider: row.provider,
-    mailboxEmail: row.mailbox_email,
+    accountId: row.account_id,
+    contactId: row.contact_id ?? undefined,
+    contactName: row.contact_name ?? undefined,
+    title: row.title,
+    dueAt: iso(row.due_at),
+    priority: row.priority,
     status: row.status,
-    lastSyncedAt: iso(row.last_synced_at),
-    lastErrorCode: row.last_error_code ?? undefined,
-  }));
+    completedAt: iso(row.completed_at),
+    assignedTo: row.assigned_to ?? undefined,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
 }
 
-export async function getCrmAccountBundle(accountId: string) {
+export async function getCrmAccountOverview(accountId: string) {
   const sql = councilDatabase();
-  const [accountRows, contactRows, activityRows, taskRows] = await Promise.all([
+  const [accountRows, countRows, contactRows] = await Promise.all([
     sql<CrmAccountRow[]>`
-      SELECT account.*, 0::int AS open_task_count, 0::int AS overdue_task_count
+      SELECT account.*,
+        (SELECT count(*)::int FROM bin_crm_tasks WHERE account_id = account.id AND status IN ('open', 'in-progress')) AS open_task_count,
+        (SELECT count(*)::int FROM bin_crm_tasks WHERE account_id = account.id AND status IN ('open', 'in-progress') AND due_at < now()) AS overdue_task_count
       FROM bin_crm_accounts AS account
       WHERE account.id = ${accountId}::uuid
       LIMIT 1
     `,
-    sql<CrmContactRow[]>`
-      SELECT *
+    sql<{ activities: number; contacts: number; messages: number; tasks: number }[]>`
+      SELECT
+        (SELECT count(*)::int FROM bin_crm_contacts WHERE account_id = ${accountId}::uuid) AS contacts,
+        (SELECT count(*)::int FROM bin_crm_messages WHERE account_id = ${accountId}::uuid) AS messages,
+        (SELECT count(*)::int FROM bin_crm_activities WHERE account_id = ${accountId}::uuid) AS activities,
+        (SELECT count(*)::int FROM bin_crm_tasks WHERE account_id = ${accountId}::uuid) AS tasks
+    `,
+    sql<{ do_not_contact: boolean; full_name: string; id: string }[]>`
+      SELECT id, full_name, do_not_contact
       FROM bin_crm_contacts
       WHERE account_id = ${accountId}::uuid
-      ORDER BY do_not_contact, full_name
-      LIMIT 250
-    `,
-    sql<CrmActivityRow[]>`
-      SELECT activity.*, contact.full_name AS contact_name
-      FROM bin_crm_activities AS activity
-      LEFT JOIN bin_crm_contacts AS contact
-        ON contact.id = activity.contact_id
-      WHERE activity.account_id = ${accountId}::uuid
-      ORDER BY activity.occurred_at DESC
-      LIMIT 500
-    `,
-    sql<CrmTaskRow[]>`
-      SELECT task.*, contact.full_name AS contact_name
-      FROM bin_crm_tasks AS task
-      LEFT JOIN bin_crm_contacts AS contact
-        ON contact.id = task.contact_id
-      WHERE task.account_id = ${accountId}::uuid
-      ORDER BY
-        CASE task.status WHEN 'open' THEN 0 WHEN 'in-progress' THEN 1 ELSE 2 END,
-        task.due_at ASC NULLS LAST,
-        task.updated_at DESC
-      LIMIT 500
+      ORDER BY do_not_contact, full_name, id
     `,
   ]);
-  const account = accountRows[0] ? accountFromRow(accountRows[0]) : undefined;
-  if (!account) return undefined;
+  if (!accountRows[0]) return undefined;
   return {
-    account,
-    contacts: contactRows.map((row): CrmContact => ({
-      id: row.id,
-      accountId: row.account_id,
-      fullName: row.full_name,
-      jobTitle: row.job_title ?? undefined,
-      professionalEmail: row.professional_email ?? undefined,
-      professionalPhone: row.professional_phone ?? undefined,
-      linkedinUrl: row.linkedin_url ?? undefined,
-      preferredChannel: row.preferred_channel,
-      lawfulBasis: row.lawful_basis,
-      source: row.source,
-      doNotContact: row.do_not_contact,
-      retentionReviewAt: row.retention_review_at.toISOString().slice(0, 10),
-      createdAt: row.created_at.toISOString(),
-      updatedAt: row.updated_at.toISOString(),
-    })),
-    activities: activityRows.map((row): CrmActivity => ({
-      id: row.id,
-      accountId: row.account_id,
-      contactId: row.contact_id ?? undefined,
-      contactName: row.contact_name ?? undefined,
-      kind: row.kind,
-      direction: row.direction,
-      subject: row.subject,
-      summary: row.summary,
-      occurredAt: row.occurred_at.toISOString(),
-      nextStep: row.next_step ?? undefined,
-      nextFollowUpAt: iso(row.next_follow_up_at),
-      createdAt: row.created_at.toISOString(),
-    })),
-    tasks: taskRows.map((row): CrmTask => ({
-      id: row.id,
-      accountId: row.account_id,
-      contactId: row.contact_id ?? undefined,
-      contactName: row.contact_name ?? undefined,
-      title: row.title,
-      dueAt: iso(row.due_at),
-      priority: row.priority,
-      status: row.status,
-      completedAt: iso(row.completed_at),
-      assignedTo: row.assigned_to ?? undefined,
-      createdAt: row.created_at.toISOString(),
-      updatedAt: row.updated_at.toISOString(),
-    })),
+    account: accountFromRow(accountRows[0]),
+    contactOptions: contactRows.map((row) => ({ id: row.id, fullName: row.full_name, doNotContact: row.do_not_contact })),
+    recordCounts: countRows[0] ?? { activities: 0, contacts: 0, messages: 0, tasks: 0 },
   };
+}
+
+export async function listCrmContactsPage(accountId: string, searchParams: OperationalQueueSearchParams): Promise<OperationalQueueServerPage<CrmContact>> {
+  const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultSort: "name",
+    filterValues: ["email", "phone", "linkedin", "meeting", "none"],
+    sortValues: ["name", "review", "updated"],
+    statusValues: ["active", "suppressed"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM bin_crm_contacts
+      WHERE account_id = ${accountId}::uuid
+        AND (${request.status} = '' OR (${request.status} = 'suppressed') = do_not_contact)
+        AND (${request.filter} = '' OR preferred_channel = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', full_name, job_title, professional_email, professional_phone, source) ILIKE ${pattern})
+    `,
+    sql<{ count: number }[]>`SELECT count(*)::int AS count FROM bin_crm_contacts WHERE account_id = ${accountId}::uuid`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const page = clampOperationalQueueRequest(request, total);
+  const rows = await sql<CrmContactRow[]>`
+    SELECT * FROM bin_crm_contacts
+    WHERE account_id = ${accountId}::uuid
+      AND (${page.status} = '' OR (${page.status} = 'suppressed') = do_not_contact)
+      AND (${page.filter} = '' OR preferred_channel = ${page.filter})
+      AND (${page.query} = '' OR concat_ws(' ', full_name, job_title, professional_email, professional_phone, source) ILIKE ${`%${page.query}%`})
+    ORDER BY
+      CASE WHEN ${page.sort} = 'name' AND ${page.direction} = 'asc' THEN full_name END ASC,
+      CASE WHEN ${page.sort} = 'name' AND ${page.direction} = 'desc' THEN full_name END DESC,
+      CASE WHEN ${page.sort} = 'review' AND ${page.direction} = 'asc' THEN retention_review_at END ASC,
+      CASE WHEN ${page.sort} = 'review' AND ${page.direction} = 'desc' THEN retention_review_at END DESC,
+      CASE WHEN ${page.sort} = 'updated' AND ${page.direction} = 'asc' THEN updated_at END ASC,
+      CASE WHEN ${page.sort} = 'updated' AND ${page.direction} = 'desc' THEN updated_at END DESC,
+      full_name, id
+    LIMIT ${page.pageSize} OFFSET ${page.offset}
+  `;
+  return { items: rows.map(contactFromRow), request: page, total, unfilteredTotal: unfilteredRows[0]?.count ?? 0 };
+}
+
+export async function listCrmActivitiesPage(accountId: string, searchParams: OperationalQueueSearchParams): Promise<OperationalQueueServerPage<CrmActivity>> {
+  const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "occurred",
+    filterValues: ["email", "call", "meeting", "note", "proposal", "demo", "task-update"],
+    sortValues: ["follow-up", "occurred", "subject"],
+    statusValues: ["inbound", "outbound", "internal"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM bin_crm_activities AS activity
+      LEFT JOIN bin_crm_contacts AS contact ON contact.id = activity.contact_id
+      WHERE activity.account_id = ${accountId}::uuid
+        AND (${request.status} = '' OR activity.direction = ${request.status})
+        AND (${request.filter} = '' OR activity.kind = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', activity.subject, activity.summary, activity.next_step, contact.full_name) ILIKE ${pattern})
+    `,
+    sql<{ count: number }[]>`SELECT count(*)::int AS count FROM bin_crm_activities WHERE account_id = ${accountId}::uuid`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const page = clampOperationalQueueRequest(request, total);
+  const rows = await sql<CrmActivityRow[]>`
+    SELECT activity.*, contact.full_name AS contact_name
+    FROM bin_crm_activities AS activity
+    LEFT JOIN bin_crm_contacts AS contact ON contact.id = activity.contact_id
+    WHERE activity.account_id = ${accountId}::uuid
+      AND (${page.status} = '' OR activity.direction = ${page.status})
+      AND (${page.filter} = '' OR activity.kind = ${page.filter})
+      AND (${page.query} = '' OR concat_ws(' ', activity.subject, activity.summary, activity.next_step, contact.full_name) ILIKE ${`%${page.query}%`})
+    ORDER BY
+      CASE WHEN ${page.sort} = 'follow-up' AND ${page.direction} = 'asc' THEN activity.next_follow_up_at END ASC NULLS LAST,
+      CASE WHEN ${page.sort} = 'follow-up' AND ${page.direction} = 'desc' THEN activity.next_follow_up_at END DESC NULLS LAST,
+      CASE WHEN ${page.sort} = 'occurred' AND ${page.direction} = 'asc' THEN activity.occurred_at END ASC,
+      CASE WHEN ${page.sort} = 'occurred' AND ${page.direction} = 'desc' THEN activity.occurred_at END DESC,
+      CASE WHEN ${page.sort} = 'subject' AND ${page.direction} = 'asc' THEN activity.subject END ASC,
+      CASE WHEN ${page.sort} = 'subject' AND ${page.direction} = 'desc' THEN activity.subject END DESC,
+      activity.occurred_at DESC, activity.id DESC
+    LIMIT ${page.pageSize} OFFSET ${page.offset}
+  `;
+  return { items: rows.map(activityFromRow), request: page, total, unfilteredTotal: unfilteredRows[0]?.count ?? 0 };
+}
+
+export async function listCrmTasksPage(accountId: string, searchParams: OperationalQueueSearchParams): Promise<OperationalQueueServerPage<CrmTask>> {
+  const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultSort: "due",
+    filterValues: ["low", "normal", "high", "urgent"],
+    sortValues: ["due", "priority", "status", "updated"],
+    statusValues: ["open", "in-progress", "completed", "cancelled"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM bin_crm_tasks AS task
+      LEFT JOIN bin_crm_contacts AS contact ON contact.id = task.contact_id
+      WHERE task.account_id = ${accountId}::uuid
+        AND (${request.status} = '' OR task.status = ${request.status})
+        AND (${request.filter} = '' OR task.priority = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', task.title, contact.full_name, task.assigned_to::text) ILIKE ${pattern})
+    `,
+    sql<{ count: number }[]>`SELECT count(*)::int AS count FROM bin_crm_tasks WHERE account_id = ${accountId}::uuid`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const page = clampOperationalQueueRequest(request, total);
+  const rows = await sql<CrmTaskRow[]>`
+    SELECT task.*, contact.full_name AS contact_name
+    FROM bin_crm_tasks AS task
+    LEFT JOIN bin_crm_contacts AS contact ON contact.id = task.contact_id
+    WHERE task.account_id = ${accountId}::uuid
+      AND (${page.status} = '' OR task.status = ${page.status})
+      AND (${page.filter} = '' OR task.priority = ${page.filter})
+      AND (${page.query} = '' OR concat_ws(' ', task.title, contact.full_name, task.assigned_to::text) ILIKE ${`%${page.query}%`})
+    ORDER BY
+      CASE WHEN ${page.sort} = 'due' AND ${page.direction} = 'asc' THEN task.due_at END ASC NULLS LAST,
+      CASE WHEN ${page.sort} = 'due' AND ${page.direction} = 'desc' THEN task.due_at END DESC NULLS LAST,
+      CASE WHEN ${page.sort} = 'priority' AND ${page.direction} = 'asc' THEN CASE task.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END ASC,
+      CASE WHEN ${page.sort} = 'priority' AND ${page.direction} = 'desc' THEN CASE task.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END DESC,
+      CASE WHEN ${page.sort} = 'status' AND ${page.direction} = 'asc' THEN task.status END ASC,
+      CASE WHEN ${page.sort} = 'status' AND ${page.direction} = 'desc' THEN task.status END DESC,
+      CASE WHEN ${page.sort} = 'updated' AND ${page.direction} = 'asc' THEN task.updated_at END ASC,
+      CASE WHEN ${page.sort} = 'updated' AND ${page.direction} = 'desc' THEN task.updated_at END DESC,
+      task.due_at ASC NULLS LAST, task.id
+    LIMIT ${page.pageSize} OFFSET ${page.offset}
+  `;
+  return { items: rows.map(taskFromRow), request: page, total, unfilteredTotal: unfilteredRows[0]?.count ?? 0 };
+}
+
+export async function listCrmAccountMessagesPage(accountId: string, searchParams: OperationalQueueSearchParams): Promise<OperationalQueueServerPage<CrmMessage>> {
+  const sql = councilDatabase();
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "occurred",
+    filterValues: ["email", "phone", "sms", "linkedin", "meeting", "note"],
+    sortValues: ["contact", "occurred", "status", "subject"],
+    statusValues: ["draft", "sent", "delivered", "received", "read", "failed"],
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM bin_crm_messages AS message
+      LEFT JOIN bin_crm_contacts AS contact ON contact.id = message.contact_id
+      WHERE message.account_id = ${accountId}::uuid
+        AND (${request.status} = '' OR message.delivery_status = ${request.status})
+        AND (${request.filter} = '' OR message.channel = ${request.filter})
+        AND (${request.query} = '' OR concat_ws(' ', message.subject, message.body, contact.full_name, message.recipient_addresses::text) ILIKE ${pattern})
+    `,
+    sql<{ count: number }[]>`SELECT count(*)::int AS count FROM bin_crm_messages WHERE account_id = ${accountId}::uuid`,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const page = clampOperationalQueueRequest(request, total);
+  const rows = await sql<CrmMessageRow[]>`
+    SELECT message.*, account.name AS account_name, contact.full_name AS contact_name
+    FROM bin_crm_messages AS message
+    INNER JOIN bin_crm_accounts AS account ON account.id = message.account_id
+    LEFT JOIN bin_crm_contacts AS contact ON contact.id = message.contact_id
+    WHERE message.account_id = ${accountId}::uuid
+      AND (${page.status} = '' OR message.delivery_status = ${page.status})
+      AND (${page.filter} = '' OR message.channel = ${page.filter})
+      AND (${page.query} = '' OR concat_ws(' ', message.subject, message.body, contact.full_name, message.recipient_addresses::text) ILIKE ${`%${page.query}%`})
+    ORDER BY
+      CASE WHEN ${page.sort} = 'contact' AND ${page.direction} = 'asc' THEN contact.full_name END ASC NULLS LAST,
+      CASE WHEN ${page.sort} = 'contact' AND ${page.direction} = 'desc' THEN contact.full_name END DESC NULLS LAST,
+      CASE WHEN ${page.sort} = 'occurred' AND ${page.direction} = 'asc' THEN message.occurred_at END ASC,
+      CASE WHEN ${page.sort} = 'occurred' AND ${page.direction} = 'desc' THEN message.occurred_at END DESC,
+      CASE WHEN ${page.sort} = 'status' AND ${page.direction} = 'asc' THEN message.delivery_status END ASC,
+      CASE WHEN ${page.sort} = 'status' AND ${page.direction} = 'desc' THEN message.delivery_status END DESC,
+      CASE WHEN ${page.sort} = 'subject' AND ${page.direction} = 'asc' THEN message.subject END ASC,
+      CASE WHEN ${page.sort} = 'subject' AND ${page.direction} = 'desc' THEN message.subject END DESC,
+      message.occurred_at DESC, message.id DESC
+    LIMIT ${page.pageSize} OFFSET ${page.offset}
+  `;
+  return { items: rows.map(messageFromRow), request: page, total, unfilteredTotal: unfilteredRows[0]?.count ?? 0 };
 }
 
 export async function createCrmAccount(

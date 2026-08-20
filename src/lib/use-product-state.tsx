@@ -559,7 +559,7 @@ export function ProductStateProvider({ children }: { children: ReactNode }) {
       return {
         ...current,
         incorrectFeedback: [saved, ...current.incorrectFeedback],
-        history: [activity('feedback-saved', 'Incorrect collection data feedback saved', feedback.addressId), ...current.history].slice(0, 500),
+        history: [activity('feedback-saved', 'Incorrect collection data feedback saved'), ...current.history].slice(0, 500),
       };
     }),
     saveSupportRequest: (request) => setState((current) => ({

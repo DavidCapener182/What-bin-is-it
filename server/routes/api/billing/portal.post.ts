@@ -1,6 +1,14 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { BinAccountAuthenticationError, requireBinAccount } from '../../../lib/bin-auth';
+import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  logApiFailure,
+  readBoundedRequestBytes,
+} from '../../../lib/api-http';
 import {
   createSupporterPortal,
   requestHasTrustedOrigin,
@@ -9,19 +17,25 @@ import {
 } from '../../../lib/web-billing';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
   if (!webBillingConfigured()) {
-    return Response.json({ error: 'Secure web billing is not configured yet.' }, { status: 503 });
+    return apiError(requestId, 503, 'BILLING_UNAVAILABLE', 'Secure web billing is not configured yet.');
   }
   if (!requestHasTrustedOrigin(event.req)) {
-    return Response.json({ error: 'The billing request origin was not accepted.' }, { status: 403 });
+    return apiError(requestId, 403, 'ORIGIN_NOT_ALLOWED', 'The billing request origin was not accepted.');
   }
   try {
+    await readBoundedRequestBytes(event.req, 1_024);
     const user = await requireBinAccount(event.req);
     const url = await createSupporterPortal(user.id, safeCheckoutOrigin(event.req.url));
-    return Response.json({ url });
+    return apiJson(requestId, { url });
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'The billing portal could not be opened.',
-    }, { status: error instanceof Error && error.message.includes('Sign in') ? 401 : 400 });
+    const bodyError = apiRequestBodyErrorResponse(requestId, error);
+    if (bodyError) return bodyError;
+    if (error instanceof BinAccountAuthenticationError) {
+      return apiError(requestId, error.status, error.code, error.message);
+    }
+    logApiFailure(requestId, '/api/billing/portal', error);
+    return apiError(requestId, 502, 'BILLING_PORTAL_UNAVAILABLE', 'The billing portal could not be opened.');
   }
 });

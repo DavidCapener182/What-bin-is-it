@@ -118,11 +118,11 @@ test('council portal exposes active, current and all-time definitions', async ()
   assert.match(dashboard, /last_seen_at >= now\(\) - make_interval/);
 });
 
-test('allows only first-party and local-development analytics origins', () => {
+test('allows only the canonical app and local-development analytics origins', () => {
   assert.equal(isAllowedPilotAnalyticsOrigin('https://what-bin-is-it-tonight.vercel.app'), true);
   assert.equal(
     isAllowedPilotAnalyticsOrigin('https://what-bin-is-it-tonight-git-main-example.vercel.app'),
-    true,
+    false,
   );
   assert.equal(isAllowedPilotAnalyticsOrigin('http://localhost:8081'), true);
   assert.equal(isAllowedPilotAnalyticsOrigin('https://unrelated.example'), false);
@@ -166,7 +166,7 @@ test('postcode and location success paths sync their resolved council immediatel
     'utf8',
   );
   const places = await readFile(
-    new URL('../src/app/places.tsx', import.meta.url),
+    new URL('../src/features/places/use-places-controller.ts', import.meta.url),
     'utf8',
   );
   assert.match(
@@ -215,11 +215,12 @@ test('database array writes use Postgres JSON values rather than encoded strings
 });
 
 test('automatic council counts use a separate resident installation ID and endpoint', async () => {
-  const [residentClient, analyticsClient, endpoint, settings, privacy] = await Promise.all([
+  const [residentClient, analyticsClient, endpoint, settings, settingsUtilities, privacy] = await Promise.all([
     readFile(new URL('../src/lib/resident-council-links.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/lib/use-pilot-analytics.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../server/routes/api/councils/resident-links.post.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/settings.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/settings/settings-utility-sections.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/privacy.tsx', import.meta.url), 'utf8'),
   ]);
   assert.match(residentClient, /resident-installation-v1/);
@@ -230,6 +231,6 @@ test('automatic council counts use a separate resident installation ID and endpo
   assert.match(endpoint, /parseResidentCouncilLinkSync/);
   assert.match(residentClient, /legacyAnalyticsStorageKey/);
   assert.match(residentClient, /legacyAnalytics\?\.participantId/);
-  assert.match(settings, /Optional app-improvement events/);
+  assert.match(`${settings}\n${settingsUtilities}`, /Optional app-improvement events/);
   assert.match(privacy, /automatically counts a random installation identifier/i);
 });

@@ -19,6 +19,7 @@ const primaryNavigation = [
   { href: "/partners", label: "Partner services", icon: "badge-pound" },
   { href: "/sponsorship", label: "Sponsored Plus", icon: "badge-pound" },
   { href: "/crm/messages", label: "Resident messages", icon: "messages" },
+  { href: "/data-quality", label: "Data-quality queue", icon: "clipboard" },
   { href: "/analytics", label: "Evidence & analytics", icon: "activity" },
 ] as const;
 
@@ -26,6 +27,7 @@ const operationsNavigation = [
   { href: "/", label: "Platform overview", icon: "gauge" },
   { href: "/demand", label: "Council demand", icon: "activity" },
   { href: "/crm/messages", label: "Resident inbox", icon: "messages" },
+  { href: "/data-quality", label: "Data-quality queue", icon: "clipboard" },
   { href: "/status-admin", label: "Service status", icon: "warning" },
 ] as const;
 
@@ -56,7 +58,8 @@ export function ConsoleShellClient({
   const mobileMenuRef = useRef<HTMLDetailsElement>(null);
   const platformSurface = session.platformAdmin && (
     pathname === "/" || pathname.startsWith("/crm") || pathname.startsWith("/demand")
-    || pathname.startsWith("/status-admin") || pathname.startsWith("/governance")
+    || pathname.startsWith("/data-quality") || pathname.startsWith("/status-admin")
+    || pathname.startsWith("/governance")
   );
   const councilSurface = !platformSurface;
   const platformWorkspace = pathname === "/crm" || pathname.startsWith("/crm/") && !pathname.startsWith("/crm/messages")
@@ -78,6 +81,7 @@ export function ConsoleShellClient({
 
   return (
     <div className="console-frame">
+      <a className="skip-link" href="#console-main">Skip to Main Content</a>
       <aside className="console-sidebar">
         <div className="console-brand">
           <span className="brand-mark"><RadioTower aria-hidden="true" size={20} /></span>
@@ -138,6 +142,7 @@ export function ConsoleShellClient({
                 .filter((item) => (
                   (item.href !== "/analytics" || councilRoleCan(session.role, "analytics:view"))
                   && (item.href !== "/crm/messages" || councilRoleCan(session.role, "support:view"))
+                  && (item.href !== "/data-quality" || councilRoleCan(session.role, "support:view"))
                 ))
                 .map((item) => (
                   <NavLink
@@ -221,6 +226,7 @@ export function ConsoleShellClient({
                         .filter((item) => (
                           (item.href !== "/analytics" || councilRoleCan(session.role, "analytics:view"))
                           && (item.href !== "/crm/messages" || councilRoleCan(session.role, "support:view"))
+                          && (item.href !== "/data-quality" || councilRoleCan(session.role, "support:view"))
                         ))
                         .map((item) => (
                           <NavLink
@@ -241,7 +247,7 @@ export function ConsoleShellClient({
             </details>
           </div>
         </header>
-        <main className="console-content">{children}</main>
+        <main className="console-content" id="console-main" tabIndex={-1}>{children}</main>
       </div>
 
       <nav

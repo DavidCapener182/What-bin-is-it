@@ -117,6 +117,13 @@ export type PilotAnalyticsBatch = {
   events: PilotAnalyticsEvent[];
 };
 
+export class PilotAnalyticsRateLimitError extends Error {
+  constructor() {
+    super('The analytics event limit has been reached. Try again tomorrow.');
+    this.name = 'PilotAnalyticsRateLimitError';
+  }
+}
+
 type EventCountRow = {
   council_id: string;
   event_name: PilotAnalyticsEventName;
@@ -286,7 +293,7 @@ export async function savePilotAnalyticsBatch(batch: PilotAnalyticsBatch) {
       AND received_at >= now() - interval '24 hours'
   ` as { count: number }[];
   if ((recent[0]?.count ?? 0) + batch.events.length > 500) {
-    throw new Error('The analytics event limit has been reached. Try again tomorrow.');
+    throw new PilotAnalyticsRateLimitError();
   }
   const rows = batch.events.map((event) => ({
     id: event.id,

@@ -1,4 +1,5 @@
 import { LegalScreen } from '@/components/legal-screen';
+import { contentUpdatedLabel } from '@/lib/content-metadata';
 
 export default function DataSourcesScreen() {
   return (
@@ -12,7 +13,7 @@ export default function DataSourcesScreen() {
         },
         {
           title: 'Collection dates',
-          body: 'Dates come from a direct council adapter, an approved partner feed or an explicitly experimental nationwide adapter. Only dated, non-estimated results are stored. The Schedule screen names the source and last successful check. Directory routing does not mean every council has a verified live schedule.',
+          body: 'Dates come from a direct council adapter, an approved partner feed or the explicitly experimental Bin Day nationwide adapter. That nationwide source receives the selected street address, postcode, council and property reference because its collection endpoint requires them. Only dated, non-estimated results are stored. The Schedule screen names the source and last successful check. Directory routing does not mean every council has a verified live schedule.',
         },
         {
           title: 'Missed and bulky collection routes',
@@ -28,7 +29,7 @@ export default function DataSourcesScreen() {
         },
       ]}
       title="Data sources"
-      updated="27 July 2026"
+      updated={contentUpdatedLabel()}
     />
   );
 }

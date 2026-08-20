@@ -1,17 +1,18 @@
 import { councilRoleCan } from "@/lib/permissions";
 import { requireCouncilSession } from "@/lib/auth";
-import { dashboardMetrics } from "@/lib/data";
+import { dashboardMetrics, normaliseAnalyticsPeriod } from "@/lib/data";
 
 function cell(value: string | number) {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireCouncilSession("analytics:view");
   if (!councilRoleCan(session.role, "analytics:export")) {
     return new Response("This role cannot export council evidence.", { status: 403 });
   }
-  const overview = await dashboardMetrics(session);
+  const periodDays = normaliseAnalyticsPeriod(new URL(request.url).searchParams.get("period") ?? undefined);
+  const overview = await dashboardMetrics(session, periodDays);
   const rows = [
     ["council", "provider_id", "period_days", "metric", "value", "definition", "state"],
     ...overview.metrics.map((metric) => [

@@ -1,36 +1,26 @@
 import { defineHandler } from 'nitro';
 
+import { apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../lib/api-http';
 import {
   parseCouncilAlertRegistration,
   syncCouncilAlertRegistration,
 } from '../../../lib/council-alert-push';
 import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
-const jsonHeaders = {
-  'cache-control': 'no-store',
-  'content-type': 'application/json; charset=utf-8',
-  'x-content-type-options': 'nosniff',
-};
-
-function json(request: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...jsonHeaders, ...pilotAnalyticsCorsHeaders(request) },
-  });
-}
-
 export default defineHandler(async (event) => {
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 8_192) {
-    return json(event.req, { error: 'The notification registration is too large.' }, 413);
+  const requestId = apiRequestId(event.req);
+  const headers = pilotAnalyticsCorsHeaders(event.req);
+  let registration: ReturnType<typeof parseCouncilAlertRegistration>;
+  try {
+    registration = parseCouncilAlertRegistration(await readBoundedJson(event.req, 8_192));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error, headers)
+      ?? apiError(requestId, 400, 'INVALID_PUSH_REGISTRATION', 'The notification registration is invalid.', headers);
   }
   try {
-    const registration = parseCouncilAlertRegistration(await event.req.json());
     const result = await syncCouncilAlertRegistration(registration);
-    return json(event.req, result);
+    return apiJson(requestId, result, { headers });
   } catch (error) {
-    return json(event.req, {
-      error: error instanceof Error ? error.message : 'The notification registration is invalid.',
-    }, 400);
+    return apiUnexpectedErrorResponse(requestId, '/api/push/registrations', error, 'The notification registration could not be saved.', 500, headers);
   }
 });

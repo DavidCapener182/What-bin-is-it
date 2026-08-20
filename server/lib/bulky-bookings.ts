@@ -12,6 +12,15 @@ const officialBulkyWasteUrl = 'https://www.gov.uk/collection-large-waste-items';
 
 export { parseBulkyBookingStart, parseBulkyBookingStatus } from './bulky-booking-validation';
 
+export class BulkyBookingRateLimitError extends Error {
+  readonly retryAfterSeconds = 15 * 60;
+
+  constructor() {
+    super('Too many booking attempts. Try again in 15 minutes.');
+    this.name = 'BulkyBookingRateLimitError';
+  }
+}
+
 function publicReference() {
   return `WB-${randomBytes(6).toString('hex').toUpperCase()}`;
 }
@@ -46,7 +55,7 @@ export async function startBulkyBooking(input: BookingStartInput, requestUrl: st
     WHERE installation_id = ${input.installationId}::uuid
       AND started_at >= now() - interval '15 minutes'
   `;
-  if ((recent[0]?.count ?? 0) >= 5) throw new Error('Too many booking attempts. Try again in 15 minutes.');
+  if ((recent[0]?.count ?? 0) >= 5) throw new BulkyBookingRateLimitError();
   const reference = publicReference();
   if (!input.partnerId) {
     const rows = await sql<{ id: string }[]>`

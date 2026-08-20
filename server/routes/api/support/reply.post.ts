@@ -1,51 +1,37 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { type BinAccountUser, requireBinAccount } from '../../../lib/bin-auth';
+import { apiAuthenticationErrorResponse, apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../lib/api-http';
 import {
   parseResidentSupportReply,
   replyToResidentSupportThread,
+  ResidentSupportOperationError,
 } from '../../../lib/resident-support';
 
 export default defineHandler(async (event) => {
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 16_384) {
-    return Response.json({ error: 'The reply is too large.' }, { status: 413 });
-  }
-  let user;
+  const requestId = apiRequestId(event.req);
+  let user: BinAccountUser;
   try {
     user = await requireBinAccount(event.req);
-  } catch {
-    return Response.json({ error: 'Sign in to reply to support.' }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
-  }
-  let input;
-  try {
-    input = parseResidentSupportReply(await event.req.json());
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'The reply is invalid.',
-    }, {
-      status: 400,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiAuthenticationErrorResponse(requestId, error)
+      ?? apiUnexpectedErrorResponse(requestId, '/api/support/reply', error, 'Account verification is unavailable.', 503);
+  }
+  let input: ReturnType<typeof parseResidentSupportReply>;
+  try {
+    input = parseResidentSupportReply(await readBoundedJson(event.req, 16_384));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error)
+      ?? apiError(requestId, 400, 'INVALID_SUPPORT_REPLY', 'The reply is invalid.');
   }
   try {
-    return Response.json({
+    return apiJson(requestId, {
       threads: await replyToResidentSupportThread(user, input),
-    }, {
-      headers: {
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      },
     });
-  } catch {
-    return Response.json({
-      error: 'Your reply could not be sent. Try again shortly.',
-    }, {
-      status: 500,
-      headers: { 'cache-control': 'no-store' },
-    });
+  } catch (error) {
+    if (error instanceof ResidentSupportOperationError) {
+      return apiError(requestId, error.status, error.code, error.message);
+    }
+    return apiUnexpectedErrorResponse(requestId, '/api/support/reply', error, 'Your reply could not be sent. Try again shortly.');
   }
 });

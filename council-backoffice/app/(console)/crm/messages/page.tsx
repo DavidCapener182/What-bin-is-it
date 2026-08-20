@@ -23,20 +23,38 @@ import {
 } from "@/app/actions";
 import { FeedbackBanner } from "@/components/feedback-banner";
 import { PageHeader } from "@/components/page-header";
+import { SavedViewControls } from "@/components/saved-view-controls";
 import { StatusPill } from "@/components/status-pill";
 import { requireCouncilSession } from "@/lib/auth";
+import {
+  consoleE2eSavedResponses,
+  consoleE2eSupportMetrics,
+  consoleE2eSupportStaff,
+  consoleE2eSupportThread,
+  consoleE2eSupportThreadsPage,
+  isConsoleE2eFixtureSession,
+} from "@/lib/console-e2e-fixtures";
 import { formatDateTime, humanise } from "@/lib/format";
+import {
+  operationalQueueHref,
+  operationalQueueSavedQuery,
+  operationalQueueStateFromServerPage,
+  type OperationalQueueSearchParams,
+  type OperationalQueueState,
+} from "@/lib/operational-queue";
 import {
   listResidentSupportSavedResponses,
   listResidentSupportStaff,
-  listResidentSupportThreads,
+  listResidentSupportThreadsPage,
   residentSupportEscalations,
-  residentSupportMetrics,
+  residentSupportMetricsForSession,
   residentSupportPriorities,
   residentSupportStatuses,
   residentSupportThread,
   type ResidentSupportStatus,
 } from "@/lib/resident-support";
+
+type PageParams = OperationalQueueSearchParams & { error?: string; historyPage?: string; saved?: string; thread?: string };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -73,26 +91,47 @@ function localDateTime(value?: string) {
   return adjusted.toISOString().slice(0, 16);
 }
 
+function threadHref(state: OperationalQueueState<unknown>, threadId: string, historyPage = 1) {
+  const viewHref = operationalQueueHref("/crm/messages", state);
+  const params = new URLSearchParams({ thread: threadId });
+  if (historyPage > 1) params.set("historyPage", String(historyPage));
+  return `${viewHref}${viewHref.includes("?") ? "&" : "?"}${params.toString()}`;
+}
+
 export default async function ResidentInboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; q?: string; saved?: string; status?: string; thread?: string }>;
+  searchParams: Promise<PageParams>;
 }) {
   const session = await requireCouncilSession("support:view");
   const params = await searchParams;
-  const status = allowedStatus(params.status);
-  const [allThreads, threads, staff, savedResponses] = await Promise.all([
-    listResidentSupportThreads(session),
-    listResidentSupportThreads(session, { query: params.q, status }),
-    listResidentSupportStaff(session),
-    listResidentSupportSavedResponses(session),
-  ]);
+  const fixtureSession = isConsoleE2eFixtureSession(session);
+  const [serverPage, staff, savedResponses, metrics] = fixtureSession
+    ? await Promise.all([
+        consoleE2eSupportThreadsPage(params),
+        consoleE2eSupportStaff(),
+        consoleE2eSavedResponses(),
+        consoleE2eSupportMetrics(),
+      ])
+    : await Promise.all([
+        listResidentSupportThreadsPage(session, params),
+        listResidentSupportStaff(session),
+        listResidentSupportSavedResponses(session),
+        residentSupportMetricsForSession(session),
+      ]);
+  const queue = operationalQueueStateFromServerPage(serverPage);
+  const threads = queue.items;
+  const status = allowedStatus(queue.status);
   const requestedThreadId = typeof params.thread === "string" && uuidPattern.test(params.thread)
     ? params.thread
     : undefined;
   const selectedThreadId = requestedThreadId ?? threads[0]?.id;
-  const selectedThread = selectedThreadId ? await residentSupportThread(session, selectedThreadId) : undefined;
-  const metrics = residentSupportMetrics(allThreads);
+  const requestedHistoryPage = Number.parseInt(typeof params.historyPage === "string" ? params.historyPage : "1", 10);
+  const selectedThread = selectedThreadId
+    ? fixtureSession
+      ? await consoleE2eSupportThread(selectedThreadId)
+      : await residentSupportThread(session, selectedThreadId, requestedHistoryPage)
+    : undefined;
 
   return (
     <>
@@ -138,7 +177,7 @@ export default async function ResidentInboxPage({
         <div className="field correspondence-search">
           <label className="sr-only" htmlFor="q">Search resident cases</label>
           <span className="search-field-icon"><Search aria-hidden="true" size={18} /></span>
-          <input defaultValue={params.q} id="q" name="q" placeholder="Search topic, tag, council or case reference" />
+          <input defaultValue={queue.query} id="q" name="q" placeholder="Search topic, tag, council or case reference" />
         </div>
         <div className="field">
           <label className="sr-only" htmlFor="status">Case status</label>
@@ -147,8 +186,18 @@ export default async function ResidentInboxPage({
             {residentSupportStatuses.map((value) => <option key={value} value={value}>{threadStatus(value)}</option>)}
           </select>
         </div>
-        <button className="primary-button" type="submit">Filter</button>
+        <div className="field"><label className="sr-only" htmlFor="priority">Case priority</label><select defaultValue={queue.filter} id="priority" name="filter"><option value="">All priorities</option>{residentSupportPriorities.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
+        <div className="field"><label className="sr-only" htmlFor="sort">Sort cases</label><select defaultValue={queue.sort} id="sort" name="sort"><option value="updated">Last updated</option><option value="priority">Priority</option><option value="sla">SLA deadline</option><option value="status">Workflow status</option></select></div>
+        <div className="field"><label className="sr-only" htmlFor="direction">Sort direction</label><select defaultValue={queue.direction} id="direction" name="direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></div>
+        <div className="field"><label className="sr-only" htmlFor="perPage">Cases per page</label><select defaultValue={queue.pageSize} id="perPage" name="perPage">{[10, 25, 50].map((size) => <option key={size} value={size}>{size} cases</option>)}</select></div>
+        <button className="primary-button" type="submit">Apply Filters</button>
+        <Link className="secondary-button" href="/crm/messages">Reset</Link>
       </form>
+
+      <div className="operational-view-bar support-view-bar">
+        <p aria-live="polite">{queue.total ? `Showing ${(queue.page - 1) * queue.pageSize + 1}–${Math.min(queue.page * queue.pageSize, queue.total)} of ${queue.total} matching cases` : "No cases match this view"}{queue.total !== queue.unfilteredTotal ? ` · ${queue.unfilteredTotal} total` : ""}</p>
+        <SavedViewControls currentQuery={operationalQueueSavedQuery(queue)} pathname="/crm/messages" viewKey="resident-support-cases" />
+      </div>
 
       <div className="resident-inbox-layout">
         <section aria-label="Resident support cases" className="resident-thread-list">
@@ -159,7 +208,7 @@ export default async function ResidentInboxPage({
             return (
               <Link
                 className={`resident-thread-card${selectedThread?.id === thread.id ? " resident-thread-selected" : ""}`}
-                href={`/crm/messages?thread=${thread.id}`}
+                href={threadHref(queue, thread.id)}
                 key={thread.id}
               >
                 <div className="resident-thread-icon"><UserRound aria-hidden="true" size={20} /></div>
@@ -205,6 +254,14 @@ export default async function ResidentInboxPage({
                 <div className="field support-case-wide"><label htmlFor="caseReopenReason">Reopen reason</label><input defaultValue={selectedThread.reopenReason} id="caseReopenReason" name="reopenReason" placeholder="Required only when reopening a resolved or closed case" /></div>
                 <button className="secondary-button support-case-wide" type="submit"><ClipboardList aria-hidden="true" size={17} /> Save case details</button>
               </form>
+
+              {selectedThread.messageHistory && selectedThread.messageHistory.pageCount > 1 ? (
+                <nav aria-label="Case message history pages" className="queue-pagination support-history-pagination">
+                  {selectedThread.messageHistory.page < selectedThread.messageHistory.pageCount ? <Link className="secondary-button button-small" href={threadHref(queue, selectedThread.id, selectedThread.messageHistory.page + 1)}>Older Messages</Link> : <span />}
+                  <span>Message page {selectedThread.messageHistory.page} of {selectedThread.messageHistory.pageCount} · {selectedThread.messageHistory.total} messages</span>
+                  {selectedThread.messageHistory.page > 1 ? <Link className="secondary-button button-small" href={threadHref(queue, selectedThread.id, selectedThread.messageHistory.page - 1)}>Newer Messages</Link> : <span />}
+                </nav>
+              ) : null}
 
               <div className="resident-message-stack">
                 {selectedThread.messages.map((message) => (
@@ -264,6 +321,8 @@ export default async function ResidentInboxPage({
           )}
         </section>
       </div>
+
+      {queue.pageCount > 1 ? <nav aria-label="Resident support case pages" className="queue-pagination support-pagination">{queue.page > 1 ? <Link className="secondary-button button-small" href={operationalQueueHref("/crm/messages", queue, { page: queue.page - 1 })} rel="prev">Previous</Link> : <span />}<span>Page {queue.page} of {queue.pageCount}</span>{queue.page < queue.pageCount ? <Link className="secondary-button button-small" href={operationalQueueHref("/crm/messages", queue, { page: queue.page + 1 })} rel="next">Next</Link> : <span />}</nav> : null}
 
       <section className="panel support-saved-response-builder space-top-lg">
         <div><span className="eyebrow">Team consistency</span><h2>Saved responses</h2><p>Create reusable wording for common questions. Staff can send one directly from an open case.</p></div>

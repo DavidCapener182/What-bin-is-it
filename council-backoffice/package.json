@@ -12,10 +12,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "test": "node --no-warnings --experimental-strip-types --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "staff:bootstrap": "node scripts/bootstrap-council-staff.mjs",
     "platform-admin:bootstrap": "node scripts/bootstrap-platform-admin.mjs",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run audit:production && npm run build"
+    "verify": "npm run typecheck && npm run lint && npm test && npm run test:e2e && npm run audit:production && npm run build"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.3",
@@ -28,6 +29,8 @@
     "stripe": "^22.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "^19.2.0",
@@ -36,7 +39,7 @@
     "typescript": "~6.0.3"
   },
   "overrides": {
-    "nanoid": "3.3.17",
+    "nanoid": "3.3.18",
     "postcss": "8.5.23",
     "sharp": "0.35.3"
   }

@@ -1,28 +1,24 @@
 import { defineHandler } from 'nitro';
 
+import { apiAuthenticationErrorResponse, apiJson, apiRequestId, apiUnexpectedErrorResponse } from '../../../lib/api-http';
 import {
   getOrCreateBinEntitlement,
   requireBinAccount,
 } from '../../../lib/bin-auth';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
+  let user;
   try {
-    const user = await requireBinAccount(event.req);
-    const entitlement = await getOrCreateBinEntitlement(user.id);
-    return new Response(JSON.stringify({ entitlement }), {
-      status: 200,
-      headers: {
-        'cache-control': 'no-store',
-        'content-type': 'application/json; charset=utf-8',
-        'x-content-type-options': 'nosniff',
-      },
-    });
+    user = await requireBinAccount(event.req);
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'Your plan could not be checked.',
-    }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiAuthenticationErrorResponse(requestId, error)
+      ?? apiUnexpectedErrorResponse(requestId, '/api/account/entitlement', error, 'Account verification is unavailable.', 503);
+  }
+  try {
+    const entitlement = await getOrCreateBinEntitlement(user.id);
+    return apiJson(requestId, { entitlement });
+  } catch (error) {
+    return apiUnexpectedErrorResponse(requestId, '/api/account/entitlement', error, 'Your plan could not be checked.');
   }
 });

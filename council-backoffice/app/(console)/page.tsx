@@ -3,11 +3,13 @@ import { Building2 } from "lucide-react";
 
 import { switchCouncil } from "@/app/actions";
 import { CouncilOverview } from "@/components/council-overview";
+import { OperationalQueue } from "@/components/operational-queue";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { requireCouncilSession } from "@/lib/auth";
-import { platformOverview } from "@/lib/crm";
+import { platformOverviewPage } from "@/lib/crm";
 import { humanise } from "@/lib/format";
+import { operationalQueueStateFromServerPage, type OperationalQueueSearchParams } from "@/lib/operational-queue";
 
 function gbp(pence: number) {
   return new Intl.NumberFormat("en-GB", {
@@ -17,11 +19,12 @@ function gbp(pence: number) {
   }).format(pence / 100);
 }
 
-async function PlatformOverview() {
-  const overview = await platformOverview();
-  const activeCouncils = overview.councils.filter((council) => (
-    council.status === "active" || council.status === "pilot"
-  )).length;
+async function PlatformOverview({ searchParams }: { searchParams: Promise<OperationalQueueSearchParams> }) {
+  const params = await searchParams;
+  const overview = await platformOverviewPage(params);
+  const queue = operationalQueueStateFromServerPage(overview.councils);
+  const statusValues = overview.statuses;
+  const planValues = overview.plans;
   return (
     <>
       <PageHeader
@@ -34,8 +37,8 @@ async function PlatformOverview() {
       <section aria-label="Platform metrics" className="metric-grid">
         <article className="metric-card tone-blue">
           <span className="metric-label">Council workspaces</span>
-          <strong className="metric-value">{overview.councils.length}</strong>
-          <span className="metric-detail">{activeCouncils} active or in pilot</span>
+          <strong className="metric-value">{overview.councils.unfilteredTotal}</strong>
+          <span className="metric-detail">{overview.activeCouncilCount} active or in pilot</span>
         </article>
         <article className="metric-card tone-teal">
           <span className="metric-label">CRM relationships</span>
@@ -54,51 +57,39 @@ async function PlatformOverview() {
         </article>
       </section>
 
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Council estate</span>
-            <h2 className="space-top-sm">All council portals</h2>
-          </div>
-          <Building2 aria-hidden="true" color="#007AFF" size={23} />
-        </div>
-        {overview.councils.length ? (
-          <div className="platform-council-grid">
-            {overview.councils.map((council) => (
-              <article className="platform-council-card" key={council.id}>
-                <div className="data-card-top">
-                  <div>
-                    <h3>{council.name}</h3>
-                    <div className="data-meta">
-                      <span>{council.providerId}</span>
-                      <span>{humanise(council.planTier)}</span>
-                    </div>
-                  </div>
-                  <StatusPill status={council.status} />
-                </div>
-                <div className="platform-council-stats">
-                  <span><strong>{council.staffCount}</strong> staff</span>
-                  <span><strong>{council.liveAnnouncementCount}</strong> live notices</span>
-                  <span><strong>{council.activeDisruptionCount}</strong> disruptions</span>
-                </div>
-                <form action={switchCouncil}>
-                  <input name="organisationId" type="hidden" value={council.id} />
-                  <input name="returnTo" type="hidden" value="/council" />
-                  <button className="secondary-button" type="submit">
-                    Enter council portal
-                  </button>
-                </form>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <Building2 aria-hidden="true" size={32} />
-            <h2>No council workspaces yet</h2>
-            <p>Provision a verified council tenant before staff or resident operations are enabled.</p>
-          </div>
-        )}
-      </section>
+      <OperationalQueue
+        caption="Council workspaces across the platform, with tenant status, plan, staff and active resident content."
+        columns={[
+          { label: "Council", sortKey: "name" },
+          { label: "Provider ID" },
+          { label: "Plan" },
+          { align: "right", label: "Staff", sortKey: "staff" },
+          { label: "Live Content", sortKey: "content" },
+          { label: "Status", sortKey: "status" },
+          { label: "Portal" },
+        ]}
+        emptyState={<div className="empty-state"><Building2 aria-hidden="true" size={32} /><h2>No Matching Council Workspaces</h2><p>Provision a verified council tenant, or reset this view.</p></div>}
+        filterLabel="plans"
+        filterOptions={planValues.map((value) => ({ label: humanise(value), value }))}
+        pathname="/"
+        searchLabel="Search council, provider or plan"
+        state={queue}
+        statusOptions={statusValues.map((value) => ({ label: humanise(value), value }))}
+        title="Council Estate"
+        viewKey="platform-councils"
+      >
+        {queue.items.map((council) => (
+          <tr key={council.id}>
+            <td className="queue-primary-cell" data-label="Council"><strong>{council.name}</strong></td>
+            <td data-label="Provider ID"><span translate="no">{council.providerId}</span></td>
+            <td data-label="Plan">{humanise(council.planTier)}</td>
+            <td className="queue-cell-numeric" data-label="Staff">{council.staffCount.toLocaleString("en-GB")}</td>
+            <td data-label="Live Content"><strong>{council.liveAnnouncementCount} notices</strong><small>{council.activeDisruptionCount} disruptions</small></td>
+            <td data-label="Status"><StatusPill status={council.status} /></td>
+            <td className="queue-cell-actions" data-label="Portal"><form action={switchCouncil}><input name="organisationId" type="hidden" value={council.id} /><input name="returnTo" type="hidden" value="/council" /><button className="secondary-button button-small" type="submit">Open Portal</button></form></td>
+          </tr>
+        ))}
+      </OperationalQueue>
 
       <div className="truth-note space-top-lg">
         Platform CRM contacts and council operational workspaces are deliberately separated. Business conversations never enter resident analytics or collection records.
@@ -107,9 +98,13 @@ async function PlatformOverview() {
   );
 }
 
-export default async function ConsoleOverviewPage() {
+export default async function ConsoleOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<OperationalQueueSearchParams>;
+}) {
   const session = await requireCouncilSession("dashboard:view");
   return session.platformAdmin
-    ? <PlatformOverview />
+    ? <PlatformOverview searchParams={searchParams} />
     : <CouncilOverview session={session} />;
 }

@@ -1,24 +1,42 @@
 import { defineHandler } from 'nitro';
 
+import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  apiUnexpectedErrorResponse,
+  readBoundedJson,
+} from '../../../lib/api-http';
 import { binDatabaseConfigured } from '../../../lib/bin-database';
 import { parsePartnerConversion, savePartnerConversion } from '../../../lib/partner-conversions';
 import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
 export default defineHandler(async (event) => {
-  const headers = {
-    'cache-control': 'no-store',
-    'content-type': 'application/json; charset=utf-8',
-    'x-content-type-options': 'nosniff',
-    ...pilotAnalyticsCorsHeaders(event.req),
-  };
-  if (!binDatabaseConfigured()) return new Response(JSON.stringify({ error: 'Partner evidence storage is not configured.' }), { status: 503, headers });
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 2_048) {
-    return new Response(JSON.stringify({ error: 'The partner event is too large.' }), { status: 413, headers });
+  const requestId = apiRequestId(event.req);
+  const headers = pilotAnalyticsCorsHeaders(event.req);
+  if (!binDatabaseConfigured()) return apiError(requestId, 503, 'PARTNER_STORAGE_UNAVAILABLE', 'Partner evidence storage is not configured.', headers);
+  let input: ReturnType<typeof parsePartnerConversion>;
+  try {
+    input = parsePartnerConversion(await readBoundedJson(event.req, 2_048));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error, headers)
+      ?? apiError(requestId, 400, 'INVALID_PARTNER_EVENT', 'The partner event is invalid.', headers);
   }
   try {
-    return new Response(JSON.stringify(await savePartnerConversion(parsePartnerConversion(await event.req.json()))), { status: 200, headers });
+    return apiJson(
+      requestId,
+      await savePartnerConversion(input),
+      { headers },
+    );
   } catch (error) {
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'The partner event is invalid.' }), { status: 400, headers });
+    return apiUnexpectedErrorResponse(
+      requestId,
+      '/api/partners/conversion',
+      error,
+      'Partner evidence storage is temporarily unavailable.',
+      503,
+      headers,
+    );
   }
 });

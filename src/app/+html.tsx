@@ -9,7 +9,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+          content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
@@ -55,7 +55,7 @@ export default function Root({ children }: PropsWithChildren) {
           [role="button"]:focus-visible,
           [role="tab"]:focus-visible,
           [tabindex]:focus-visible {
-            outline: 3px solid #007AFF !important;
+            outline: 3px solid #0062CC !important;
             outline-offset: 3px !important;
           }
           @media (prefers-reduced-motion: reduce) {

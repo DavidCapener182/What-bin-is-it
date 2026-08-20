@@ -1,0 +1,38 @@
+appId: uk.whatbinistonight.app
+name: Proof-safe push destination, deep link and magic-link return boundaries
+tags:
+  - proof-safe
+  - push-deep-link
+  - magic-link-return
+---
+- setAirplaneMode: disabled
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: E2E Home
+    timeout: 20000
+- openLink:
+    link: whatbinistonight:///activity
+- tapOn:
+    text: Open
+    optional: true
+- extendedWaitUntil:
+    visible: Your bin timeline
+    timeout: 10000
+- openLink:
+    link: whatbinistonight:///settings
+- tapOn:
+    text: Open
+    optional: true
+- assertVisible: Settings
+- openLink:
+    link: whatbinistonight:///account?error=access_denied&error_description=native-e2e-cancelled
+- tapOn:
+    text: Open
+    optional: true
+- extendedWaitUntil:
+    visible: Account sign-in is being connected.
+    timeout: 10000

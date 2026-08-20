@@ -6,10 +6,12 @@ export function RouteHead({
   title,
   description,
   path,
+  private: isPrivate = false,
 }: {
   title: string;
   description: string;
   path: string;
+  private?: boolean;
 }) {
   const canonical = `${origin}${path}`;
   const fullTitle = `${title} | What Bin?`;
@@ -19,6 +21,8 @@ export function RouteHead({
       <title>{fullTitle}</title>
       <meta name="application-name" content="What Bin Is It Tonight?" />
       <meta name="description" content={description} />
+      {isPrivate ? <meta name="robots" content="noindex,nofollow,noarchive" /> : null}
+      {isPrivate ? <meta name="googlebot" content="noindex,nofollow,noarchive" /> : null}
       <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
       <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
       <link rel="canonical" href={canonical} />

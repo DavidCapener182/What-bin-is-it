@@ -77,10 +77,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     };
   }, [account.user?.id]);
 
-  const run = useCallback(async (operation: () => Promise<SubscriptionSnapshot>) => {
+  const run = useCallback(async (
+    operation: () => Promise<SubscriptionSnapshot>,
+    prepareReEnrolment = false,
+  ) => {
     setBusy(true);
     setError(undefined);
     try {
+      if (prepareReEnrolment) await account.preparePlusReEnrolment();
       setSnapshot(await operation());
       await account.refreshEntitlement();
     } catch (caught) {
@@ -90,8 +94,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [account]);
 
-  const showPaywall = useCallback(() => run(presentSubscriptionPaywall), [run]);
-  const restore = useCallback(() => run(restoreSubscriptionPurchases), [run]);
+  const showPaywall = useCallback(() => run(presentSubscriptionPaywall, true), [run]);
+  const restore = useCallback(() => run(restoreSubscriptionPurchases, true), [run]);
   const manage = useCallback(() => run(presentSubscriptionManagement), [run]);
   const sponsorship = profile?.featureFlags?.sponsoredPlus
     && profile.sponsorship?.features.includes('plus')

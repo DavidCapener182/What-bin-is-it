@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireCouncilSession } from "@/lib/auth";
+import { isConsoleE2eFixtureSession } from "@/lib/console-e2e-fixtures";
 import { estimateCouncilAudience } from "@/lib/data";
 import type { CouncilAudienceCriteria } from "@/lib/types";
 
@@ -35,6 +36,8 @@ export async function POST(request: NextRequest) {
   }
   const audience = parseAudience(body);
   if (!audience) return NextResponse.json({ error: "Invalid audience." }, { status: 400 });
-  const estimatedRecipientCount = await estimateCouncilAudience(session, audience);
+  const estimatedRecipientCount = isConsoleE2eFixtureSession(session)
+    ? audience.scope === "council" ? 1_248 : 126
+    : await estimateCouncilAudience(session, audience);
   return NextResponse.json({ estimatedRecipientCount }, { headers: { "Cache-Control": "private, no-store" } });
 }

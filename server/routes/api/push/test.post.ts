@@ -1,14 +1,22 @@
 import { defineHandler } from 'nitro';
 
+import { apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../lib/api-http';
 import {
   deliverWebPush,
   parsePushSubscription,
 } from '../../../lib/push-reminders';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
+  let subscription: ReturnType<typeof parsePushSubscription>;
   try {
-    const body = await event.req.json() as { subscription?: unknown };
-    const subscription = parsePushSubscription(body.subscription);
+    const body = await readBoundedJson<{ subscription?: unknown }>(event.req, 8_192);
+    subscription = parsePushSubscription(body.subscription);
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error)
+      ?? apiError(requestId, 400, 'INVALID_PUSH_SUBSCRIPTION', 'The notification subscription is invalid.');
+  }
+  try {
     await deliverWebPush(subscription, {
       id: `test-${Date.now()}`,
       title: 'Bin reminders are working',
@@ -16,16 +24,8 @@ export default defineHandler(async (event) => {
       url: '/settings',
       tag: 'bin-reminder-test',
     });
-    return Response.json({ delivered: true }, {
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiJson(requestId, { delivered: true });
   } catch (error) {
-    const message = error instanceof Error
-      ? error.message
-      : 'The test notification could not be sent.';
-    return Response.json({ error: message }, {
-      status: 400,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiUnexpectedErrorResponse(requestId, '/api/push/test', error, 'The test notification could not be sent.', 502);
   }
 });

@@ -11,6 +11,10 @@ Use real rendered app screens from the release build. Collection examples must c
 5. **Local options** — recycling centre/point with declared accepted materials.
 6. **More than a link** — guided missed-bin eligibility and report tracking.
 
+## iPad
+
+Capture the same real-data story only after the physical iPad portrait, landscape, rotation, Split View, large-text and VoiceOver acceptance pass is complete. Include the adaptive left navigation in at least one portrait and one landscape image, using the current App Store Connect dimensions at submission time.
+
 ## Android
 
 Use the same story, captured on Android with native system chrome and no iPhone frame.

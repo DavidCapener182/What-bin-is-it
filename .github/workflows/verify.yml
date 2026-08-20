@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   verify:
+    name: Verify application
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -47,6 +48,93 @@ jobs:
 
       - name: Web and server build
         run: npm run build
+
+  release-security:
+    name: Release security and API contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run focused release-security tests
+        run: >-
+          node --no-warnings --experimental-strip-types --test
+          tests/api-http.test.mjs
+          tests/api-route-error-boundaries.test.mjs
+          tests/bounded-response.test.mjs
+          tests/data-quality.test.mjs
+          tests/gateway-security-controls.test.mjs
+          tests/provider-billing-safety.test.mjs
+          tests/pwa-safety.test.mjs
+          tests/release-ci-gates.test.mjs
+          tests/release-security-migration.test.mjs
+          tests/upstream-response.test.mjs
+          tests/vercel-gateway-packaging.test.mjs
+
+  native-journeys-static:
+    name: Native journey manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Validate Maestro and EAS manifests
+        run: npm run test:native:static
+
+  resident-browser:
+    name: Resident browser journeys
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Install pinned Chromium runtime
+        run: npx --no-install playwright install chromium
+
+      - name: Build resident web app
+        run: npm run build:web
+
+      - name: Run resident Playwright journeys
+        run: npm run test:browser:resident
+
+      - name: Upload resident browser evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: resident-browser-evidence
+          path: artifacts/playwright/**
+          if-no-files-found: ignore
+          retention-days: 14
 
   verify-council-console:
     name: Verify council console
@@ -83,3 +171,41 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  council-console-browser:
+    name: Council console browser journeys
+    runs-on: macos-15
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: council-backoffice
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: council-backoffice/package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Install locked Chromium runtime
+        run: npx --no-install playwright install chromium
+
+      - name: Run actual-route and fixture console Playwright journeys
+        run: npm run test:e2e
+
+      - name: Upload council console browser evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: council-console-browser-evidence
+          path: |
+            council-backoffice/test-results/**
+            council-backoffice/playwright-report/**
+          if-no-files-found: ignore
+          retention-days: 14

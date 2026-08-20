@@ -5,6 +5,8 @@ import { ArrowRight, KeyRound, RadioTower, ShieldCheck } from "lucide-react";
 import { requestCouncilSignIn, signInCouncilWithPassword } from "@/app/actions";
 import { LoginSubmitButton } from "@/components/login-submit-button";
 import { developmentSuperadminLoginAvailable, getCouncilSession } from "@/lib/auth";
+import { consoleE2eFixturesAvailable } from "@/lib/console-e2e-fixtures";
+import { consoleE2eFixtureEmail } from "@/lib/console-test-fixtures";
 
 export const metadata: Metadata = { title: "Council staff sign in" };
 export const dynamic = "force-dynamic";
@@ -16,7 +18,8 @@ export default async function LoginPage({
 }) {
   if (await getCouncilSession()) redirect("/");
   const params = await searchParams;
-  const developmentLogin = await developmentSuperadminLoginAvailable();
+  const e2eLogin = await consoleE2eFixturesAvailable();
+  const developmentLogin = !e2eLogin && await developmentSuperadminLoginAvailable();
   return (
     <main className="login-page">
       <section className="login-intro">
@@ -46,7 +49,9 @@ export default async function LoginPage({
           <span className="eyebrow">Authorised staff only</span>
           <h2>Sign in to your council workspace</h2>
           <p>
-            {developmentLogin
+            {e2eLogin
+              ? "Open the generated, browser-local council workspace. It never reads or writes council tables."
+              : developmentLogin
               ? "Enter your assigned platform-superadmin email to open this local development console."
               : "Use your authorised email and password, or request a one-time secure link."}
           </p>
@@ -64,7 +69,7 @@ export default async function LoginPage({
                 : "Could not sign in. Check your details or request a fresh secure link."}
             </div>
           ) : null}
-          {developmentLogin ? null : (
+          {developmentLogin || e2eLogin ? null : (
             <form action={signInCouncilWithPassword} className="stack-form">
               <label htmlFor="password-email">Authorised email address</label>
               <input
@@ -91,26 +96,29 @@ export default async function LoginPage({
               <LoginSubmitButton />
             </form>
           )}
-          {developmentLogin ? null : <div className="login-divider"><span>or use a secure link</span></div>}
+          {developmentLogin || e2eLogin ? null : <div className="login-divider"><span>or use a secure link</span></div>}
           <form action={requestCouncilSignIn} className="stack-form">
-            <label htmlFor="email">{developmentLogin ? "Superadmin email address" : "Council email address"}</label>
+            <label htmlFor="email">{e2eLogin ? "Generated test operator email" : developmentLogin ? "Superadmin email address" : "Council email address"}</label>
             <input
               autoComplete="email"
+              defaultValue={e2eLogin ? consoleE2eFixtureEmail : undefined}
               id="email"
               inputMode="email"
               maxLength={254}
               name="email"
-              placeholder={developmentLogin ? "Your superadmin email" : "name@council.gov.uk"}
+              placeholder={e2eLogin ? consoleE2eFixtureEmail : developmentLogin ? "Your superadmin email" : "name@council.gov.uk"}
               required
               type="email"
             />
             <button className="primary-button" type="submit">
-              {developmentLogin ? "Open superadmin console" : "Email secure link"}
+              {e2eLogin ? "Open generated test workspace" : developmentLogin ? "Open superadmin console" : "Email secure link"}
               <ArrowRight aria-hidden="true" size={18} />
             </button>
           </form>
           <small className="privacy-note">
-            {developmentLogin
+            {e2eLogin
+              ? "Fixture access exists only in a non-production loopback process with COUNCIL_E2E_FIXTURES=1."
+              : developmentLogin
               ? "Local access is restricted to localhost, your configured email and a signed development session. Hosted access remains verified."
               : "Responses are deliberately generic. Access is granted only after server-side staff and council membership checks."}
           </small>

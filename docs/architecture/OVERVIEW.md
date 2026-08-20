@@ -8,7 +8,7 @@ Verified schedules and saved addresses are local-first. Native notifications are
 
 ## Council gateway
 
-Clients send postcode, provider ID and an opaque property reference to the Nitro gateway. The gateway selects either an approved partner connector or a curated server adapter and normalises addresses, dated collections, services, profiles and source metadata.
+Clients send postcode, provider ID and an opaque property reference to the Nitro gateway. The experimental Bin Day nationwide adapter also forwards the selected street address because its collection endpoint requires it; the gateway does not persist that address. The gateway selects either an approved partner connector or a curated server adapter and normalises addresses, dated collections, services, profiles and source metadata.
 
 Screens do not know council-specific URLs or credentials. `COUNCIL_PARTNER_REGISTRY_JSON` configures approved feeds; `COUNCIL_PROFILE_REGISTRY_JSON` configures coverage, capability status, local links and item guidance. Invalid connector configuration fails visibly.
 

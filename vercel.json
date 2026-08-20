@@ -40,7 +40,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; connect-src 'self' https://api.postcodes.io https://overpass-api.de https://www.overpass-api.de; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; manifest-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+          "value": "default-src 'self'; base-uri 'self'; connect-src 'self' https://api.postcodes.io https://overpass-api.de https://www.overpass-api.de https://wngqphzpxhderwfjjzla.supabase.co wss://wngqphzpxhderwfjjzla.supabase.co; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; manifest-src 'self'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
         },
         {
           "key": "Permissions-Policy",

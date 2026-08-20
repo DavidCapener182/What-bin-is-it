@@ -181,7 +181,7 @@ export function WebSupporterOffer() {
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push('/account')}
-          style={({ pressed }) => [styles.signIn, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
+          style={({ pressed }) => [styles.signIn, { backgroundColor: theme.accentFill }, pressed && styles.pressed]}>
           <View style={styles.signInCopy}>
             <Text style={styles.signInTitle}>Sign in before choosing a plan</Text>
             <Text style={styles.signInDetail}>This makes your access restorable on another device.</Text>

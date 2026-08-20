@@ -1,5 +1,6 @@
 import { defineHandler } from 'nitro';
 
+import { apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, readBoundedJson } from '../../../lib/api-http';
 import {
   ensurePilotCouncilWorkspaces,
   parsePilotCouncilWorkspaceSync,
@@ -7,38 +8,19 @@ import {
 } from '../../../lib/pilot-analytics';
 import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
-const jsonHeaders = {
-  'cache-control': 'no-store',
-  'content-type': 'application/json; charset=utf-8',
-  'x-content-type-options': 'nosniff',
-};
-
-function json(request: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...jsonHeaders,
-      ...pilotAnalyticsCorsHeaders(request),
-    },
-  });
-}
-
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
+  const headers = pilotAnalyticsCorsHeaders(event.req);
   if (!pilotAnalyticsConfigured()) {
-    return json(event.req, { error: 'Council portal storage is not configured.' }, 503);
-  }
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 4_096) {
-    return json(event.req, { error: 'The council workspace update is too large.' }, 413);
+    return apiError(requestId, 503, 'COUNCIL_WORKSPACE_STORAGE_UNAVAILABLE', 'Council portal storage is not configured.', headers);
   }
   try {
     const result = await ensurePilotCouncilWorkspaces(
-      parsePilotCouncilWorkspaceSync(await event.req.json()).councilIds,
+      parsePilotCouncilWorkspaceSync(await readBoundedJson(event.req, 4_096)).councilIds,
     );
-    return json(event.req, result);
+    return apiJson(requestId, result, { headers });
   } catch (error) {
-    return json(event.req, {
-      error: error instanceof Error ? error.message : 'The council workspace update is invalid.',
-    }, 400);
+    return apiRequestBodyErrorResponse(requestId, error, headers)
+      ?? apiError(requestId, 400, 'INVALID_COUNCIL_WORKSPACE_UPDATE', 'The council workspace update is invalid.', headers);
   }
 });

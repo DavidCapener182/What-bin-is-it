@@ -1,5 +1,6 @@
 import { defineHandler } from 'nitro';
 
+import { apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, readBoundedJson } from '../../../lib/api-http';
 import {
   deletePilotParticipant,
   isPilotParticipantId,
@@ -7,37 +8,21 @@ import {
 } from '../../../lib/pilot-analytics';
 import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
-const headers = {
-  'cache-control': 'no-store',
-  'content-type': 'application/json; charset=utf-8',
-  'x-content-type-options': 'nosniff',
-};
-
 export default defineHandler(async (event) => {
-  const responseHeaders = {
-    ...headers,
-    ...pilotAnalyticsCorsHeaders(event.req),
-  };
+  const requestId = apiRequestId(event.req);
+  const responseHeaders = pilotAnalyticsCorsHeaders(event.req);
   if (!pilotAnalyticsConfigured()) {
-    return new Response(JSON.stringify({ error: 'Anonymous app evidence is not configured.' }), {
-      status: 503,
-      headers: responseHeaders,
-    });
+    return apiError(requestId, 503, 'ANALYTICS_UNAVAILABLE', 'Anonymous app evidence is not configured.', responseHeaders);
   }
   try {
-    const body = await event.req.json() as { participantId?: unknown };
+    const body = await readBoundedJson<{ participantId?: unknown }>(event.req, 1_024);
     if (!isPilotParticipantId(body.participantId)) {
-      return new Response(JSON.stringify({ error: 'The analytics participant ID is invalid.' }), {
-        status: 400,
-        headers: responseHeaders,
-      });
+      return apiError(requestId, 400, 'INVALID_PARTICIPANT_ID', 'The analytics participant ID is invalid.', responseHeaders);
     }
     const deleted = await deletePilotParticipant(body.participantId);
-    return new Response(JSON.stringify({ deleted }), { status: 200, headers: responseHeaders });
-  } catch {
-    return new Response(JSON.stringify({ error: 'The deletion request is invalid.' }), {
-      status: 400,
-      headers: responseHeaders,
-    });
+    return apiJson(requestId, { deleted }, { headers: responseHeaders });
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error, responseHeaders)
+      ?? apiError(requestId, 400, 'INVALID_DELETION_REQUEST', 'The deletion request is invalid.', responseHeaders);
   }
 });

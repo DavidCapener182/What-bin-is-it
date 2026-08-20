@@ -55,3 +55,22 @@ test('normalises nearby map services for the server-side gateway', () => {
     },
   ]);
 });
+
+test('drops unsafe map links and bounds untrusted display fields', () => {
+  const [service] = parseOpenStreetMapServices({
+    elements: [{
+      id: 404,
+      lat: 53.4,
+      lon: -2.84,
+      tags: {
+        amenity: 'recycling',
+        name: `Unsafe${'x'.repeat(200)}`,
+        website: 'javascript:alert(1)',
+        operator: 'Bad\r\nOperator',
+      },
+    }],
+  });
+  assert.equal(service.name, 'Recycling point');
+  assert.equal(service.website, undefined);
+  assert.equal(service.operator, undefined);
+});

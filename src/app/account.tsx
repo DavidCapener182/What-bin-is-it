@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,12 +26,27 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
 
+  function confirmAccountRemoval() {
+    const title = 'Remove What Bin account data?';
+    const message = 'This removes your What Bin plan, support history and any eligible solo household, then signs out this device. Saved addresses stay on this device. A minimal removal marker prevents delayed billing updates from restoring access. Starting a new Plus purchase or restore records only a short-lived pending intent; the marker clears only after the provider verifies successful access. Closing or cancelling the purchase leaves it in place. It does not delete the shared Supabase sign-in identity or access used by another product. Resolve active billing or shared households first; contact support for assisted identity deletion.';
+    const remove = () => { void account.removeAccountData(); };
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(`${title}\n\n${message}`)) remove();
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove account data', style: 'destructive', onPress: remove },
+    ]);
+  }
+
   return (
     <AppShell activeRoute="/settings" hideNavigation>
       <RouteHead
         title="Account"
         description="Sign in to keep your What Bin plan available across devices."
         path="/account"
+        private
       />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <SafeAreaView edges={['top']} style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.separator }]}>
@@ -117,30 +133,19 @@ export default function AccountScreen() {
                   <Ionicons color={theme.accent} name="download-outline" size={21} />
                   <View style={styles.rowCopy}>
                     <Text style={[styles.rowValue, { color: theme.text }]}>Export account data</Text>
-                    <Text style={[styles.rowLabel, { color: theme.secondaryText }]}>Copies the account and plan record as JSON</Text>
+                    <Text style={[styles.rowLabel, { color: theme.secondaryText }]}>Downloads JSON on web or opens the phone’s share sheet</Text>
                   </View>
                   <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
                   disabled={account.busy}
-                  onPress={() => Alert.alert(
-                    'Remove What Bin account data?',
-                    'This removes your What Bin plan record and signs you out. Saved addresses stay on this device. Cancel any active subscription with its payment provider first.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Remove account data',
-                        style: 'destructive',
-                        onPress: () => void account.removeAccountData(),
-                      },
-                    ],
-                  )}
+                  onPress={confirmAccountRemoval}
                   style={({ pressed }) => [styles.accountAction, pressed && styles.pressed]}>
                   <Ionicons color={theme.danger} name="trash-outline" size={21} />
                   <View style={styles.rowCopy}>
                     <Text style={[styles.rowValue, { color: theme.danger }]}>Remove What Bin account data</Text>
-                    <Text style={[styles.rowLabel, { color: theme.secondaryText }]}>Does not delete your on-device places</Text>
+                    <Text style={[styles.rowLabel, { color: theme.secondaryText }]}>Shared sign-in identity and on-device places remain</Text>
                   </View>
                   <Ionicons color={theme.tertiaryText} name="chevron-forward" size={18} />
                 </Pressable>
@@ -171,7 +176,7 @@ export default function AccountScreen() {
                 accessibilityRole="button"
                 disabled={account.busy}
                 onPress={() => void account.sendSignInLink(email)}
-                style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.accent }, pressed && styles.pressed, account.busy && styles.disabled]}>
+                style={({ pressed }) => [styles.primaryButton, { backgroundColor: theme.accentFill }, pressed && styles.pressed, account.busy && styles.disabled]}>
                 {account.busy
                   ? <ActivityIndicator color="#FFFFFF" />
                   : <>

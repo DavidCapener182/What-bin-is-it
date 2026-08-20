@@ -20,6 +20,22 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const wasteTypes = new Set(['general', 'recycling', 'garden', 'food', 'other']);
 const actionTypes = new Set(['assigned', 'put-out', 'collected', 'missed', 'brought-in']);
 
+export class ResidentHouseholdOperationError extends Error {
+  readonly code: 'HOUSEHOLD_ACCESS_DENIED' | 'HOUSEHOLD_INVITE_INVALID';
+  readonly status: 403 | 409;
+
+  constructor(
+    code: 'HOUSEHOLD_ACCESS_DENIED' | 'HOUSEHOLD_INVITE_INVALID',
+    message: string,
+    status: 403 | 409,
+  ) {
+    super(message);
+    this.name = 'ResidentHouseholdOperationError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 function text(value: unknown, label: string, maximum: number) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} is required.`);
   const result = value.trim();
@@ -84,7 +100,11 @@ async function requireMember(sql: postgres.Sql | postgres.TransactionSql, househ
     WHERE household_id = ${householdId}::uuid AND user_id = ${userId}::uuid
     LIMIT 1
   `;
-  if (!rows[0]) throw new Error('You are not a member of that household.');
+  if (!rows[0]) throw new ResidentHouseholdOperationError(
+    'HOUSEHOLD_ACCESS_DENIED',
+    'You are not a member of that household.',
+    403,
+  );
   return rows[0];
 }
 
@@ -170,7 +190,11 @@ export async function createResidentHousehold(user: BinAccountUser, input: Retur
 export async function createResidentHouseholdInvite(user: BinAccountUser, householdId: string) {
   const sql = binDatabase();
   const member = await requireMember(sql, householdId, user.id);
-  if (member.role !== 'owner') throw new Error('Only the household owner can create an invite.');
+  if (member.role !== 'owner') throw new ResidentHouseholdOperationError(
+    'HOUSEHOLD_ACCESS_DENIED',
+    'Only the household owner can create an invite.',
+    403,
+  );
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await sql`
@@ -191,7 +215,11 @@ export async function joinResidentHousehold(user: BinAccountUser, input: ReturnT
       FOR UPDATE
     `;
     const invite = invites[0];
-    if (!invite) throw new Error('This invite has expired or is no longer valid.');
+    if (!invite) throw new ResidentHouseholdOperationError(
+      'HOUSEHOLD_INVITE_INVALID',
+      'This invite has expired or is no longer valid.',
+      409,
+    );
     await transaction`
       INSERT INTO bin_household_members (household_id, user_id, display_name, role)
       VALUES (${invite.household_id}::uuid, ${user.id}::uuid, ${input.memberName}, 'member')

@@ -1,0 +1,24 @@
+appId: uk.whatbinistonight.app
+name: Proof-safe primary tabs and back history
+tags:
+  - proof-safe
+  - navigation
+  - back
+---
+- setAirplaneMode: disabled
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible: E2E Home
+    timeout: 20000
+- tapOn: Schedule
+- assertVisible: Next four collections
+- tapOn: Guide
+- assertVisible: What are you throwing away?
+- tapOn: Activity
+- assertVisible: Your bin timeline
+- back
+- assertVisible: What are you throwing away?

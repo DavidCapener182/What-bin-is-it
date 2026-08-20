@@ -1,21 +1,41 @@
 import { defineHandler } from 'nitro';
 
 import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  logApiFailure,
+  readBoundedJson,
+} from '../../../lib/api-http';
+import {
   processRevenueCatWebhook,
   revenueCatWebhookConfigured,
   verifyRevenueCatWebhook,
 } from '../../../lib/native-entitlements';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
   if (!revenueCatWebhookConfigured()) {
-    return Response.json({ error: 'Native billing webhooks are not configured.' }, { status: 503 });
+    return apiError(requestId, 503, 'NATIVE_BILLING_UNAVAILABLE', 'Native billing webhooks are not configured.');
   }
   try {
     verifyRevenueCatWebhook(event.req);
-    const payload = await event.req.json();
-    const processed = await processRevenueCatWebhook(payload);
-    return Response.json({ received: true, processed });
   } catch {
-    return Response.json({ error: 'The native billing webhook was not accepted.' }, { status: 400 });
+    return apiError(requestId, 401, 'WEBHOOK_AUTHENTICATION_FAILED', 'The native billing webhook was not authenticated.');
+  }
+  let payload: unknown;
+  try {
+    payload = await readBoundedJson(event.req, 128 * 1_024);
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error)
+      ?? apiError(requestId, 400, 'INVALID_WEBHOOK', 'The native billing webhook payload was invalid.');
+  }
+  try {
+    const processed = await processRevenueCatWebhook(payload);
+    return apiJson(requestId, { received: true, processed });
+  } catch (error) {
+    logApiFailure(requestId, '/api/billing/revenuecat-webhook', error);
+    return apiError(requestId, 500, 'WEBHOOK_PROCESSING_FAILED', 'The native billing webhook could not be processed.');
   }
 });

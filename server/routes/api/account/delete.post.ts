@@ -1,55 +1,72 @@
+import { randomUUID } from 'node:crypto';
+
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
-import { binDatabase } from '../../../lib/bin-database';
+import {
+  ACCOUNT_DATA_REMOVAL_CONFIRMATION,
+  AccountDataRemovalError,
+  accountDataRemovalFailure,
+  removeResidentAccountData,
+} from '../../../lib/account-deletion';
+import { logAccountRouteFailure } from '../../../lib/account-observability';
+import {
+  BinAccountAuthenticationError,
+  requireBinAccount,
+} from '../../../lib/bin-auth';
+
+function responseHeaders(requestId: string) {
+  return {
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-request-id': requestId,
+  };
+}
 
 export default defineHandler(async (event) => {
+  const requestId = randomUUID();
   try {
     const user = await requireBinAccount(event.req);
-    if (event.req.headers.get('x-bin-confirm-delete') !== 'remove-what-bin-account') {
-      return Response.json({ error: 'Account removal was not confirmed.' }, { status: 400 });
+    if (event.req.headers.get('x-bin-confirm-delete') !== ACCOUNT_DATA_REMOVAL_CONFIRMATION) {
+      return Response.json({
+        removed: false,
+        identityRetained: true,
+        code: 'ACCOUNT_DATA_REMOVAL_NOT_CONFIRMED',
+        errorCode: 'ACCOUNT_DATA_REMOVAL_NOT_CONFIRMED',
+        error: 'What Bin account-data removal was not confirmed.',
+        guidance: 'Return to the account screen and use its removal confirmation.',
+        retryable: false,
+        requestId,
+      }, { status: 400, headers: responseHeaders(requestId) });
     }
-    const sql = binDatabase();
-    await sql.begin(async (transaction) => {
-      await transaction`SELECT pg_advisory_xact_lock(hashtext(${user.id}))`;
-      await transaction`
-        DELETE FROM bin_resident_support_threads
-        WHERE resident_user_id = ${user.id}
-      `;
-      await transaction`
-        UPDATE bin_supporters
-        SET user_id = null, updated_at = now()
-        WHERE user_id = ${user.id}
-      `;
-      await transaction`
-        DELETE FROM bin_revenuecat_events
-        WHERE user_id = ${user.id}
-      `;
-      await transaction`
-        DELETE FROM bin_entitlement_grants
-        WHERE user_id = ${user.id}
-      `;
-      await transaction`
-        DELETE FROM bin_user_entitlements
-        WHERE user_id = ${user.id}
-      `;
+
+    const result = await removeResidentAccountData({
+      userId: user.id,
+      sessionId: user.sessionId,
+      authenticationMethods: user.authenticationMethods,
     });
-    return Response.json({
-      removed: true,
-      retained:
-        'Payment providers may retain transaction records required for billing, fraud prevention and legal obligations.',
-    }, {
-      headers: {
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      },
-    });
+    return Response.json({ ...result, requestId }, { headers: responseHeaders(requestId) });
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'Your What Bin account data could not be removed.',
-    }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
+    if (error instanceof BinAccountAuthenticationError) {
+      return Response.json({
+        removed: false,
+        identityRetained: true,
+        code: error.code,
+        errorCode: error.code,
+        error: error.message,
+        guidance: error.status === 401
+          ? 'Sign in with a fresh email link, then try again.'
+          : 'Please try again later or contact What Bin support.',
+        retryable: error.status === 503,
+        requestId,
+      }, { status: error.status, headers: responseHeaders(requestId) });
+    }
+    if (!(error instanceof AccountDataRemovalError)) {
+      logAccountRouteFailure({ requestId, route: 'account-delete', error });
+    }
+    const failure = accountDataRemovalFailure(error);
+    return Response.json({ ...failure.body, errorCode: failure.body.code, requestId }, {
+      status: failure.status,
+      headers: responseHeaders(requestId),
     });
   }
 });

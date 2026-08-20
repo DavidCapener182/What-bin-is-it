@@ -17,6 +17,7 @@ expo-env.d.ts
 .playwright-mcp/
 output/playwright/
 output/screenshots/
+artifacts/
 
 # Separate council outreach workspace (its own Git repository and toolchain)
 /council-pilot-crm/

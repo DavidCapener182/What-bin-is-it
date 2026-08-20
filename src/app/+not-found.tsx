@@ -35,7 +35,7 @@ function createStyles(theme: AppTheme) {
   kicker: { color: theme.accent, fontFamily: appFonts.text, fontSize: 13, fontWeight: '700', marginTop: 18 },
   title: { color: theme.text, fontFamily: appFonts.display, fontSize: 28, lineHeight: 34, fontWeight: '700', textAlign: 'center', marginTop: 6, maxWidth: 360 },
   body: { color: theme.secondaryText, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: 8 },
-  button: { minHeight: 52, minWidth: 210, borderRadius: 14, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginTop: 22 },
+  button: { minHeight: 52, minWidth: 210, borderRadius: 14, backgroundColor: theme.accentFill, alignItems: 'center', justifyContent: 'center', marginTop: 22 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   pressed: { opacity: 0.7, transform: [{ scale: 0.985 }] },
   });

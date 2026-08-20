@@ -22,7 +22,7 @@ async function ensureAndroidChannel() {
     name: 'Bin reminders and service alerts',
     description: 'Collection reminders and verified council service changes',
     importance: Notifications.AndroidImportance.HIGH,
-    lightColor: '#007AFF',
+    lightColor: '#0062CC',
     sound: 'default',
   });
 }

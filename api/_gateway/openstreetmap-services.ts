@@ -1,4 +1,11 @@
 import { parseRecyclingMaterials } from '../../src/lib/recycling-materials.ts';
+import {
+  boundedDisplayText,
+  boundedStringRecord,
+  normaliseExternalHttpsUrl,
+} from '../../src/lib/safe-external-url.ts';
+import { readBoundedUpstreamJson, withUpstreamTimeout } from './upstream-response.ts';
+import { gatewayProviderBudgets } from './release-budget.ts';
 
 export type OpenStreetMapService = {
   id: string;
@@ -27,6 +34,9 @@ type OpenStreetMapPayload = {
   }[];
 };
 
+const maximumPostcodeResponseBytes = 64 * 1024;
+const maximumOpenStreetMapResponseBytes = 1024 * 1024;
+
 function validCoordinate(value: unknown, min: number, max: number): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 }
@@ -39,15 +49,25 @@ export function parseOpenStreetMapServices(payload: unknown): OpenStreetMapServi
     const latitude = element.lat ?? element.center?.lat;
     const longitude = element.lon ?? element.center?.lon;
     if (
-      (typeof element.id !== 'string' && typeof element.id !== 'number')
+      !(
+        (typeof element.id === 'number' && Number.isSafeInteger(element.id) && element.id > 0)
+        || (typeof element.id === 'string' && /^\d{1,20}$/.test(element.id))
+      )
       || !validCoordinate(latitude, -90, 90)
       || !validCoordinate(longitude, -180, 180)
     ) return services;
-    const tags = element.tags ?? {};
+    const tags = boundedStringRecord(element.tags);
     const isCentre = tags.amenity === 'waste_transfer_station'
       || /centre|center|household waste|tip/i.test(`${tags.name ?? ''} ${tags.recycling_type ?? ''}`);
-    const openingHours = tags.opening_hours;
-    const operator = tags.operator;
+    const openingHours = boundedDisplayText(tags.opening_hours, 240);
+    const operator = boundedDisplayText(tags.operator, 160);
+    const address = boundedDisplayText(
+      [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']]
+        .map((part) => boundedDisplayText(part, 100))
+        .filter(Boolean)
+        .join(' '),
+      240,
+    );
     const wheelchairAccessible = tags.wheelchair === 'yes'
       ? true
       : tags.wheelchair === 'no'
@@ -55,15 +75,14 @@ export function parseOpenStreetMapServices(payload: unknown): OpenStreetMapServi
         : undefined;
     services.push({
       id: `osm-${element.id}`,
-      name: tags.name || (isCentre ? 'Household waste site' : 'Recycling point'),
+      name: boundedDisplayText(tags.name, 160)
+        ?? (isCentre ? 'Household waste site' : 'Recycling point'),
       type: isCentre ? 'recycling-centre' : 'recycling-point',
-      address: [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']]
-        .filter(Boolean)
-        .join(' ') || undefined,
+      address,
       latitude,
       longitude,
       source: 'openstreetmap',
-      website: tags.website,
+      website: normaliseExternalHttpsUrl(tags.website),
       materials: parseRecyclingMaterials(tags),
       ...(openingHours ? { openingHours } : {}),
       ...(openingHours === '24/7' ? { isOpenNow: true } : {}),
@@ -75,32 +94,41 @@ export function parseOpenStreetMapServices(payload: unknown): OpenStreetMapServi
   }, []);
 }
 
-async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 25_000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
+async function fetchJsonWithTimeout(
+  url: string,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+  maximumBytes: number,
+) {
+  return withUpstreamTimeout(timeoutMs, async (signal) => {
+    const response = await fetch(url, {
       ...init,
-      signal: controller.signal,
+      signal,
       headers: {
         accept: 'application/json',
         'user-agent': 'What Bin Is It Tonight?/1.0',
         ...init?.headers,
       },
     });
-  } finally {
-    clearTimeout(timeout);
-  }
+    return {
+      response,
+      payload: response.ok
+        ? await readBoundedUpstreamJson(response, maximumBytes)
+        : undefined,
+    };
+  });
 }
 
 export async function fetchOpenStreetMapServices(postcode: string) {
-  const postcodeResponse = await fetchWithTimeout(
+  const postcodeResult = await fetchJsonWithTimeout(
     `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`,
     undefined,
-    5_000,
+    gatewayProviderBudgets.postcodeLocationMs,
+    maximumPostcodeResponseBytes,
   );
+  const postcodeResponse = postcodeResult.response;
   if (!postcodeResponse.ok) throw new Error(`Postcode location lookup returned ${postcodeResponse.status}.`);
-  const postcodePayload = await postcodeResponse.json() as {
+  const postcodePayload = postcodeResult.payload as {
     result?: { latitude?: unknown; longitude?: unknown };
   };
   const latitude = postcodePayload.result?.latitude;
@@ -118,16 +146,22 @@ export async function fetchOpenStreetMapServices(postcode: string) {
   let receivedValidResponse = false;
   for (const endpoint of endpoints) {
     try {
-      const response = await fetchWithTimeout(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: `data=${encodeURIComponent(query)}`,
-      }, 11_000);
+      const result = await fetchJsonWithTimeout(
+        endpoint,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: `data=${encodeURIComponent(query)}`,
+        },
+        gatewayProviderBudgets.openStreetMapEndpointMs,
+        maximumOpenStreetMapResponseBytes,
+      );
+      const response = result.response;
       if (!response.ok) {
         lastStatus = response.status;
         continue;
       }
-      const services = parseOpenStreetMapServices(await response.json());
+      const services = parseOpenStreetMapServices(result.payload);
       receivedValidResponse = true;
       if (services.length) return services;
     } catch {

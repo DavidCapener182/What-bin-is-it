@@ -1,43 +1,48 @@
 import { defineHandler } from 'nitro';
 
 import {
+  apiError,
+  apiJson,
+  apiRequestBodyErrorResponse,
+  apiRequestId,
+  apiUnexpectedErrorResponse,
+  readBoundedJson,
+} from '../../../lib/api-http';
+import {
   parsePilotAnalyticsBatch,
+  PilotAnalyticsRateLimitError,
   pilotAnalyticsConfigured,
   savePilotAnalyticsBatch,
 } from '../../../lib/pilot-analytics';
 import { pilotAnalyticsCorsHeaders } from '../../../lib/pilot-analytics-http';
 
-const jsonHeaders = {
-  'cache-control': 'no-store',
-  'content-type': 'application/json; charset=utf-8',
-  'x-content-type-options': 'nosniff',
-};
-
-function json(request: Request, body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...jsonHeaders,
-      ...pilotAnalyticsCorsHeaders(request),
-    },
-  });
-}
-
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
+  const cors = pilotAnalyticsCorsHeaders(event.req);
   if (!pilotAnalyticsConfigured()) {
-    return json(event.req, { error: 'Anonymous app evidence is not configured.' }, 503);
+    return apiError(requestId, 503, 'ANALYTICS_UNAVAILABLE', 'Anonymous app evidence is not configured.', cors);
   }
-  const contentLength = Number(event.req.headers.get('content-length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 32_768) {
-    return json(event.req, { error: 'The analytics request is too large.' }, 413);
+  let batch: ReturnType<typeof parsePilotAnalyticsBatch>;
+  try {
+    batch = parsePilotAnalyticsBatch(await readBoundedJson(event.req, 32_768));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error, cors)
+      ?? apiError(requestId, 400, 'INVALID_ANALYTICS_REQUEST', 'The analytics request is invalid.', cors);
   }
   try {
-    const batch = parsePilotAnalyticsBatch(await event.req.json());
     const accepted = await savePilotAnalyticsBatch(batch);
-    return json(event.req, { accepted });
+    return apiJson(requestId, { accepted }, { headers: cors });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'The analytics request is invalid.';
-    const status = /limit has been reached/i.test(message) ? 429 : 400;
-    return json(event.req, { error: message }, status);
+    if (error instanceof PilotAnalyticsRateLimitError) {
+      return apiError(requestId, 429, 'ANALYTICS_RATE_LIMITED', 'The analytics event limit has been reached. Try again later.', cors);
+    }
+    return apiUnexpectedErrorResponse(
+      requestId,
+      '/api/analytics/events',
+      error,
+      'Anonymous analytics storage is temporarily unavailable.',
+      503,
+      cors,
+    );
   }
 });

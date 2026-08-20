@@ -2,7 +2,7 @@
 
 The app uses RevenueCat over Apple StoreKit and Google Play Billing for native purchases, and Stripe Checkout for optional web support. Provider events reconcile into one server-authoritative entitlement.
 
-Do not change the `production` EAS profile from `proof` until every sandbox check below passes. Use `subscription-development` for device development and `plus-beta` for TestFlight or Play internal testing.
+Do not change the `production` EAS profile from `proof` or enable any of the three explicit payment release gates until every sandbox and security check below passes. Use `subscription-development` for device development and `plus-beta` for TestFlight or Play internal testing.
 
 ## Offer and entitlement
 
@@ -110,6 +110,9 @@ Test every case on physical devices:
 - no postcode, street address or location is sent to RevenueCat;
 - signing into a second device and restoring resolves to the same server entitlement;
 - cancellation, refund, grace, expiry, duplicate webhook and out-of-order webhook cases reconcile correctly;
+- fail-then-retry of the exact same Stripe and RevenueCat event ID reaches one terminal outcome;
+- RevenueCat `TRANSFER` atomically revokes the source identity and grants only the destination while checking removal suppression for both;
+- renewable grants without a verified future period end fail closed, and an old checkout confirmation cannot reactivate cancelled, expired or refunded access;
 - offline launch retains the last cached entitlement state only as allowed by the SDK, then refreshes when online.
 
 ## Release gate
@@ -120,5 +123,6 @@ Only change `EXPO_PUBLIC_LAUNCH_PHASE` in the production EAS profile to `live` a
 - RevenueCat paywall and Customer Center are published;
 - public SDK keys exist in the EAS production environment;
 - privacy declarations, terms, screenshots and review notes describe payments;
+- all Stripe request bodies are byte-bounded and billing errors use stable request IDs without reflecting provider messages;
 - both sandbox purchase/restore/cancel paths pass;
 - App Review has a working reviewer path.

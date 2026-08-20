@@ -51,7 +51,7 @@ requireCondition(/^\d+$/.test(app.ios?.buildNumber ?? ''), 'ios.buildNumber must
 requireCondition(Number.isInteger(app.android?.versionCode) && app.android.versionCode > 0, 'android.versionCode must be a positive integer.');
 requireCondition(app.ios?.config?.usesNonExemptEncryption === false, 'Set the reviewed iOS non-exempt encryption answer.');
 requireCondition(app.ios?.privacyManifests?.NSPrivacyTracking === false, 'The iOS privacy manifest must explicitly disable tracking.');
-requireCondition(app.ios?.supportsTablet === false, 'The first release is scoped to iPhone; enabling iPad also requires an iPad acceptance and screenshot set.');
+requireCondition(app.ios?.supportsTablet === true, 'iPad support must remain enabled for the adaptive resident layout.');
 requireCondition(eas.build?.production?.autoIncrement === true, 'The EAS production profile must auto-increment store build numbers.');
 requireCondition(eas.submit?.production?.ios, 'The EAS iOS submit profile is missing.');
 requireCondition(eas.submit?.production?.android?.track === 'internal', 'The first Android submission must target internal testing.');
@@ -118,6 +118,7 @@ external(Boolean(process.env.APPLE_TEAM_ID), 'Create the Apple app record and re
 external(Boolean(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON), 'Create the Play app and minimum-permission service account outside source control.');
 external(Boolean(process.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY), 'Add the public RevenueCat Apple SDK key to the EAS development and preview environments before Plus testing.');
 external(Boolean(process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY), 'Add the public RevenueCat Google SDK key to the EAS development and preview environments before Plus testing.');
+external(false, 'Complete physical iPad portrait, landscape, rotation, Split View, large-text, VoiceOver and screenshot acceptance before submission.');
 
 if (failures.length) {
   console.error('\nStore repository checks failed:');

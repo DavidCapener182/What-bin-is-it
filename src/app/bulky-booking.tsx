@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/app-shell';
@@ -98,6 +98,7 @@ export default function BulkyBookingScreen() {
       return;
     }
     setBusy(partnerId ?? 'official');
+    setStatusError(undefined);
     try {
       const result = await startBulkyBooking({
         councilProviderId: activeAddress.providerId,
@@ -118,7 +119,7 @@ export default function BulkyBookingScreen() {
         }
       }
     } catch (error) {
-      Alert.alert('Booking could not be opened', error instanceof Error ? error.message : 'Try again in a moment.');
+      setStatusError(error instanceof Error ? error.message : 'The booking could not be opened. Try again in a moment.');
     } finally {
       setBusy(undefined);
     }
@@ -133,7 +134,7 @@ export default function BulkyBookingScreen() {
 
   return (
     <AppShell activeRoute="/bulky-booking">
-      <RouteHead title="Bulky-waste booking" description="Compare official and approved bulky-waste collection options." path="/bulky-booking" />
+      <RouteHead title="Bulky-waste booking" description="Compare official and approved bulky-waste collection options." path="/bulky-booking" private />
       <View style={styles.page}>
         <SafeAreaView edges={['top']} style={styles.header}>
           <Pressable accessibilityLabel="Back to Guide" accessibilityRole="button" onPress={() => router.back()} style={styles.headerButton}><Ionicons color={theme.accent} name="chevron-back" size={25} /></Pressable>
@@ -146,6 +147,13 @@ export default function BulkyBookingScreen() {
             <Text style={styles.title}>What needs collecting?</Text>
             <Text style={styles.subtitle}>The official council route always appears first. Paid services are clearly labelled and only count as revenue after a real booking is confirmed.</Text>
           </View>
+
+          {statusError && params.booking !== 'success' && !booking ? (
+            <View accessibilityRole="alert" style={styles.errorCard}>
+              <Ionicons color={theme.warning} name="alert-circle-outline" size={22} />
+              <View style={styles.flex}><Text style={styles.cardTitle}>Booking could not be opened</Text><Text style={styles.cardBody}>{statusError}</Text></View>
+            </View>
+          ) : null}
 
           {params.booking === 'success' || booking ? (
             <View accessibilityLiveRegion="polite" style={styles.successCard}>
@@ -165,7 +173,7 @@ export default function BulkyBookingScreen() {
             <Text style={styles.sectionLabel}>Item</Text>
             <View accessibilityLabel="Bulky item type" accessibilityRole="radiogroup" style={styles.itemGrid}>{bulkyItems.map((item) => {
               const selected = item.key === itemKey;
-              return <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} key={item.key} onPress={() => setItemKey(item.key)} style={[styles.item, selected && styles.itemSelected]}><Ionicons color={selected ? theme.accent : theme.secondaryText} name={item.icon} size={21} /><Text style={[styles.itemText, selected && styles.itemTextSelected]}>{item.label}</Text></Pressable>;
+              return <Pressable aria-checked={selected} accessibilityRole="radio" accessibilityState={{ checked: selected }} key={item.key} onPress={() => setItemKey(item.key)} style={[styles.item, selected && styles.itemSelected]}><Ionicons color={selected ? theme.accent : theme.secondaryText} name={item.icon} size={21} /><Text style={[styles.itemText, selected && styles.itemTextSelected]}>{item.label}</Text></Pressable>;
             })}</View>
             <View style={styles.quantityRow}><View><Text style={styles.cardTitle}>How many?</Text><Text style={styles.cardBody}>Use one booking for up to 20 items.</Text></View><View style={styles.stepper}><Pressable accessibilityLabel="Remove one item" accessibilityRole="button" disabled={quantity === 1} onPress={() => setQuantity((value) => Math.max(1, value - 1))} style={styles.stepButton}><Ionicons color={quantity === 1 ? theme.tertiaryText : theme.accent} name="remove" size={20} /></Pressable><Text style={styles.quantity}>{quantity}</Text><Pressable accessibilityLabel="Add one item" accessibilityRole="button" disabled={quantity === 20} onPress={() => setQuantity((value) => Math.min(20, value + 1))} style={styles.stepButton}><Ionicons color={quantity === 20 ? theme.tertiaryText : theme.accent} name="add" size={20} /></Pressable></View></View>
           </View>
@@ -273,13 +281,14 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     price: { color: theme.text, fontFamily: appFonts.text, fontSize: 15, fontWeight: '800', marginTop: 3 },
     marketplaceNote: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
     termsLink: { color: theme.accent, fontFamily: appFonts.text, fontSize: 12, fontWeight: '700', marginTop: 2 },
-    optionButton: { minWidth: 76, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' },
+    optionButton: { minWidth: 76, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, backgroundColor: theme.accentFill, alignItems: 'center', justifyContent: 'center' },
     optionButtonText: { color: '#FFFFFF', fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
     noPartners: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 14, borderRadius: 14, backgroundColor: theme.groupedBackground },
     noPartnersText: { flex: 1, color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 13, lineHeight: 18 },
     privacyCard: { marginHorizontal: 16, marginBottom: 24, padding: 15, borderRadius: 16, backgroundColor: theme.groupedBackground, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     privacyText: { flex: 1, color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 18 },
     successCard: { marginHorizontal: 16, marginBottom: 20, padding: 15, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.success, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    errorCard: { marginHorizontal: 16, marginBottom: 20, padding: 15, borderRadius: 16, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.warning, flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
     statusButton: { minHeight: 34, marginTop: 5, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6 },
     statusButtonText: { color: theme.accent, fontFamily: appFonts.text, fontSize: 13, fontWeight: '700' },
     reviewOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
@@ -301,7 +310,7 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     reviewNoticeText: { flex: 1, color: theme.text, fontFamily: appFonts.text, fontSize: 13, lineHeight: 19, fontWeight: '600' },
     reviewTerms: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 12, lineHeight: 18 },
     reviewTermsButton: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7 },
-    confirmButton: { minHeight: 50, borderRadius: 14, backgroundColor: theme.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    confirmButton: { minHeight: 50, borderRadius: 14, backgroundColor: theme.accentFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     confirmButtonText: { color: '#FFFFFF', fontFamily: appFonts.text, fontSize: 15, fontWeight: '800' },
     cancelButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     cancelButtonText: { color: theme.secondaryText, fontFamily: appFonts.text, fontSize: 14, fontWeight: '700' },

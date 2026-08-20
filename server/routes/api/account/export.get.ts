@@ -1,93 +1,63 @@
+import { randomUUID } from 'node:crypto';
+
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
-import { binDatabase } from '../../../lib/bin-database';
+import {
+  BinAccountAuthenticationError,
+  requireBinAccount,
+} from '../../../lib/bin-auth';
+import { exportResidentAccountRecords } from '../../../lib/account-export';
+import { logAccountRouteFailure } from '../../../lib/account-observability';
+
+function responseHeaders(requestId: string, attachment = false) {
+  return {
+    'cache-control': 'no-store',
+    ...(attachment
+      ? { 'content-disposition': 'attachment; filename="what-bin-account-export.json"' }
+      : {}),
+    'x-content-type-options': 'nosniff',
+    'x-request-id': requestId,
+  };
+}
 
 export default defineHandler(async (event) => {
+  const requestId = randomUUID();
   try {
     const user = await requireBinAccount(event.req);
-    const sql = binDatabase();
-    const [entitlements, grants, supporter, nativeEvents, supportThreads, supportMessages] = await Promise.all([
-      sql`
-        SELECT plan_id, source, status, product_id, current_period_end, created_at, updated_at
-        FROM bin_user_entitlements
-        WHERE user_id = ${user.id}
-      `,
-      sql`
-        SELECT source, plan_id, status, product_id, current_period_end, provider_event_at, created_at, updated_at
-        FROM bin_entitlement_grants
-        WHERE user_id = ${user.id}
-        ORDER BY provider_event_at DESC
-      `,
-      sql`
-        SELECT plan_id, billing_mode, status, currency, amount_pence, started_at, current_period_end, cancelled_at, updated_at
-        FROM bin_supporters
-        WHERE user_id = ${user.id}
-      `,
-      sql`
-        SELECT event_type, product_id, store, environment, outcome, occurred_at, received_at
-        FROM bin_revenuecat_events
-        WHERE user_id = ${user.id}
-        ORDER BY occurred_at DESC
-        LIMIT 250
-      `,
-      sql`
-        SELECT
-          id,
-          council_provider_id,
-          council_name,
-          topic,
-          subject,
-          status,
-          last_message_at,
-          resolved_at,
-          created_at,
-          updated_at
-        FROM bin_resident_support_threads
-        WHERE resident_user_id = ${user.id}
-        ORDER BY created_at DESC
-        LIMIT 500
-      `,
-      sql`
-        SELECT
-          message.thread_id,
-          message.sender_kind,
-          message.body,
-          message.created_at
-        FROM bin_resident_support_messages AS message
-        INNER JOIN bin_resident_support_threads AS thread
-          ON thread.id = message.thread_id
-        WHERE thread.resident_user_id = ${user.id}
-          AND message.visibility = 'resident'
-        ORDER BY message.created_at
-        LIMIT 5000
-      `,
-    ]);
+    const records = await exportResidentAccountRecords(user.id);
     return Response.json({
+      requestId,
       exportedAt: new Date().toISOString(),
       account: { id: user.id, email: user.email },
       savedAddresses: 'Stored only on the resident device and not included in the account export.',
-      entitlements,
-      providerGrants: grants,
-      webBilling: supporter,
-      nativeBillingEvents: nativeEvents,
-      supportConversations: {
-        threads: supportThreads,
-        messages: supportMessages,
-      },
+      ...records,
     }, {
-      headers: {
-        'cache-control': 'no-store',
-        'content-disposition': 'attachment; filename="what-bin-account-export.json"',
-        'x-content-type-options': 'nosniff',
-      },
+      headers: responseHeaders(requestId, true),
     });
   } catch (error) {
+    if (error instanceof BinAccountAuthenticationError) {
+      return Response.json({
+        code: error.code,
+        errorCode: error.code,
+        error: error.message,
+        guidance: error.status === 401
+          ? 'Sign in with a fresh email link, then try the export again.'
+          : 'Please try again later or contact What Bin support.',
+        retryable: error.status === 503,
+        requestId,
+      }, { status: error.status, headers: responseHeaders(requestId) });
+    }
+    logAccountRouteFailure({ requestId, route: 'account-export', error });
     return Response.json({
-      error: error instanceof Error ? error.message : 'Your account export could not be created.',
+      code: 'ACCOUNT_EXPORT_UNAVAILABLE',
+      errorCode: 'ACCOUNT_EXPORT_UNAVAILABLE',
+      error: 'Your What Bin account export could not be created right now.',
+      guidance: 'Please try again later. If the problem continues, contact What Bin support.',
+      retryable: true,
+      requestId,
     }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
+      status: 503,
+      headers: responseHeaders(requestId),
     });
   }
 });

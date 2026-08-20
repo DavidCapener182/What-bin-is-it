@@ -63,6 +63,7 @@ Paid Apple Developer and Google Play Console enrolment is intentionally deferred
 - [ ] Store public RevenueCat SDK keys in EAS development/preview environments.
 - [ ] Pass purchase, cancellation, expiry, management and user-triggered restore tests on physical iOS and Android devices.
 - [ ] Keep the `production` profile in `proof` until the store products and disclosures are approved.
+- [ ] Keep `WHAT_BIN_ENABLE_WEB_PAYMENTS`, `WHAT_BIN_ENABLE_NATIVE_PLUS_WEBHOOKS` and `EXPO_PUBLIC_ENABLE_NATIVE_PLUS_PURCHASES` false until the complete payment security gate passes.
 
 ## Build sequence
 
@@ -97,6 +98,16 @@ npx eas-cli submit --platform android --profile production
 
 The Android submit profile uses the internal track first. Promote only after physical-device testing.
 
+## Repository and deployment security gates
+
+- [ ] Apply and read back all four migrations in the exact order documented in [SUPABASE-RELEASE-MIGRATIONS.md](../security/SUPABASE-RELEASE-MIGRATIONS.md) before deploying server code that uses them.
+- [ ] Confirm all three named `pg_cron` jobs are active and their first executions succeed: daily data-quality purge, hourly re-enrolment-intent purge and daily API-security-state purge.
+- [ ] Read back the production public-gateway flag, HMAC secret and database connection, then verify the 600-per-15-minute network limiter, `Retry-After`, provider circuit and fail-closed path. Verify the data-quality route's independent 120-per-15-minute network scope and client budgets.
+- [ ] Treat hosting WAF, bot and device-reputation rules as defence in depth and record their configuration if enabled; do not substitute them for the durable application controls.
+- [ ] Configure `main` exactly as [BRANCH-PROTECTION.md](../security/BRANCH-PROTECTION.md) specifies and prove a failed/missing required check blocks merge.
+- [ ] Retain green `Resident browser journeys`, `Council console browser journeys` and `Native journey manifests` checks. Run the manually dispatched EAS native workflow and retain its artifacts before native release.
+- [ ] Confirm support can search structured server logs by every returned `x-request-id` without logging report text, addresses, tokens or upstream secrets.
+
 ## Physical-device acceptance
 
 - [ ] Fresh install opens onboarding without a development menu.
@@ -107,23 +118,30 @@ The Android submit profile uses the internal track first. Promote only after phy
 - [ ] Unsupported or unavailable sources do not create dates.
 - [ ] Notification permission is requested only after user action.
 - [ ] A bin-night reminder fires on physical iOS and Android devices.
+- [ ] A remote push opens the approved route from foreground, background and terminated app states on physical iOS and Android devices.
 - [ ] Android normal-schedule reminder timing is tested under battery saver and background restriction; any delay is explained honestly.
 - [ ] Confirm exact-alarm permissions remain absent from the final manifest.
 - [ ] Address slide-to-remove and Clear all app data work.
 - [ ] Privacy, terms, support and data sources open without login.
 - [ ] Cached and offline states are clearly labelled.
+- [ ] iOS cold-starts with radios unavailable, keeps saved dates visible and relabels the state after reconnection.
 - [ ] Dark mode, large text, VoiceOver and TalkBack are checked.
+- [ ] On physical iPad, check portrait, landscape, rotation while each primary tab is open, Split View at narrow and wide widths, large text, VoiceOver and keyboard tab navigation.
 - [ ] If Plus is enabled, purchase, restore, management and entitlement expiry work with sandbox accounts.
+- [ ] If Plus is enabled, provider transfer, refund and reversal outcomes reconcile on signed sandbox accounts before either native payment flag changes from false.
 - [ ] Password-free sign-in returns safely on web, iPhone and Android.
+- [ ] A delivered password-free link creates a valid native session; expired and cancelled links fail safely without exposing credentials.
 - [ ] Auth rate limits, production redirect allowlist and CAPTCHA escalation are configured.
 - [ ] Account export and app-owned account removal work.
 - [ ] iOS and Android widgets refresh from verified dates on physical devices.
 - [ ] The optional iOS bin-night Live Activity starts, updates and ends at the intended lifecycle points on a physical device.
+- [ ] Android Predictive Back shows the expected gesture animation and destination across supported API/OEM targets.
 - [ ] The Android bin-night ongoing notification appears only when enabled and clears after the collection lifecycle ends.
 - [ ] A missed report stores a council reference only after council confirmation and can track a recollection.
 - [ ] Activity correctly groups unread council alerts, support replies, collection outcomes and open missed reports.
 - [ ] Targeted council-alert test devices receive only the expected collection type/date/opaque-label audience.
 - [ ] Council-sponsored Plus disappears when the selected place changes to an ineligible council.
+- [ ] Hosted bulky checkout cancellation/success returns open the installed app or documented hosted fallback and reconcile the expected booking status.
 
 ## Store listing
 
@@ -140,7 +158,7 @@ The Android submit profile uses the internal track first. Promote only after phy
 - [ ] Put the exact test postcode/property and source instructions in review notes.
 - [ ] Explain that login is optional and saved household addresses remain device-local.
 - [ ] Explain why foreground location and notifications support core reminders.
-- [ ] State that the first iOS release is iPhone-only.
+- [ ] State that iPad is supported only after the physical iPad acceptance pass and required iPad screenshot set are complete.
 - [ ] Use TestFlight and Play internal testing first.
 - [ ] Start with manual release or a small staged rollout.
 - [ ] Monitor failed lookups, crashes, notification support and source availability.

@@ -66,6 +66,12 @@ test('rejects insecure, duplicate or collections-free connector definitions', ()
     ])),
     /duplicate council provider/,
   );
+  assert.deepEqual(councilPartnerRegistryStatus({ COUNCIL_PARTNER_REGISTRY_JSON: '{secret' }), {
+    configured: 0,
+    providerIds: [],
+    valid: false,
+    errorCode: 'COUNCIL_PARTNER_REGISTRY_INVALID',
+  });
 });
 
 test('connects the normalized address, collection and services contract', async () => {

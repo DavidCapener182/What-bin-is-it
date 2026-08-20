@@ -23,6 +23,7 @@
     "expo-linear-gradient": "~57.0.1",
     "expo-linking": "~57.0.5",
     "expo-location": "~57.0.9",
+    "expo-network": "~57.0.1",
     "expo-notifications": "~57.0.10",
     "expo-router": "~57.0.12",
     "expo-splash-screen": "~57.0.6",
@@ -50,6 +51,8 @@
     "workflow": "^4.6.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.62.1",
     "@types/react": "~19.2.2",
     "@types/web-push": "^3.6.4",
     "esbuild": "0.28.1",
@@ -57,7 +60,8 @@
     "eslint-config-expo": "~57.0.1",
     "nitro": "^3.0.260610-beta",
     "typescript": "~6.0.3",
-    "vite": "^7.3.6"
+    "vite": "^7.3.6",
+    "yaml": "2.9.0"
   },
   "scripts": {
     "dev": "EXPO_PUBLIC_COUNCIL_API_BASE=https://what-bin-is-it-tonight.vercel.app/api expo start --web",
@@ -75,6 +79,8 @@
     "store:check": "node scripts/verify-store-readiness.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --no-warnings --experimental-strip-types --test tests/*.test.mjs",
+    "test:browser:resident": "playwright test -c tests/browser/playwright.config.mjs",
+    "test:native:static": "node scripts/validate-native-journeys.mjs && node --no-warnings --experimental-strip-types --test tests/native-e2e-fixtures.test.mjs tests/native-release-journeys.test.mjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "overrides": {
@@ -99,10 +105,10 @@
       "brace-expansion": "5.0.9"
     },
     "expo-router": {
-      "nanoid": "3.3.17"
+      "nanoid": "3.3.18"
     },
     "postcss": {
-      "nanoid": "3.3.17"
+      "nanoid": "3.3.18"
     },
     "uuid": "11.1.1"
   },

@@ -52,7 +52,7 @@ export default function PlusScreen() {
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={[styles.hero, { backgroundColor: theme.hero }]}>
-            <View style={[styles.heroIcon, { backgroundColor: theme.accent }]}>
+            <View style={[styles.heroIcon, { backgroundColor: theme.accentFill }]}>
               <Ionicons color="#FFFFFF" name="sparkles" size={27} />
             </View>
             <Text style={styles.kicker}>OPTIONAL CONVENIENCE</Text>
@@ -103,7 +103,7 @@ export default function PlusScreen() {
             </View>
           ) : null}
 
-          {subscription.sponsoredBy ? null : Platform.OS === 'web' ? (
+          {subscription.sponsoredBy ? null : paymentsEnabled && Platform.OS === 'web' ? (
             <WebSupporterOffer />
           ) : paymentsEnabled ? (
             <View style={styles.actions}>
@@ -120,7 +120,7 @@ export default function PlusScreen() {
                 }}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  { backgroundColor: theme.accent },
+                  { backgroundColor: theme.accentFill },
                   pressed && styles.pressed,
                   (!canOpenStore || subscription.busy) && styles.disabled,
                 ]}>

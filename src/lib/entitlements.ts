@@ -48,13 +48,16 @@ export function entitlementIsPlus({
   now?: Date;
 }) {
   if (planId === 'free') return false;
+  if (planId === 'plus-lifetime') {
+    return !['expired', 'payment_failed', 'refunded', 'revoked'].includes(status);
+  }
   if (
     status === 'active'
     || status === 'trialing'
     || status === 'past_due'
     || status === 'grace'
   ) {
-    if (!currentPeriodEnd) return true;
+    if (!currentPeriodEnd) return false;
     const periodEnd = new Date(currentPeriodEnd);
     return Number.isFinite(periodEnd.getTime()) && periodEnd > now;
   }

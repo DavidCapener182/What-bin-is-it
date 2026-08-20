@@ -1,13 +1,13 @@
+import { apiError, apiNoContent, apiRequestId } from './api-http.ts';
+
 const canonicalAppOrigin = 'https://what-bin-is-it-tonight.vercel.app';
 const localDevelopmentOrigin = /^http:\/\/(?:localhost|127\.0\.0\.1):\d{2,5}$/;
-const whatBinVercelOrigin = /^https:\/\/what-bin-is-it-tonight(?:-[a-z0-9-]+)?\.vercel\.app$/;
 
 export function isAllowedPilotAnalyticsOrigin(origin: string | null) {
   if (!origin) return true;
   return (
     origin === canonicalAppOrigin
     || localDevelopmentOrigin.test(origin)
-    || whatBinVercelOrigin.test(origin)
   );
 }
 
@@ -21,22 +21,17 @@ export function pilotAnalyticsCorsHeaders(request: Request): Record<string, stri
 }
 
 export function pilotAnalyticsPreflight(request: Request, method: 'POST' | 'DELETE' | 'POST, DELETE') {
+  const requestId = apiRequestId(request);
   const origin = request.headers.get('origin');
   if (!origin || !isAllowedPilotAnalyticsOrigin(origin)) {
-    return new Response(null, {
-      status: 403,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiError(requestId, 403, 'ORIGIN_NOT_ALLOWED', 'Origin not accepted.');
   }
-  return new Response(null, {
-    status: 204,
-    headers: {
+  return apiNoContent(requestId, 204, {
       'access-control-allow-headers': 'content-type',
       'access-control-allow-methods': `${method}, OPTIONS`,
       'access-control-allow-origin': origin,
       'access-control-max-age': '600',
       'cache-control': 'no-store',
       vary: 'Origin',
-    },
   });
 }

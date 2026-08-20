@@ -3,12 +3,17 @@ import { CalendarClock, Handshake, MessagesSquare, ShieldCheck } from "lucide-re
 
 import { saveCrmAccountAction } from "@/app/actions";
 import { FeedbackBanner } from "@/components/feedback-banner";
+import { OperationalDrawer } from "@/components/operational-drawer";
+import { OperationalQueue } from "@/components/operational-queue";
 import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { requirePlatformAdminSession } from "@/lib/auth";
-import { listCrmAccounts, platformOverview } from "@/lib/crm";
+import { listCrmAccountsPage, platformCrmMetrics } from "@/lib/crm";
 import { formatDateTime, humanise } from "@/lib/format";
 import { crmAccountTypes, crmStages } from "@/lib/types";
+import { operationalQueueStateFromServerPage, type OperationalQueueSearchParams } from "@/lib/operational-queue";
+
+type PageParams = OperationalQueueSearchParams & { error?: string; saved?: string };
 
 function gbp(pence?: number) {
   if (pence === undefined) return "Not valued";
@@ -22,14 +27,15 @@ function gbp(pence?: number) {
 export default async function PlatformCrmPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<PageParams>;
 }) {
   await requirePlatformAdminSession();
-  const [accounts, overview, params] = await Promise.all([
-    listCrmAccounts(),
-    platformOverview(),
-    searchParams,
+  const params = await searchParams;
+  const [serverPage, metrics] = await Promise.all([
+    listCrmAccountsPage(params),
+    platformCrmMetrics(),
   ]);
+  const queue = operationalQueueStateFromServerPage(serverPage);
 
   return (
     <>
@@ -49,22 +55,22 @@ export default async function PlatformCrmPage({
       <section aria-label="CRM metrics" className="metric-grid">
         <article className="metric-card tone-blue">
           <span className="metric-label">Relationships</span>
-          <strong className="metric-value">{accounts.length}</strong>
+          <strong className="metric-value">{metrics.accountCount}</strong>
           <span className="metric-detail">Councils, sponsors, partners and enterprise prospects</span>
         </article>
         <article className="metric-card tone-teal">
           <span className="metric-label">Active opportunities</span>
-          <strong className="metric-value">{overview.crm.activeOpportunities}</strong>
+          <strong className="metric-value">{metrics.activeOpportunities}</strong>
           <span className="metric-detail">Past lead stage and still progressing</span>
         </article>
         <article className="metric-card tone-amber">
           <span className="metric-label">Annual pipeline</span>
-          <strong className="metric-value">{gbp(overview.crm.pipelineValuePence)}</strong>
+          <strong className="metric-value">{gbp(metrics.pipelineValuePence)}</strong>
           <span className="metric-detail">Current opportunity values, not booked revenue</span>
         </article>
         <article className="metric-card tone-red">
           <span className="metric-label">Follow-ups due</span>
-          <strong className="metric-value">{overview.crm.followUpsDue}</strong>
+          <strong className="metric-value">{metrics.followUpsDue}</strong>
           <span className="metric-detail">Account-level follow-ups due now</span>
         </article>
       </section>
@@ -73,52 +79,56 @@ export default async function PlatformCrmPage({
         <ShieldCheck aria-hidden="true" size={17} /> Record professional contacts only. Every contact needs a source, lawful basis, suppression control and retention-review date. Resident details never belong in this CRM.
       </div>
 
-      <div className="split-layout">
-        <section className="panel form-panel sticky-panel">
-          <h2>Add a relationship</h2>
-          <p className="form-intro">Start with the organisation. Add named contacts and conversations from its record after saving.</p>
-          <form action={saveCrmAccountAction} className="stack-form">
-            <div className="field"><label htmlFor="name">Organisation name</label><input id="name" maxLength={180} name="name" required /></div>
-            <div className="field-grid">
-              <div className="field"><label htmlFor="accountType">Relationship type</label><select id="accountType" name="accountType">{crmAccountTypes.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
-              <div className="field"><label htmlFor="stage">Pipeline stage</label><select defaultValue="lead" id="stage" name="stage">{crmStages.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
-              <div className="field"><label htmlFor="annualValuePounds">Annual opportunity (£)</label><input id="annualValuePounds" max={10000000} min={0} name="annualValuePounds" type="number" /></div>
-              <div className="field"><label htmlFor="websiteUrl">Website</label><input id="websiteUrl" name="websiteUrl" placeholder="https://" type="url" /></div>
-              <div className="field field-span"><label htmlFor="summary">Relationship summary</label><textarea id="summary" maxLength={2000} name="summary" placeholder="Why this organisation is relevant and the current commercial context." /></div>
-            </div>
-            <button className="primary-button" type="submit">Create CRM account</button>
-          </form>
-        </section>
-
-        <section className="data-list" aria-label="CRM accounts">
-          {accounts.length ? accounts.map((account) => (
-            <Link className="data-card crm-account-link" href={`/crm/${account.id}`} key={account.id}>
-              <div className="data-card-top">
-                <div>
-                  <h2>{account.name}</h2>
-                  <div className="data-meta">
-                    <span>{humanise(account.accountType)}</span>
-                    <span>{gbp(account.annualValuePence)} annual opportunity</span>
-                  </div>
+      <OperationalQueue
+        action={(
+          <OperationalDrawer description="Start with the organisation. Add named contacts and conversations from its dedicated record after saving." title="Add Relationship" triggerLabel="Add Relationship" triggerStyle="primary">
+            <section className="panel form-panel">
+              <form action={saveCrmAccountAction} className="stack-form">
+                <div className="field"><label htmlFor="name">Organisation name</label><input autoComplete="organization" id="name" maxLength={180} name="name" required /></div>
+                <div className="field-grid">
+                  <div className="field"><label htmlFor="accountType">Relationship type</label><select id="accountType" name="accountType">{crmAccountTypes.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
+                  <div className="field"><label htmlFor="stage">Pipeline stage</label><select defaultValue="lead" id="stage" name="stage">{crmStages.map((value) => <option key={value} value={value}>{humanise(value)}</option>)}</select></div>
+                  <div className="field"><label htmlFor="annualValuePounds">Annual opportunity (£)</label><input id="annualValuePounds" inputMode="numeric" max={10000000} min={0} name="annualValuePounds" type="number" /></div>
+                  <div className="field"><label htmlFor="websiteUrl">Website</label><input autoComplete="url" id="websiteUrl" name="websiteUrl" placeholder="https://…" type="url" /></div>
+                  <div className="field field-span"><label htmlFor="summary">Relationship summary</label><textarea autoComplete="off" id="summary" maxLength={2000} name="summary" placeholder="Current commercial context…" /></div>
                 </div>
-                <StatusPill status={account.stage} />
-              </div>
-              {account.summary ? <p>{account.summary}</p> : null}
-              <div className="crm-account-footer">
-                <span><CalendarClock aria-hidden="true" size={15} /> Follow-up {formatDateTime(account.nextFollowUpAt)}</span>
-                <span>{account.openTaskCount} open task{account.openTaskCount === 1 ? "" : "s"}</span>
-                {account.overdueTaskCount ? <span className="crm-overdue">{account.overdueTaskCount} overdue</span> : null}
-              </div>
-            </Link>
-          )) : (
-            <div className="empty-state">
-              <Handshake aria-hidden="true" size={32} />
-              <h2>No relationships recorded</h2>
-              <p>Add the first real council, sponsor or partner account. The CRM contains no demonstration or mock records.</p>
-            </div>
-          )}
-        </section>
-      </div>
+                <button className="primary-button" type="submit">Create CRM Account</button>
+              </form>
+            </section>
+          </OperationalDrawer>
+        )}
+        caption="Professional council, sponsor, partner and enterprise relationships, with pipeline stage, value and next-action workload."
+        columns={[
+          { label: "Organisation", sortKey: "name" },
+          { label: "Type" },
+          { align: "right", label: "Annual Opportunity", sortKey: "value" },
+          { label: "Next Follow-up", sortKey: "follow-up" },
+          { align: "right", label: "Open Tasks", sortKey: "tasks" },
+          { label: "Stage" },
+          { label: "Record" },
+        ]}
+        emptyState={<div className="empty-state"><Handshake aria-hidden="true" size={32} /><h2>No Matching Relationships</h2><p>Add the first real organisation, or reset this view. The CRM contains no demonstration records.</p></div>}
+        filterLabel="relationship types"
+        filterOptions={crmAccountTypes.map((value) => ({ label: humanise(value), value }))}
+        pathname="/crm"
+        searchLabel="Search organisation, summary, type or stage"
+        state={queue}
+        statusOptions={crmStages.map((value) => ({ label: humanise(value), value }))}
+        title="Relationship Pipeline"
+        viewKey="crm-accounts"
+      >
+        {queue.items.map((account) => (
+          <tr key={account.id}>
+            <td className="queue-primary-cell" data-label="Organisation"><Link href={`/crm/${account.id}`}>{account.name}</Link><small>{account.summary ?? "No relationship summary"}</small></td>
+            <td data-label="Type">{humanise(account.accountType)}</td>
+            <td className="queue-cell-numeric" data-label="Annual Opportunity">{gbp(account.annualValuePence)}</td>
+            <td data-label="Next Follow-up"><CalendarClock aria-hidden="true" size={14} /> {formatDateTime(account.nextFollowUpAt)}</td>
+            <td className="queue-cell-numeric" data-label="Open Tasks"><strong>{account.openTaskCount}</strong><small className={account.overdueTaskCount ? "crm-overdue" : undefined}>{account.overdueTaskCount} overdue</small></td>
+            <td data-label="Stage"><StatusPill status={account.stage} /></td>
+            <td className="queue-cell-actions" data-label="Record"><Link className="secondary-button button-small" href={`/crm/${account.id}`}>Open Record</Link></td>
+          </tr>
+        ))}
+      </OperationalQueue>
     </>
   );
 }

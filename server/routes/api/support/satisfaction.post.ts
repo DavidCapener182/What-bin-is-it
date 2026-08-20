@@ -1,32 +1,35 @@
 import { defineHandler } from 'nitro';
 
-import { requireBinAccount } from '../../../lib/bin-auth';
+import { type BinAccountUser, requireBinAccount } from '../../../lib/bin-auth';
+import { apiAuthenticationErrorResponse, apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../lib/api-http';
 import {
   parseResidentSupportSatisfaction,
   rateResidentSupportThread,
+  ResidentSupportOperationError,
 } from '../../../lib/resident-support';
 
 export default defineHandler(async (event) => {
-  let user;
+  const requestId = apiRequestId(event.req);
+  let user: BinAccountUser;
   try {
     user = await requireBinAccount(event.req);
-  } catch {
-    return Response.json({ error: 'Sign in to rate this support conversation.' }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
+  } catch (error) {
+    return apiAuthenticationErrorResponse(requestId, error)
+      ?? apiUnexpectedErrorResponse(requestId, '/api/support/satisfaction', error, 'Account verification is unavailable.', 503);
+  }
+  let input: ReturnType<typeof parseResidentSupportSatisfaction>;
+  try {
+    input = parseResidentSupportSatisfaction(await readBoundedJson(event.req, 1_024));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error)
+      ?? apiError(requestId, 400, 'INVALID_SUPPORT_RATING', 'The satisfaction response is invalid.');
   }
   try {
-    const input = parseResidentSupportSatisfaction(await event.req.json());
-    return Response.json({ threads: await rateResidentSupportThread(user, input) }, {
-      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
+    return apiJson(requestId, { threads: await rateResidentSupportThread(user, input) });
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'Your response could not be saved.',
-    }, {
-      status: 400,
-      headers: { 'cache-control': 'no-store' },
-    });
+    if (error instanceof ResidentSupportOperationError) {
+      return apiError(requestId, error.status, error.code, error.message);
+    }
+    return apiUnexpectedErrorResponse(requestId, '/api/support/satisfaction', error, 'Your response could not be saved.');
   }
 });

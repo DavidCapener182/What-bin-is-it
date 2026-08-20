@@ -1,0 +1,42 @@
+appId: uk.whatbinistonight.app
+name: Proof-safe iOS Live Activity start and end boundary
+tags:
+  - proof-safe
+  - ios-only
+  - live-activity
+---
+- setAirplaneMode: disabled
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: deny
+- openLink:
+    link: whatbinistonight:///settings
+- tapOn:
+    text: Open
+    optional: true
+- extendedWaitUntil:
+    visible: Settings
+    timeout: 20000
+- tapOn: Notifications
+- scrollUntilVisible:
+    element:
+      text: Bin-night status
+    direction: DOWN
+- tapOn: Bin-night status
+- assertVisible: Bin-night status is on.
+- launchApp
+- openLink:
+    link: whatbinistonight:///settings
+- tapOn:
+    text: Open
+    optional: true
+- tapOn: Notifications
+- scrollUntilVisible:
+    element:
+      text: Bin-night status
+    direction: DOWN
+- assertVisible: Bin-night status
+- tapOn: Bin-night status
+- assertVisible: Bin-night status is off.

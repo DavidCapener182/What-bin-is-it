@@ -1,5 +1,6 @@
 import { defineHandler } from 'nitro';
 
+import { apiError, apiJson, apiRequestBodyErrorResponse, apiRequestId, apiUnexpectedErrorResponse, readBoundedJson } from '../../../../lib/api-http';
 import {
   councilBroadcastAuthorised,
   parseCouncilBroadcastRequest,
@@ -7,23 +8,20 @@ import {
 } from '../../../../lib/council-alert-push';
 
 export default defineHandler(async (event) => {
+  const requestId = apiRequestId(event.req);
   if (!councilBroadcastAuthorised(event.req.headers.get('authorization'))) {
-    return Response.json({ error: 'The council broadcast request was not authorised.' }, {
-      status: 401,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiError(requestId, 401, 'BROADCAST_AUTHENTICATION_FAILED', 'The council broadcast request was not authorised.');
+  }
+  let jobId: string;
+  try {
+    ({ jobId } = parseCouncilBroadcastRequest(await readBoundedJson(event.req, 1_024)));
+  } catch (error) {
+    return apiRequestBodyErrorResponse(requestId, error)
+      ?? apiError(requestId, 400, 'INVALID_BROADCAST_REQUEST', 'The council broadcast request is invalid.');
   }
   try {
-    const { jobId } = parseCouncilBroadcastRequest(await event.req.json());
-    return Response.json(await processCouncilBroadcast(jobId), {
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiJson(requestId, await processCouncilBroadcast(jobId));
   } catch (error) {
-    return Response.json({
-      error: error instanceof Error ? error.message : 'The council broadcast could not be processed.',
-    }, {
-      status: 400,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return apiUnexpectedErrorResponse(requestId, '/api/push/broadcasts/process', error, 'The council broadcast could not be processed.');
   }
 });

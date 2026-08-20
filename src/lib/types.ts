@@ -210,7 +210,6 @@ export type CouncilNoticePreferenceState = {
 
 export type IncorrectDataFeedback = {
   id: string;
-  addressId?: string;
   issue:
     | 'wrong-date'
     | 'wrong-bin'
@@ -224,13 +223,12 @@ export type IncorrectDataFeedback = {
   expectedValue?: string;
   technicalContext?: {
     appVersion: string;
-    place?: string;
-    postcode?: string;
-    council?: string;
     providerId?: string;
     displayedDate?: string;
     lastRefreshAt?: string;
     online: boolean;
+    clientRequestId: string;
+    trackingReference: string;
   };
   createdAt: string;
 };

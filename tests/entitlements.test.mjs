@@ -27,8 +27,9 @@ test('accepts only the supported resident plan identifiers', () => {
 });
 
 test('recognises active access and rejects failed or expired access', () => {
-  assert.equal(entitlementIsPlus({ planId: 'plus-yearly', status: 'active' }), true);
-  assert.equal(entitlementIsPlus({ planId: 'plus-monthly', status: 'trialing' }), true);
+  assert.equal(entitlementIsPlus({ planId: 'plus-yearly', status: 'active' }), false);
+  assert.equal(entitlementIsPlus({ planId: 'plus-monthly', status: 'trialing' }), false);
+  assert.equal(entitlementIsPlus({ planId: 'plus-lifetime', status: 'active' }), true);
   assert.equal(entitlementIsPlus({ planId: 'plus-lifetime', status: 'payment_failed' }), false);
   assert.equal(entitlementIsPlus({ planId: 'plus-yearly', status: 'expired' }), false);
 });

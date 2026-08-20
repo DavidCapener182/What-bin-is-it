@@ -1,6 +1,12 @@
 import type postgres from "postgres";
 
 import { councilDatabase } from "./database";
+import {
+  clampOperationalQueueRequest,
+  operationalQueueRequest,
+  type OperationalQueueSearchParams,
+  type OperationalQueueServerPage,
+} from "./operational-queue";
 import type { CouncilStaffSession } from "./types";
 
 export const residentSupportStatuses = [
@@ -50,6 +56,12 @@ export type ResidentSupportThread = {
   lastMessageAt: string;
   createdAt: string;
   messages: ResidentSupportMessage[];
+  messageHistory?: {
+    page: number;
+    pageCount: number;
+    pageSize: number;
+    total: number;
+  };
 };
 
 export type ResidentSupportStaffOption = {
@@ -159,44 +171,121 @@ function residentSupportCouncilScope(session: CouncilStaffSession) {
   return session.platformAdmin ? null : session.organisation.providerId;
 }
 
-export async function listResidentSupportThreads(session: CouncilStaffSession, filters: {
-  query?: string;
-  status?: ResidentSupportStatus;
-} = {}) {
+export async function listResidentSupportThreadsPage(
+  session: CouncilStaffSession,
+  searchParams: OperationalQueueSearchParams,
+): Promise<OperationalQueueServerPage<ResidentSupportThread>> {
   const sql = councilDatabase();
   const councilScope = residentSupportCouncilScope(session);
-  const query = filters.query?.trim().slice(0, 120) || null;
+  const request = operationalQueueRequest(searchParams, {
+    defaultDirection: "desc",
+    defaultSort: "updated",
+    filterValues: residentSupportPriorities,
+    sortValues: ["priority", "sla", "status", "updated"],
+    statusValues: residentSupportStatuses,
+  });
+  const pattern = `%${request.query}%`;
+  const [countRows, unfilteredRows] = await Promise.all([
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM bin_resident_support_threads AS thread
+      WHERE (${councilScope}::text IS NULL OR thread.council_provider_id = ${councilScope})
+        AND (${request.status} = '' OR thread.status = ${request.status})
+        AND (${request.filter} = '' OR thread.priority = ${request.filter})
+        AND (
+          ${request.query} = ''
+          OR concat_ws(' ', thread.subject, thread.council_name, thread.topic, thread.id::text, thread.topic_tags::text)
+            ILIKE ${pattern}
+        )
+    `,
+    sql<{ count: number }[]>`
+      SELECT count(*)::int AS count
+      FROM bin_resident_support_threads AS thread
+      WHERE (${councilScope}::text IS NULL OR thread.council_provider_id = ${councilScope})
+    `,
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  const clampedRequest = clampOperationalQueueRequest(request, total);
   const rows = await sql<ThreadRow[]>`
     SELECT ${sql.unsafe(threadSelect)}
     FROM bin_resident_support_threads AS thread
     LEFT JOIN auth.users AS assigned_user ON assigned_user.id = thread.assigned_staff_id
     WHERE (${councilScope}::text IS NULL OR thread.council_provider_id = ${councilScope})
-      AND (${filters.status ?? null}::varchar IS NULL OR thread.status = ${filters.status ?? null})
+      AND (${clampedRequest.status} = '' OR thread.status = ${clampedRequest.status})
+      AND (${clampedRequest.filter} = '' OR thread.priority = ${clampedRequest.filter})
       AND (
-        ${query}::text IS NULL
-        OR thread.subject ILIKE ('%' || ${query} || '%')
-        OR thread.council_name ILIKE ('%' || ${query} || '%')
-        OR thread.topic ILIKE ('%' || ${query} || '%')
-        OR thread.id::text ILIKE ('%' || ${query} || '%')
-        OR ${query} = any(thread.topic_tags)
+        ${clampedRequest.query} = ''
+        OR concat_ws(' ', thread.subject, thread.council_name, thread.topic, thread.id::text, thread.topic_tags::text)
+          ILIKE ${`%${clampedRequest.query}%`}
       )
     ORDER BY
-      CASE thread.status
-        WHEN 'new' THEN 0
-        WHEN 'in-progress' THEN 1
-        WHEN 'waiting-operations' THEN 2
-        WHEN 'waiting-resident' THEN 3
-        WHEN 'resolved' THEN 4
-        ELSE 5
-      END,
-      CASE thread.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
-      thread.last_message_at DESC
-    LIMIT 500
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'asc' THEN CASE thread.status WHEN 'new' THEN 0 WHEN 'in-progress' THEN 1 WHEN 'waiting-operations' THEN 2 WHEN 'waiting-resident' THEN 3 WHEN 'resolved' THEN 4 ELSE 5 END END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'status' AND ${clampedRequest.direction} = 'desc' THEN CASE thread.status WHEN 'new' THEN 0 WHEN 'in-progress' THEN 1 WHEN 'waiting-operations' THEN 2 WHEN 'waiting-resident' THEN 3 WHEN 'resolved' THEN 4 ELSE 5 END END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'priority' AND ${clampedRequest.direction} = 'asc' THEN CASE thread.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'priority' AND ${clampedRequest.direction} = 'desc' THEN CASE thread.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END END DESC,
+      CASE WHEN ${clampedRequest.sort} = 'sla' AND ${clampedRequest.direction} = 'asc' THEN thread.sla_due_at END ASC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'sla' AND ${clampedRequest.direction} = 'desc' THEN thread.sla_due_at END DESC NULLS LAST,
+      CASE WHEN ${clampedRequest.sort} = 'updated' AND ${clampedRequest.direction} = 'asc' THEN thread.last_message_at END ASC,
+      CASE WHEN ${clampedRequest.sort} = 'updated' AND ${clampedRequest.direction} = 'desc' THEN thread.last_message_at END DESC,
+      thread.last_message_at DESC,
+      thread.id DESC
+    LIMIT ${clampedRequest.pageSize}
+    OFFSET ${clampedRequest.offset}
   `;
-  return rows.map((row) => supportThread(row));
+  return {
+    items: rows.map((row) => supportThread(row)),
+    request: clampedRequest,
+    total,
+    unfilteredTotal: unfilteredRows[0]?.count ?? 0,
+  };
 }
 
-export async function residentSupportThread(session: CouncilStaffSession, threadId: string) {
+export async function residentSupportMetricsForSession(session: CouncilStaffSession) {
+  const sql = councilDatabase();
+  const councilScope = residentSupportCouncilScope(session);
+  const [metricRows, themeRows] = await Promise.all([
+    sql<{
+      median_first_response_hours: number | null;
+      median_resolution_hours: number | null;
+      new_count: number;
+      overdue_count: number;
+      reopened_count: number;
+    }[]>`
+      SELECT
+        count(*) FILTER (WHERE status = 'new')::int AS new_count,
+        count(*) FILTER (WHERE sla_due_at < now() AND status NOT IN ('resolved', 'closed'))::int AS overdue_count,
+        coalesce(sum(reopened_count), 0)::int AS reopened_count,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (first_responded_at - created_at)) / 3600)
+          FILTER (WHERE first_responded_at IS NOT NULL) AS median_first_response_hours,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (resolved_at - created_at)) / 3600)
+          FILTER (WHERE resolved_at IS NOT NULL) AS median_resolution_hours
+      FROM bin_resident_support_threads
+      WHERE (${councilScope}::text IS NULL OR council_provider_id = ${councilScope})
+    `,
+    sql<{ theme: string; count: number }[]>`
+      SELECT theme, count(*)::int AS count
+      FROM bin_resident_support_threads AS thread
+      CROSS JOIN LATERAL unnest(
+        CASE WHEN cardinality(thread.topic_tags) > 0 THEN thread.topic_tags ELSE ARRAY[thread.topic]::varchar[] END
+      ) AS theme
+      WHERE (${councilScope}::text IS NULL OR thread.council_provider_id = ${councilScope})
+      GROUP BY theme
+      ORDER BY count DESC, theme
+      LIMIT 3
+    `,
+  ]);
+  const metric = metricRows[0];
+  return {
+    medianFirstResponseHours: metric?.median_first_response_hours ?? undefined,
+    medianResolutionHours: metric?.median_resolution_hours ?? undefined,
+    newCount: metric?.new_count ?? 0,
+    overdueCount: metric?.overdue_count ?? 0,
+    reopenedCount: metric?.reopened_count ?? 0,
+    topThemes: themeRows.map((row): [string, number] => [row.theme, row.count]),
+  };
+}
+
+export async function residentSupportThread(session: CouncilStaffSession, threadId: string, requestedHistoryPage = 1) {
   const sql = councilDatabase();
   const councilScope = residentSupportCouncilScope(session);
   const threadRows = await sql<ThreadRow[]>`
@@ -209,20 +298,37 @@ export async function residentSupportThread(session: CouncilStaffSession, thread
   `;
   const thread = threadRows[0];
   if (!thread) return undefined;
-  const messageRows = await sql<MessageRow[]>`
-    SELECT id, thread_id, sender_kind, visibility, body, created_at
+  const messageCountRows = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count
     FROM bin_resident_support_messages
     WHERE thread_id = ${thread.id}::uuid
-    ORDER BY created_at, id
-    LIMIT 1000
   `;
-  return supportThread(thread, messageRows.map((message) => ({
+  const messageTotal = messageCountRows[0]?.count ?? 0;
+  const messagePageSize = 200;
+  const messagePageCount = Math.max(1, Math.ceil(messageTotal / messagePageSize));
+  const parsedHistoryPage = Number.isFinite(requestedHistoryPage) ? Math.trunc(requestedHistoryPage) : 1;
+  const messagePage = Math.min(Math.max(parsedHistoryPage, 1), messagePageCount);
+  const messageRows = await sql<MessageRow[]>`
+    SELECT id, thread_id, sender_kind, visibility, body, created_at
+    FROM (
+      SELECT id, thread_id, sender_kind, visibility, body, created_at
+      FROM bin_resident_support_messages
+      WHERE thread_id = ${thread.id}::uuid
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${messagePageSize}
+      OFFSET ${(messagePage - 1) * messagePageSize}
+    ) AS history_page
+    ORDER BY created_at, id
+  `;
+  const result = supportThread(thread, messageRows.map((message) => ({
     id: message.id,
     sender: message.sender_kind,
     visibility: message.visibility,
     body: message.body,
     createdAt: message.created_at.toISOString(),
   })));
+  result.messageHistory = { page: messagePage, pageCount: messagePageCount, pageSize: messagePageSize, total: messageTotal };
+  return result;
 }
 
 export async function listResidentSupportStaff(session: CouncilStaffSession) {
@@ -234,7 +340,6 @@ export async function listResidentSupportStaff(session: CouncilStaffSession) {
     WHERE staff.organisation_id = ${session.organisation.id}::uuid
       AND staff.status = 'active'
     ORDER BY user_account.email, staff.created_at
-    LIMIT 250
   `;
   const options: ResidentSupportStaffOption[] = rows.map((row) => ({
     userId: row.user_id,
@@ -255,7 +360,6 @@ export async function listResidentSupportSavedResponses(session: CouncilStaffSes
     WHERE status = 'active'
       AND (organisation_id = ${session.organisation.id}::uuid OR organisation_id IS NULL)
     ORDER BY organisation_id NULLS LAST, title
-    LIMIT 250
   `;
   return rows.map((row): ResidentSupportSavedResponse => ({
     id: row.id,

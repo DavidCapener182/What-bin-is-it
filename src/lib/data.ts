@@ -4,11 +4,23 @@ export const wasteTypes: WasteType[] = ['recycling', 'general', 'food', 'garden'
 
 export const collectionMeta: Record<WasteType, { label: string; shortLabel: string; colour: string; tint: string; example: string }> = {
   general: { label: 'General waste', shortLabel: 'GENERAL', colour: '#253744', tint: '#E2E9E9', example: 'Everyday rubbish' },
-  recycling: { label: 'Mixed recycling', shortLabel: 'RECYCLING', colour: '#1784D1', tint: '#E3F3FF', example: 'Paper, cans & plastic' },
+  recycling: { label: 'Mixed recycling', shortLabel: 'RECYCLING', colour: '#0F6FAF', tint: '#E3F3FF', example: 'Paper, cans & plastic' },
   garden: { label: 'Garden waste', shortLabel: 'GARDEN', colour: '#3D8B54', tint: '#E7F4E7', example: 'Clippings & leaves' },
   food: { label: 'Food waste', shortLabel: 'FOOD', colour: '#9A6334', tint: '#F8EEDF', example: 'Food scraps' },
   other: { label: 'Council bin', shortLabel: 'COUNCIL BIN', colour: '#52656C', tint: '#E9EEEE', example: 'Named by your council' },
 };
+
+const darkCollectionTextColours: Record<WasteType, string> = {
+  general: '#B4C6D2',
+  recycling: '#5AACFF',
+  garden: '#66D17E',
+  food: '#E0A56F',
+  other: '#B5C5CB',
+};
+
+export function collectionTextColour(type: WasteType, mode: 'light' | 'dark') {
+  return mode === 'dark' ? darkCollectionTextColours[type] : collectionMeta[type].colour;
+}
 
 const namedSourceColours: [RegExp, string][] = [
   [/\b(maroon|burgundy)\b/i, '#7A263A'],

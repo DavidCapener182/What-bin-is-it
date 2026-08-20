@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
 import { ErrorBoundaryProps, Stack } from 'expo-router';
 import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -13,12 +15,18 @@ import { ProductStateProvider } from '@/lib/use-product-state';
 import { PilotAnalyticsProvider } from '@/lib/use-pilot-analytics';
 import { SubscriptionProvider } from '@/lib/use-subscription';
 import { ResidentSupportProvider } from '@/lib/use-resident-support';
+import { useReducedMotionPreference } from '@/lib/use-adaptive-layout';
 
 // Expo owns the launch screen. Keep the transition brief and let the first
 // rendered frame replace it as soon as the app is ready.
 SplashScreen.setOptions({ duration: 400, fade: true });
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(Ionicons.font);
+  const reducedMotion = useReducedMotionPreference();
+
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -31,33 +39,33 @@ export default function RootLayout() {
                     <ThemeSynchronizer />
                     <PwaRegistration />
                     <NotificationNavigation />
-                    <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-                  <Stack.Screen name="index" options={{ animation: 'none' }} />
-                  <Stack.Screen name="schedule" options={{ animation: 'none' }} />
-                  <Stack.Screen name="guide" options={{ animation: 'none' }} />
-                  <Stack.Screen name="activity" options={{ animation: 'none' }} />
-                  <Stack.Screen name="reports" />
-                  <Stack.Screen name="report-missed" />
-                  <Stack.Screen name="report-incorrect" />
-                  <Stack.Screen name="history" />
-                  <Stack.Screen name="support" />
-                  <Stack.Screen name="partners" />
-                  <Stack.Screen name="bulky-booking" />
-                  <Stack.Screen name="plus" />
-                  <Stack.Screen name="account" />
-                  <Stack.Screen name="household" />
-                  <Stack.Screen name="privacy" />
-                  <Stack.Screen name="terms" />
-                  <Stack.Screen name="data-sources" />
-                  <Stack.Screen name="status" />
-                  <Stack.Screen name="onboarding" options={{ animation: 'slide_from_right' }} />
-                  <Stack.Screen name="calendar" />
-                  <Stack.Screen name="find" />
-                  <Stack.Screen name="places" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
-                  <Stack.Screen name="settings" />
-                  <Stack.Screen name="reminder-settings" />
-                  <Stack.Screen name="offline" />
-                  <Stack.Screen name="+not-found" />
+                    <Stack screenOptions={{ headerShown: false, animation: reducedMotion ? 'none' : 'slide_from_right' }}>
+                      <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+                      <Stack.Screen name="reports" />
+                      <Stack.Screen name="report-missed" />
+                      <Stack.Screen name="report-incorrect" />
+                      <Stack.Screen name="history" />
+                      <Stack.Screen name="support" />
+                      <Stack.Screen name="partners" />
+                      <Stack.Screen name="bulky-booking" />
+                      <Stack.Screen name="plus" />
+                      <Stack.Screen name="account" />
+                      <Stack.Screen name="household" />
+                      <Stack.Screen name="privacy" />
+                      <Stack.Screen name="terms" />
+                      <Stack.Screen name="data-sources" />
+                      <Stack.Screen name="status" />
+                      <Stack.Screen name="onboarding" options={{ animation: reducedMotion ? 'none' : 'slide_from_right' }} />
+                      <Stack.Screen name="calendar" />
+                      <Stack.Screen name="find" />
+                      <Stack.Screen
+                        name="places"
+                        options={{ animation: reducedMotion ? 'none' : 'slide_from_bottom', presentation: 'modal' }}
+                      />
+                      <Stack.Screen name="settings" />
+                      <Stack.Screen name="reminder-settings" />
+                      <Stack.Screen name="offline" />
+                      <Stack.Screen name="+not-found" />
                     </Stack>
                   </SubscriptionProvider>
                 </ResidentSupportProvider>
@@ -74,7 +82,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const dark = useColorScheme() === 'dark';
   const colours = dark
     ? { background: '#000000', surface: '#1C1C1E', text: '#F5F5F7', secondary: '#AEAEB2', separator: '#38383A', danger: '#FF453A', accent: '#0A84FF' }
-    : { background: '#F2F2F7', surface: '#FFFFFF', text: '#1C1C1E', secondary: '#636366', separator: '#D1D1D6', danger: '#D70015', accent: '#007AFF' };
+    : { background: '#F2F2F7', surface: '#FFFFFF', text: '#1C1C1E', secondary: '#636366', separator: '#D1D1D6', danger: '#D70015', accent: '#0062CC' };
   return (
     <View style={[errorStyles.page, { backgroundColor: colours.background }]}>
       <View style={[errorStyles.card, { backgroundColor: colours.surface, borderColor: colours.separator }]}>

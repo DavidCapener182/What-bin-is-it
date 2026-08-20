@@ -26,6 +26,19 @@ import {
 import { councilDatabase } from "@/lib/database";
 import { requestCouncilBroadcast } from "@/lib/broadcasts";
 import {
+  clearConsoleE2eFixtureSession,
+  confirmConsoleE2eBooking,
+  consoleE2eFixturesAvailable,
+  isConsoleE2eFixtureSession,
+  replyToConsoleE2eSupport,
+  saveConsoleE2eAnnouncement,
+  saveConsoleE2eDisruption,
+  setConsoleE2eAnnouncementStatus,
+  setConsoleE2eDisruptionStatus,
+  setConsoleE2ePartnerStatus,
+  startConsoleE2eFixtureSession,
+} from "@/lib/console-e2e-fixtures";
+import {
   createAnnouncement,
   createDisruption,
   createPartner,
@@ -82,11 +95,11 @@ function errorPath(path: string, error: unknown) {
   const message = !operationalError && error instanceof Error
     ? error.message
     : "The change could not be saved. Check the values and try again.";
-  return `${path}?error=${encodeURIComponent(message.slice(0, 180))}`;
+  return `${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(message.slice(0, 180))}`;
 }
 
 function successPath(path: string, message: string) {
-  return `${path}?saved=${encodeURIComponent(message)}`;
+  return `${path}${path.includes("?") ? "&" : "?"}saved=${encodeURIComponent(message)}`;
 }
 
 function allowedValue<T extends string>(
@@ -307,6 +320,10 @@ async function authorisedCouncilUserId(userId: string) {
 export async function requestCouncilSignIn(formData: FormData) {
   const email = requiredText(formData.get("email"), "Email", 254).toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) redirect("/login?sent=1");
+  if (await consoleE2eFixturesAvailable()) {
+    if (await startConsoleE2eFixtureSession(email)) redirect("/announcements");
+    redirect("/login?auth=invalid");
+  }
   let developmentSessionStarted = false;
   try {
     developmentSessionStarted = await startDevelopmentSuperadminSession(email);
@@ -369,6 +386,7 @@ export async function signInCouncilWithPassword(formData: FormData) {
 }
 
 export async function signOutCouncil() {
+  if (await clearConsoleE2eFixtureSession()) redirect("/login?signedOut=1");
   const supabase = await createCouncilSupabaseServerClient();
   await supabase.auth.signOut({ scope: "local" });
   await clearDevelopmentSuperadminSession();
@@ -419,7 +437,7 @@ export async function saveAnnouncementAction(formData: FormData) {
       throw new Error("A push alert must start now. Remove its future start time or save a draft.");
     }
     assertAudienceConfirmed(formData, sendPush);
-    const result = await createAnnouncement(session, {
+    const announcement = {
       kind: allowedValue(formData.get("kind"), ["service", "education", "emergency", "seasonal"] as const, "Message type"),
       severity: allowedValue(formData.get("severity"), ["information", "advice", "warning", "critical"] as const, "Severity"),
       title: requiredText(formData.get("title"), "Title", 120),
@@ -431,8 +449,13 @@ export async function saveAnnouncementAction(formData: FormData) {
       audience: broadcastAudience(formData),
       status,
       sendPush,
-    });
-    savedMessage = await broadcastMessage(result.broadcastJobId, "Announcement saved.");
+    };
+    if (isConsoleE2eFixtureSession(session)) {
+      await saveConsoleE2eAnnouncement(announcement);
+    } else {
+      const result = await createAnnouncement(session, announcement);
+      savedMessage = await broadcastMessage(result.broadcastJobId, "Announcement saved.");
+    }
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
@@ -450,13 +473,13 @@ export async function changeAnnouncementStatusAction(formData: FormData) {
     if (status === "published") assertHighRiskConfirmation(formData);
     const sendPush = status === "published" && checked(formData, "sendPush");
     assertAudienceConfirmed(formData, sendPush);
-    const jobId = await setAnnouncementStatus(
-      session,
-      assertUuid(requiredText(formData.get("id"), "Announcement", 36)),
-      status,
-      sendPush,
-    );
-    savedMessage = await broadcastMessage(jobId, "Announcement status updated.");
+    const id = assertUuid(requiredText(formData.get("id"), "Announcement", 36));
+    if (isConsoleE2eFixtureSession(session)) {
+      await setConsoleE2eAnnouncementStatus(id, status);
+    } else {
+      const jobId = await setAnnouncementStatus(session, id, status, sendPush);
+      savedMessage = await broadcastMessage(jobId, "Announcement status updated.");
+    }
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
@@ -488,7 +511,7 @@ export async function saveDisruptionAction(formData: FormData) {
       throw new Error("A push alert must start now. Change its start time or save a draft.");
     }
     assertAudienceConfirmed(formData, sendPush);
-    const result = await createDisruption(session, {
+    const disruption = {
       title: requiredText(formData.get("title"), "Title", 120),
       detail: requiredText(formData.get("detail"), "Details", 600),
       collectionTypes,
@@ -506,8 +529,13 @@ export async function saveDisruptionAction(formData: FormData) {
       audience: broadcastAudience(formData, collectionTypes.includes("all") ? [] : collectionTypes),
       status,
       sendPush,
-    });
-    savedMessage = await broadcastMessage(result.broadcastJobId, "Service disruption saved.");
+    };
+    if (isConsoleE2eFixtureSession(session)) {
+      await saveConsoleE2eDisruption(disruption);
+    } else {
+      const result = await createDisruption(session, disruption);
+      savedMessage = await broadcastMessage(result.broadcastJobId, "Service disruption saved.");
+    }
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
@@ -525,13 +553,13 @@ export async function changeDisruptionStatusAction(formData: FormData) {
     if (status === "published") assertHighRiskConfirmation(formData);
     const sendPush = status === "published" && checked(formData, "sendPush");
     assertAudienceConfirmed(formData, sendPush);
-    const jobId = await setDisruptionStatus(
-      session,
-      assertUuid(requiredText(formData.get("id"), "Disruption", 36)),
-      status,
-      sendPush,
-    );
-    savedMessage = await broadcastMessage(jobId, "Disruption status updated.");
+    const id = assertUuid(requiredText(formData.get("id"), "Disruption", 36));
+    if (isConsoleE2eFixtureSession(session)) {
+      await setConsoleE2eDisruptionStatus(id, status);
+    } else {
+      const jobId = await setDisruptionStatus(session, id, status, sendPush);
+      savedMessage = await broadcastMessage(jobId, "Disruption status updated.");
+    }
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
@@ -696,12 +724,14 @@ export async function changePartnerStatusAction(formData: FormData) {
     const session = await requireCouncilAction("partners:approve");
     assertExpectedOrganisation(formData, session);
     assertHighRiskConfirmation(formData);
-    await setPartnerStatus(
-      session,
-      assertUuid(requiredText(formData.get("id"), "Partner", 36)),
-      allowedValue(formData.get("status"), ["active", "paused", "ended"] as const, "Status"),
-      optionalText(formData.get("suspensionReason"), 500),
-    );
+    const id = assertUuid(requiredText(formData.get("id"), "Partner", 36));
+    const status = allowedValue(formData.get("status"), ["active", "paused", "ended"] as const, "Status");
+    const suspensionReason = optionalText(formData.get("suspensionReason"), 500);
+    if (isConsoleE2eFixtureSession(session)) {
+      await setConsoleE2ePartnerStatus(id, status);
+    } else {
+      await setPartnerStatus(session, id, status, suspensionReason);
+    }
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
@@ -717,11 +747,12 @@ export async function confirmExternalBulkyBookingAction(formData: FormData) {
     assertHighRiskConfirmation(formData);
     const reference = requiredText(formData.get("reference"), "What Bin reference", 24).toUpperCase();
     if (!/^WB-[A-Z0-9]{12}$/.test(reference)) throw new Error("The What Bin booking reference is invalid.");
-    await confirmExternalBulkyBooking(
-      session,
-      reference,
-      requiredText(formData.get("providerReference"), "Provider confirmation reference", 160),
-    );
+    const providerReference = requiredText(formData.get("providerReference"), "Provider confirmation reference", 160);
+    if (isConsoleE2eFixtureSession(session)) {
+      await confirmConsoleE2eBooking(reference, providerReference);
+    } else {
+      await confirmExternalBulkyBooking(session, reference, providerReference);
+    }
     revalidatePath(path);
   } catch (error) {
     redirect(errorPath(path, error));
@@ -1156,11 +1187,12 @@ export async function replyToResidentSupportAction(formData: FormData) {
     const threadId = assertUuid(requiredText(formData.get("threadId"), "Conversation", 36));
     path = `/crm/messages?thread=${threadId}`;
     const session = await requireCouncilAction("support:reply");
-    await replyToResidentSupportThread(
-      session,
-      threadId,
-      requiredText(formData.get("body"), "Reply", 5_000),
-    );
+    const body = requiredText(formData.get("body"), "Reply", 5_000);
+    if (isConsoleE2eFixtureSession(session)) {
+      await replyToConsoleE2eSupport(threadId, body);
+    } else {
+      await replyToResidentSupportThread(session, threadId, body);
+    }
     revalidatePath("/crm/messages");
   } catch (error) {
     redirect(errorPath(path, error));
