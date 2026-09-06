@@ -9,7 +9,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, shrink-to-fit=no"
+          content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
@@ -28,6 +28,19 @@ export default function Root({ children }: PropsWithChildren) {
           }
           html, body { background: #F9F9FB; }
           #root { background: #F2F2F7; }
+          /* Match the compact navigation breakpoint. These headers remain in
+             flex flow, so their full padded height also positions the content. */
+          @media (max-width: 719px) {
+            #resident-screen-header, #today-hero, #today-setup-hero {
+              -webkit-backdrop-filter: none !important;
+              backdrop-filter: none !important;
+            }
+            #resident-screen-header, #today-header-inset {
+              /* Replace SafeAreaView's inline inset, never add a second one.
+                 CSS reserves this space before the provider measures on web. */
+              padding-top: calc(env(safe-area-inset-top, 0px) + 12px) !important;
+            }
+          }
           @supports (height: 100dvh) {
             html, body, #root {
               height: 100dvh;

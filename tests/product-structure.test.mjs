@@ -130,18 +130,19 @@ test('uses an adaptive navigation rail and a zoomable 1440px web shell', () => {
   assert.match(rootLayout, /animation: reducedMotion \? 'none' : 'slide_from_bottom'/);
 });
 
-test('keeps the installed iOS web app outside both system safe areas', () => {
+test('reserves the mobile header safe area once inside the full viewport', () => {
   const appConfig = read('app.json');
   const html = read('src/app/+html.tsx');
   const todaySections = read('src/features/collections/today-sections.tsx');
   const todayStyles = read('src/features/collections/today-styles.ts');
   assert.match(appConfig, /"barStyle": "default"/);
   assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
-  assert.doesNotMatch(html, /viewport-fit=cover/);
+  assert.match(html, /viewport-fit=cover/);
+  assert.match(html, /padding-top: calc\(env\(safe-area-inset-top, 0px\) \+ 12px\) !important/);
   assert.match(html, /@media \(display-mode: standalone\)/);
   assert.match(html, /height: 100lvh/);
   assert.doesNotMatch(html, /-webkit-fill-available/);
-  assert.match(todaySections, /<SafeAreaView edges=\{\['top'\]\} style=\{styles\.heroSafeArea\}>/);
+  assert.match(todaySections, /<SafeAreaView nativeID="today-header-inset" edges=\{\['top'\]\} style=\{styles\.heroSafeArea\}>/);
   assert.match(todayStyles, /heroSafeArea: \{ paddingTop: 12 \}/);
 });
 
