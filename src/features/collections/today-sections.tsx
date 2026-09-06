@@ -25,7 +25,7 @@ export function TodaySetup({ error, onChange, onContinue, postcode, styles, them
       <LinearGradient colors={[theme.hero, theme.hero]} nativeID="today-setup-hero" style={[styles.setupHero, { backgroundColor: theme.hero }]}>
         <SafeAreaView nativeID="today-header-inset" edges={['top', 'left', 'right']} style={styles.heroSafeArea}>
           <Text style={styles.eyebrow}>What Bin Is It Tonight?</Text>
-          <Text style={styles.setupTitle}>Find your collection dates.</Text>
+          <Text accessibilityRole="header" style={styles.setupTitle}>Find your collection dates.</Text>
           <Text style={styles.setupSubtitle}>Add one UK postcode and we’ll check its live council source.</Text>
         </SafeAreaView>
       </LinearGradient>
@@ -103,7 +103,7 @@ export function TodayPrimaryPane(props: TodayPrimaryPaneProps) {
         <Pressable accessibilityRole="button" onPress={() => router.push('/places')} style={({ pressed }) => [styles.setupRequiredCard, pressed && styles.pressed]}><View style={styles.actionIcon}><Ionicons color="#FFFFFF" name="home-outline" size={23} /></View><View style={styles.cardCopy}><Text style={styles.cardTitle}>Select your property</Text><Text style={styles.cardBody}>This prevents dates from the wrong collection round.</Text></View><Ionicons color={theme.secondaryText} name="arrow-forward" size={20} /></Pressable>
       ) : props.actionCollections.length ? (
         <View style={[styles.actionCard, props.completed && styles.actionCardComplete]}>
-          <View style={styles.actionHeader}><View><Text style={styles.sectionKicker}>{props.tonight ? 'TONIGHT' : 'Collection status'}</Text><Text style={styles.actionTitle}>{props.lifecycle?.title ?? formatCollectionDate(props.actionDate!, 'weekday')}</Text></View>{props.lifecycle?.stage === 'collected' || props.completed ? <Ionicons color={theme.success} name="checkmark-circle" size={30} /> : null}</View>
+          <View style={styles.actionHeader}><View style={{ flex: 1, minWidth: 0 }}><Text style={styles.sectionKicker}>{props.tonight ? 'TONIGHT' : 'Collection status'}</Text><Text style={styles.actionTitle}>{props.lifecycle?.title ?? formatCollectionDate(props.actionDate!, 'weekday')}</Text></View>{props.lifecycle?.stage === 'collected' || props.completed ? <Ionicons color={theme.success} name="checkmark-circle" size={30} /> : null}</View>
           {props.lifecycle ? <Text style={styles.lifecycleDetail}>{props.lifecycle.detail}</Text> : null}
           <View style={styles.actionBins}>{props.actionCollections.map((collection) => { const meta = collectionDisplayMeta(collection); return <View key={collection.id} style={styles.actionBinRow}><View style={[styles.iconDisc, { backgroundColor: meta.tint }]}><WasteIcon colour={meta.colour} type={collection.wasteType} /></View><Text style={styles.actionBinName}>{meta.label}</Text></View>; })}</View>
           {props.showHousehold ? <Pressable accessibilityRole="button" onPress={() => router.push('/household' as Href)} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}><Ionicons color={theme.accent} name="people-outline" size={19} /><Text style={styles.secondaryActionText}>{props.assignedMemberName ? `${props.assignedMemberName} is putting it out` : 'Choose who is putting it out'}</Text></Pressable> : null}
@@ -117,7 +117,6 @@ export function TodayPrimaryPane(props: TodayPrimaryPaneProps) {
         </View>
       ) : props.next ? (
         <Pressable accessibilityLabel={`Open schedule for ${collectionDisplayMeta(props.next).label}`} accessibilityRole="button" onPress={() => router.push('/schedule')} style={({ pressed }) => [styles.collectionCard, props.usesCouncilBinColour && primaryNextMeta && { backgroundColor: primaryNextMeta.colour, borderColor: primaryNextMeta.colour }, pressed && styles.pressed]}>
-          <View style={[styles.collectionColour, { backgroundColor: props.usesCouncilBinColour ? props.nextCardForeground : props.primaryNextColour ?? collectionDisplayMeta(props.next).colour }]} />
           <View style={[styles.collectionBinMark, props.nextCardMark ? { backgroundColor: props.nextCardMark } : null]}><BinGlyph colour={props.usesCouncilBinColour ? props.nextCardForeground : props.primaryNextColour ?? collectionDisplayMeta(props.next).colour} size={36} /></View>
           <View style={styles.cardCopy}><Text style={[styles.cardKicker, { color: props.nextCardSecondary }]}>Next collection</Text><Text style={[styles.cardTitle, { color: props.nextCardForeground }]}>{props.nextDayCollections.map((collection) => collectionDisplayMeta(collection).label).join(' + ')}</Text><Text style={[styles.cardBody, { color: props.nextCardSecondary }]}>{formatCollectionDate(props.next.date, 'weekday')}</Text></View><Ionicons color={props.usesCouncilBinColour ? props.nextCardForeground : theme.tertiaryText} name="chevron-forward" size={20} />
         </Pressable>

@@ -51,6 +51,14 @@ npm run android
 npm run web
 ```
 
+For a built web preview with the live council gateway connected, run:
+
+```bash
+npm run preview:web
+```
+
+Open `http://127.0.0.1:4173`. This command builds the web app with the same deployed API used by `npm run dev`, then serves it locally. Postcode and property lookups use the live gateway. The bare `tests/browser/serve-dist.mjs` server is for the browser suite, whose API requests are fixtures; it cannot run the local server API.
+
 The app never creates example collection dates. A date is displayed and scheduled for reminders only after it has been returned by a connected council source for the selected property.
 
 ## Connect live council collection data

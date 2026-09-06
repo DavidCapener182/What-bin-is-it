@@ -220,5 +220,7 @@ test('endpoint, storage and migration preserve privacy, idempotency and operatio
   assert.match(privacy, /pseudonymous data-quality-only client reference/);
   assert.match(privacy, /not reused for council resident counting, analytics, accounts or other features/);
   assert.match(screen, /Exact payload to be sent/);
-  assert.match(screen, /addresses and place names typed into these boxes cannot always be detected/);
+  assert.match(screen, /Please leave out addresses, postcodes and place names/);
+  assert.match(screen, /check the preview before sending/);
+  assert.match(screen, /Automatic removal may not catch everything/);
 });

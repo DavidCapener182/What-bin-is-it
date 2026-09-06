@@ -16,6 +16,11 @@ const mime = {
 
 createServer((request, response) => {
   const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
+    response.writeHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+    response.end(JSON.stringify({ error: 'This static preview has no local API. Start npm run preview:web to connect the live council gateway.' }));
+    return;
+  }
   const clean = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
   const candidates = [
     join(root, clean),

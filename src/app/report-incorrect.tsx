@@ -160,7 +160,7 @@ export default function ReportIncorrectScreen() {
           <View style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
             <Ionicons color={theme.accent} name="shield-checkmark-outline" size={21} />
             <Text style={[styles.noticeText, { color: theme.text }]}>
-              This goes to a private first-party queue. The client ID in the preview is a dedicated pseudonymous reference used only to rate-limit this queue. We do not attach your saved postcode, street address, property reference or place label. Postcode-shaped text is removed, but addresses and place names typed into these boxes cannot always be detected—remove them in the preview.
+              Your report goes privately to the What Bin team. We do not attach your saved address or postcode. Please leave out addresses, postcodes and place names, and check the preview before sending. Automatic removal may not catch everything.
             </Text>
           </View>
 
@@ -261,15 +261,15 @@ export default function ReportIncorrectScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { height: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
-  back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700' },
-  content: { padding: 16, paddingBottom: 50, gap: 13 },
+  content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 16, paddingBottom: 50, gap: 13 },
   notice: { padding: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   noticeText: { flex: 1, fontSize: 14, lineHeight: 20 },
   label: { fontSize: 13, fontWeight: '600', marginTop: 4 },
   options: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, overflow: 'hidden' },
   option: { minHeight: 54, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  optionText: { fontSize: 14, fontWeight: '600' },
+  optionText: { flex: 1, fontSize: 14, fontWeight: '600' },
   input: { minHeight: 92, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, padding: 13, fontSize: 14, lineHeight: 20, textAlignVertical: 'top' },
   button: { minHeight: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginTop: 4, paddingHorizontal: 16 },
   buttonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   previewDescription: { fontSize: 13, lineHeight: 18 },
   codeFrame: { borderRadius: 10, padding: 12 },
   code: { fontFamily: 'monospace', fontSize: 12, lineHeight: 17 },
-  editButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center' },
+  editButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   editButtonText: { fontSize: 14, fontWeight: '700' },
   error: { padding: 13, borderRadius: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   errorText: { flex: 1, fontSize: 13, lineHeight: 18 },
