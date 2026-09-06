@@ -34,7 +34,8 @@ export function ResidentScreenHeader({ action, kicker, subtitle, title }: Header
 
   return (
     <SafeAreaView
-      edges={['top']}
+      nativeID="resident-screen-header"
+      edges={['top', 'left', 'right']}
       style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
       <View style={styles.headerCopy}>
         <Text style={styles.kicker}>{kicker}</Text>
