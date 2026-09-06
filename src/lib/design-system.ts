@@ -26,15 +26,15 @@ export const appFonts = {
 };
 
 export const appColours = {
-  background: '#F2F2F7',
-  card: '#FFFFFF',
-  ink: '#1C1C1E',
-  secondary: '#636366',
-  tertiary: '#6B6B70',
-  brand: '#0062CC',
-  brandPressed: '#004C9E',
-  separator: '#D1D1D6',
-  material: 'rgba(249, 249, 251, 0.86)',
+  background: '#F1F4F8',
+  card: '#FDFEFF',
+  ink: '#18263B',
+  secondary: '#536278',
+  tertiary: '#617087',
+  brand: '#245BC5',
+  brandPressed: '#19479F',
+  separator: '#CFD9E6',
+  material: '#F7F9FC',
 };
 
 export const appSpacing = {

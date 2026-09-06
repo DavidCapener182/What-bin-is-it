@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 export const supportStyles = StyleSheet.create({
   page: { flex: 1 },
   header: { height: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
-  back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700' },
   content: { padding: 18, paddingBottom: 120, gap: 14, width: '100%', maxWidth: 680, alignSelf: 'center' },
   title: { fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.8 },

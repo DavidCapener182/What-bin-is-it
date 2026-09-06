@@ -44,6 +44,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     width: '100%',
     maxWidth: Platform.OS === 'web' ? appLayout.shellMaxWidth : undefined,
-    ...platformShadow('0 0 28px rgba(7, 26, 43, 0.12)', {}),
+    ...platformShadow('0 0 0 1px rgba(68, 92, 126, 0.08)', {}),
   },
 });

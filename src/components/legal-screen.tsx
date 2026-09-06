@@ -58,9 +58,9 @@ export function LegalScreen({
 const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { height: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
-  back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700' },
-  content: { padding: 16, paddingBottom: 48, gap: 10 },
+  content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 16, paddingBottom: 48, gap: 10 },
   updated: { fontSize: 13, paddingHorizontal: 3 },
   group: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, overflow: 'hidden' },
   section: { padding: 16 },

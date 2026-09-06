@@ -71,14 +71,14 @@ export function GuideResultRow({
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
-    row: { minHeight: 70, flexDirection: 'row', alignItems: 'stretch', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator, backgroundColor: theme.surface },
-    main: { flex: 1, minHeight: 70, paddingLeft: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    row: { minHeight: 78, flexDirection: 'row', alignItems: 'stretch', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator, backgroundColor: theme.surface },
+    main: { flex: 1, minHeight: 78, paddingLeft: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 11 },
     save: { width: 52, minHeight: 52, alignItems: 'center', justifyContent: 'center' },
     icon: { height: 40, width: 40, borderRadius: 13, backgroundColor: theme.groupedBackground, alignItems: 'center', justifyContent: 'center' },
     copy: { flex: 1, minWidth: 0 },
-    name: { color: theme.text, fontSize: 14, lineHeight: 19, fontWeight: '700' },
+    name: { color: theme.text, fontSize: 15, lineHeight: 21, fontWeight: '600' },
     highlight: { color: theme.accent, fontWeight: '800' },
-    destination: { fontSize: 12, lineHeight: 17, marginTop: 3, fontWeight: '800' },
+    destination: { fontSize: 12, lineHeight: 17, marginTop: 4, fontWeight: '600' },
     pressed: { opacity: 0.7 },
   });
 }

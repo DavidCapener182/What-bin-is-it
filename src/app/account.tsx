@@ -218,7 +218,7 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { height: 58, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
-  headerButton: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700' },
   content: { width: '100%', maxWidth: 600, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 12, gap: 12 },
   hero: { borderRadius: 21, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 13 },

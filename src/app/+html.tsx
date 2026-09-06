@@ -11,8 +11,8 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
-        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
-        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F1F4F8" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0D1522" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -26,8 +26,8 @@ export default function Root({ children }: PropsWithChildren) {
             height: 100%;
             min-height: 100%;
           }
-          html, body { background: #F9F9FB; }
-          #root { background: #F2F2F7; }
+          html, body { background: #F7F9FC; }
+          #root { background: #F1F4F8; }
           /* Match the compact navigation breakpoint. These headers remain in
              flex flow, so their full padded height also positions the content. */
           @media (max-width: 719px) {
@@ -62,8 +62,8 @@ export default function Root({ children }: PropsWithChildren) {
             }
           }
           @media (prefers-color-scheme: dark) {
-            html, body { background: #1C1C1E; }
-            #root { background: #000000; }
+            html, body { background: #18263B; }
+            #root { background: #0D1522; }
           }
           html { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
           body {
@@ -74,6 +74,13 @@ export default function Root({ children }: PropsWithChildren) {
             text-rendering: optimizeLegibility;
           }
           button, input, textarea, select { font: inherit; }
+          input, textarea { caret-color: #245BC5; }
+          ::selection { background: #D5E4FF; color: #18263B; }
+          [role="button"], [role="tab"], a { -webkit-tap-highlight-color: transparent; }
+          @media (hover: hover) {
+            [role="button"]:not([aria-disabled="true"]):hover,
+            [role="tab"]:hover { filter: brightness(0.96); }
+          }
           button:focus-visible,
           input:focus-visible,
           textarea:focus-visible,
@@ -82,7 +89,7 @@ export default function Root({ children }: PropsWithChildren) {
           [role="button"]:focus-visible,
           [role="tab"]:focus-visible,
           [tabindex]:focus-visible {
-            outline: 3px solid #0062CC !important;
+            outline: 3px solid #245BC5 !important;
             outline-offset: 3px !important;
           }
           @media (prefers-reduced-motion: reduce) {
@@ -94,7 +101,7 @@ export default function Root({ children }: PropsWithChildren) {
             }
           }
           @media (prefers-reduced-transparency: reduce) {
-            #app-material { backdrop-filter: none !important; background: #F9F9FB !important; }
+            #app-material { backdrop-filter: none !important; background: #F7F9FC !important; }
           }
           @media (prefers-contrast: more) {
             [role="button"], [role="tab"] { border-color: currentColor; }

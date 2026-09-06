@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { usePathname } from 'expo-router';
-import { Tabs, type BottomTabBarButtonProps } from 'expo-router/js-tabs';
+import { router, usePathname } from 'expo-router';
+import { BottomTabBar, Tabs, type BottomTabBarButtonProps, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { type ComponentProps, type MouseEvent as ReactMouseEvent } from 'react';
-import { Platform, Pressable, StyleSheet, type GestureResponderEvent } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 
 import { reportNeedsResidentAttention, supportReplyNeedsAttention } from '@/lib/activity-attention';
 import { appFonts, appLayout, platformShadow } from '@/lib/design-system';
@@ -109,6 +109,30 @@ function KeyboardTabButton({
   );
 }
 
+function ResidentNavigation(props: BottomTabBarProps) {
+  const theme = useAppTheme();
+  const adaptive = useAdaptiveLayout();
+  if (adaptive.navigationPosition === 'bottom') return <BottomTabBar {...props} />;
+  const wide = adaptive.mode === 'wide';
+  return (
+    <View style={[styles.navigationRail, { width: adaptive.navigationRailWidth, backgroundColor: theme.surface, borderRightColor: theme.separator }]}>
+      <View style={[styles.railBrand, !wide && styles.railBrandCompact]}>
+        <View style={[styles.brandMark, { backgroundColor: theme.accentFill }]}><Ionicons name="trash-bin-outline" size={24} color={theme.heroText} /></View>
+        {wide ? <View><Text style={[styles.brandTitle, { color: theme.text }]}>What Bin?</Text><Text style={[styles.brandSubtitle, { color: theme.secondaryText }]}>A little less to remember.</Text></View> : null}
+      </View>
+      <View style={styles.primaryNavigation}><BottomTabBar {...props} /></View>
+      <View style={[styles.railUtilities, { borderTopColor: theme.separator }]}>
+        {([{ route: '/places', label: 'Saved places', icon: 'location-outline' }, { route: '/settings', label: 'Settings', icon: 'settings-outline' }] as const).map((item) => (
+          <Pressable key={item.route} accessibilityRole="button" accessibilityLabel={item.label} onPress={() => router.push(item.route)} style={({ pressed }) => [styles.utilityLink, !wide && styles.utilityCompact, pressed && { backgroundColor: theme.accentSoft }]}>
+            <Ionicons name={item.icon} size={21} color={theme.secondaryText} />
+            {wide ? <Text style={[styles.utilityLabel, { color: theme.secondaryText }]}>{item.label}</Text> : null}
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function ResidentTabsLayout() {
   const adaptive = useAdaptiveLayout();
   const reducedMotion = useReducedMotionPreference();
@@ -145,6 +169,7 @@ export default function ResidentTabsLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <ResidentNavigation {...props} />}
       backBehavior="history"
       detachInactiveScreens={false}
       screenOptions={{
@@ -173,12 +198,12 @@ export default function ResidentTabsLayout() {
           styles.tabBar,
           rail
             ? {
-                borderRightColor: theme.separator,
+                borderRightWidth: 0,
                 minWidth: adaptive.navigationRailWidth,
                 width: adaptive.navigationRailWidth,
               }
             : { minHeight: appLayout.compactNavigationHeight, borderTopColor: theme.separator },
-          { backgroundColor: theme.material },
+          { backgroundColor: theme.surface },
         ],
       }}>
       <Tabs.Screen
@@ -238,8 +263,19 @@ export default function ResidentTabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  navigationRail: { borderRightWidth: StyleSheet.hairlineWidth, paddingTop: 16, paddingBottom: 16 },
+  railBrand: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 20 },
+  railBrandCompact: { justifyContent: 'center', paddingHorizontal: 0 },
+  brandMark: { width: 40, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  brandTitle: { fontFamily: appFonts.display, fontSize: 20, fontWeight: '700', letterSpacing: -0.6 },
+  brandSubtitle: { fontFamily: appFonts.text, fontSize: 10, marginTop: 4 },
+  primaryNavigation: { flex: 1 },
+  railUtilities: { borderTopWidth: StyleSheet.hairlineWidth, marginHorizontal: 12, paddingTop: 12, gap: 4 },
+  utilityLink: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, borderRadius: 12 },
+  utilityCompact: { justifyContent: 'center', paddingHorizontal: 0 },
+  utilityLabel: { fontFamily: appFonts.text, fontSize: 13, fontWeight: '600' },
   tabBar: {
-    ...platformShadow('0 0 24px rgba(7, 26, 43, 0.12)', {
+    ...platformShadow('none', {
       shadowColor: '#071A2B',
       shadowOpacity: 0.12,
       shadowRadius: 18,
