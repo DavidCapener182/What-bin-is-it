@@ -142,7 +142,7 @@ test('reserves the mobile header safe area once inside the full viewport', () =>
   assert.match(html, /@media \(display-mode: standalone\)/);
   assert.match(html, /height: 100lvh/);
   assert.doesNotMatch(html, /-webkit-fill-available/);
-  assert.match(todaySections, /<SafeAreaView nativeID="today-header-inset" edges=\{\['top'\]\} style=\{styles\.heroSafeArea\}>/);
+  assert.match(todaySections, /<SafeAreaView nativeID="today-header-inset" edges=\{\['top', 'left', 'right'\]\} style=\{styles\.heroSafeArea\}>/);
   assert.match(todayStyles, /heroSafeArea: \{ paddingTop: 12 \}/);
 });
 
