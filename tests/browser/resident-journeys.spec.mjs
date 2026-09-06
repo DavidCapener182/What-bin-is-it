@@ -331,6 +331,10 @@ for (const visual of visualCases) {
 }
 
 test('resident completes manual postcode and exact-address onboarding against bounded council fixtures', async ({ page }) => {
+  const collectionRequests = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/collections') collectionRequests.push(request);
+  });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.clock.setFixedTime(fixedNow);
   await mockOnboardingCouncilJourney(page);
@@ -356,6 +360,7 @@ test('resident completes manual postcode and exact-address onboarding against bo
     const state = JSON.parse(localStorage.getItem('@what-bin-is-it-tonight/state-v4') ?? '{}');
     return state.addresses?.[0]?.line1;
   })).toBe('10 Fixture Street');
+  expect(collectionRequests).toHaveLength(1);
 });
 
 test('resident searches the Guide and opens the compact item detail route', async ({ page }) => {

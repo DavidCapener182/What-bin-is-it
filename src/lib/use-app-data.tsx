@@ -607,9 +607,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    autoRefreshAttempts.current.add(targetAddress.id);
+    autoRefreshAttempts.current.add(`${targetAddress.id}:${collectionDayKey(scheduleNow)}`);
     return refreshAddress(targetAddress, true);
-  }, [refreshAddress, state.addresses, track]);
+  }, [refreshAddress, scheduleNow, state.addresses, track]);
 
   const value = useMemo<AppDataContextValue>(() => ({
     addresses: state.addresses,
