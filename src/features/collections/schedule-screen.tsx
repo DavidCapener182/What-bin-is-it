@@ -107,8 +107,10 @@ export function ScheduleScreen() {
     : collectionDataState === 'cached'
       ? `Showing saved dates · ${lastError ?? 'the latest check did not complete'}`
       : collectionDataState === 'error'
-        ? `Couldn’t verify · ${lastError ?? 'try again in a moment'}`
-        : sourceStatus;
+        ? `${collections.length ? 'Saved dates have passed' : 'Couldn’t verify'} · ${lastError ?? 'try again in a moment'}`
+        : collectionDataState === 'empty' && collections.length
+          ? 'Saved dates have passed · check for upcoming collections.'
+          : sourceStatus;
 
   async function shareSchedule() {
     if (!activeAddress || !upcoming.length) return;

@@ -3,6 +3,7 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { AppState } from 'react-native';
 
 import { verifiedCollectionsOnly } from '@/lib/collection-safety';
+import { collectionDataStateFor, collectionDayKey, hasUpcomingCollections } from '@/lib/collection-state';
 import { fetchCollectionsForAddress } from '@/lib/council-provider';
 import { sortCollections } from '@/lib/data';
 import { removeAddressFromState } from '@/lib/address-state';
@@ -355,7 +356,19 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(buildInitialState);
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const autoRefreshAttempts = useRef(new Set<string>());
+
+  useEffect(() => {
+    const updateDay = () => setScheduleNow(new Date());
+    const midnight = new Date(scheduleNow);
+    midnight.setHours(24, 0, 0, 0);
+    const timer = setTimeout(updateDay, Math.max(1, midnight.getTime() - Date.now()));
+    const subscription = AppState.addEventListener('change', (status) => {
+      if (status === 'active') updateDay();
+    });
+    return () => { clearTimeout(timer); subscription.remove(); };
+  }, [scheduleNow]);
 
   useEffect(() => {
     loadState()
@@ -409,13 +422,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     ? 'no-address'
     : refreshing
       ? 'refreshing'
-      : activeSchedule.collections.length > 0 && activeSchedule.lastError
-        ? 'cached'
-        : activeSchedule.collections.length > 0
-          ? 'ready'
-          : activeSchedule.lastError
-            ? 'error'
-            : 'empty';
+      : collectionDataStateFor(activeSchedule, scheduleNow);
   const refreshAddress = useCallback(async (targetAddress: SavedAddress, clearExisting: boolean): Promise<CollectionRefreshOutcome> => {
     const startedAt = Date.now();
     track('collection_lookup_started', {
@@ -518,20 +525,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       activeSchedule.collections.length > 0
       && activeSchedule.metadataVersion !== collectionMetadataVersion
     );
+    const attemptKey = `${activeAddress?.id}:${collectionDayKey(scheduleNow)}`;
     if (
       !ready
       || !activeAddress?.councilAddressId
-      || (activeSchedule.collections.length > 0 && !metadataNeedsRefresh)
-      || autoRefreshAttempts.current.has(activeAddress.id)
+      || (hasUpcomingCollections(activeSchedule.collections, scheduleNow) && !metadataNeedsRefresh)
+      || autoRefreshAttempts.current.has(attemptKey)
     ) return;
-    autoRefreshAttempts.current.add(activeAddress.id);
+    autoRefreshAttempts.current.add(attemptKey);
     void refreshAddress(activeAddress, false);
   }, [
     activeAddress,
-    activeSchedule.collections.length,
+    activeSchedule.collections,
     activeSchedule.metadataVersion,
     ready,
     refreshAddress,
+    scheduleNow,
   ]);
 
   const addAddress = useCallback(async (address: Omit<SavedAddress, 'id' | 'isPrimary'>) => {

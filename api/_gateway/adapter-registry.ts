@@ -224,7 +224,8 @@ const adapters: Record<string, CouncilAdapter> = {
 };
 
 export function nationwideFallbackEnabled() {
-  return process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK === 'true';
+  const configured = process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK;
+  return configured === undefined || configured === 'true';
 }
 
 export function getAdapter(providerId: string): CouncilAdapter | undefined {
@@ -233,9 +234,8 @@ export function getAdapter(providerId: string): CouncilAdapter | undefined {
   const partnerAdapter = councilPartnerAdapterFor(providerId);
   if (partnerAdapter) return partnerAdapter;
   if (!/^lad-[ensw]\d{8}$/.test(providerId)) return undefined;
-  // This route forwards the resident-selected street address to Bin Day. It
-  // remains unavailable until the provider contract, retention and store
-  // disclosures have been approved and the server-only gate is enabled.
+  // Preserve the existing, disclosed Bin Day lookup for saved places. Operators
+  // can explicitly disable this source without disconnecting direct/partner feeds.
   if (!nationwideFallbackEnabled()) return undefined;
   return {
     id: providerId,

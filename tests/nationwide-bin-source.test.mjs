@@ -13,12 +13,15 @@ test('keeps the full nationwide retry budget below the function duration', () =>
   assert.ok(nationwideMaximumOperationMs < 25_000);
 });
 
-test('keeps selected-address nationwide fallback disabled unless explicitly released', () => {
+test('preserves nationwide lookup routing unless it is explicitly disabled', () => {
   const previous = process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK;
   try {
     delete process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK;
-    assert.equal(nationwideFallbackEnabled(), false);
-    assert.equal(getAdapter('lad-e08000012'), undefined);
+    assert.equal(nationwideFallbackEnabled(), true);
+    for (const provider of ['lad-e08000014', 'lad-e08000012', 'lad-e08000003', 'lad-w06000015', 'lad-s12000049']) {
+      assert.equal(getAdapter(provider)?.id, provider);
+    }
+    assert.equal(getAdapter('not-a-council'), undefined);
     process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK = 'false';
     assert.equal(getAdapter('lad-e08000012'), undefined);
     process.env.WHAT_BIN_ENABLE_NATIONWIDE_FALLBACK = 'true';
