@@ -1,4 +1,4 @@
-import { readBoundedUpstreamJson } from './upstream-response.ts';
+import { readBoundedUpstreamJson, readBoundedUpstreamText } from './upstream-response.ts';
 import { gatewayProviderBudgets } from './release-budget.ts';
 
 type MendixAttribute = {
@@ -21,9 +21,62 @@ type MendixResponse = {
 };
 
 const baseUrl = 'https://knowsleytransaction.mendixcloud.com';
-const addressSearchOperation = 'jjzer6smPUaBpVLzU7R0Tg';
-const addressSelectionOperation = 'cl7H5Z5PXk6wTiewsx2JHQ';
+const collectionPageUrl = `${baseUrl}/pages/en_US/OnlineServices/PAGE_OS_BinCollectionInfo_Anon.page.xml`;
 const maximumXasResponseBytes = 1_048_576;
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function decodeXmlAttribute(value: string) {
+  const entities: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt);/gi, (_, entity: string) => {
+    if (!entity.startsWith('#')) return entities[entity.toLowerCase()];
+    return String.fromCodePoint(entity[1].toLowerCase() === 'x'
+      ? parseInt(entity.slice(2), 16)
+      : parseInt(entity.slice(1), 10));
+  });
+}
+
+// Mendix regenerates these IDs when the council publishes its application.
+// Read only the two known public form actions; never execute the page's code.
+export function parseKnowsleyOperations(page: string) {
+  const operations: Record<string, string[]> = { search: [], select: [] };
+  for (const match of page.matchAll(/\bdata-mendix-props\s*=\s*(['"])([\s\S]*?)\1/g)) {
+    const pending: unknown[] = [JSON.parse(`{${decodeXmlAttribute(match[2])}}`)];
+    while (pending.length) {
+      const value = pending.pop();
+      if (Array.isArray(value)) {
+        pending.push(...value);
+        continue;
+      }
+      const node = record(value);
+      pending.push(...Object.values(node).filter((child) => child && typeof child === 'object'));
+      if (node.widget !== 'ActionButton' || typeof node.$widgetId !== 'string') continue;
+      const props = record(node.props);
+      const action = record(record(props.action).action);
+      const caption = record(record(record(props.caption).expression).expr).value;
+      const argument = record(action.argMap);
+      const operationId = record(action.config).operationId;
+      if (action.type !== 'callMicroflow' || typeof operationId !== 'string'
+        || !/^[A-Za-z0-9+/]{22}$/.test(operationId)) continue;
+      if (node.$widgetId.endsWith('.OnlineServices.PAGE_OS_BinCollectionInfo_Anon.actionButton4')
+        && caption === 'Search for address' && Object.hasOwn(argument, 'OS_MissedBinEnquiry')) {
+        operations.search.push(operationId);
+      }
+      if (node.$widgetId.endsWith('.OnlineServices.PAGE_OS_BinCollectionInfo_Anon.actionButton5')
+        && caption === 'Choose this address' && Object.hasOwn(argument, 'Generic_Address')) {
+        operations.select.push(operationId);
+      }
+    }
+  }
+  if (operations.search.length !== 1 || operations.select.length !== 1) {
+    throw new Error('Knowsley collection form did not provide the expected lookup actions.');
+  }
+  return { search: operations.search[0], select: operations.select[0] };
+}
 
 function requestToken(sequence: number) {
   return `${Date.now()}-${sequence}`;
@@ -150,9 +203,12 @@ export async function fetchKnowsleyMendixDates(
 
     const enquiryObject = findObject(opened, 'OnlineServices.OS_vmBinCollectionEnquiry');
     const enquiryChanges = opened.changes?.[enquiryObject.guid] ?? {};
+    const page = await fetch(collectionPageUrl, { signal: controller.signal, cache: 'no-store' });
+    if (!page.ok) throw new Error(`Knowsley collection form returned ${page.status}.`);
+    const operations = parseKnowsleyOperations(await readBoundedUpstreamText(page, maximumXasResponseBytes));
     const searched = await xas({
       action: 'runtimeOperation',
-      operationId: addressSearchOperation,
+      operationId: operations.search,
       params: { OS_MissedBinEnquiry: { guid: enquiryObject.guid } },
       validationGuids: [enquiryObject.guid],
       changes: {
@@ -175,7 +231,7 @@ export async function fetchKnowsleyMendixDates(
 
     const selected = await xas({
       action: 'runtimeOperation',
-      operationId: addressSelectionOperation,
+      operationId: operations.select,
       params: { Generic_Address: { guid: selectedAddress.guid } },
       validationGuids: [enquiryObject.guid],
       changes: {

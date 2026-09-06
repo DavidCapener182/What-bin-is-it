@@ -287,11 +287,11 @@ export function TodayScreen() {
   }
 
   function sourceSummary() {
-    if (!online) return collections.length ? 'Offline · showing your saved council dates' : 'You’re offline · reconnect to verify collection dates';
+    if (!online) return upcoming.length ? 'Offline · showing your saved council dates' : 'You’re offline · reconnect to verify collection dates';
     if (collectionDataState === 'refreshing') return `Checking ${activeAddress?.councilName ?? 'your council'}…`;
     if (collectionDataState === 'cached') return `Showing saved dates · ${lastError ?? 'the latest check did not complete'}`;
-    if (collectionDataState === 'error') return `Couldn’t verify · ${lastError ?? 'try again in a moment'}`;
-    if (collectionDataState === 'empty') return 'No verified dates have been returned for this address yet.';
+    if (collectionDataState === 'error') return `${collections.length ? 'Saved dates have passed' : 'Couldn’t verify'} · ${lastError ?? 'try again in a moment'}`;
+    if (collectionDataState === 'empty') return collections.length ? 'Saved dates have passed · check for upcoming collections.' : 'No verified dates have been returned for this address yet.';
     return sourceStatus;
   }
 
