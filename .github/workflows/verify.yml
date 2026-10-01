@@ -129,7 +129,7 @@ jobs:
 
       - name: Upload resident browser evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: resident-browser-evidence
           path: artifacts/playwright/**
@@ -201,7 +201,7 @@ jobs:
 
       - name: Upload council console browser evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: council-console-browser-evidence
           path: |
